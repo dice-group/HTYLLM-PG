@@ -8,6 +8,6 @@ source environment_initialization.sh
 bash prepare.sh
 
 # Spawner calling your preprocessing script N_PROCS times across the computing cluster
-super_duper_process_spawner -n N_PROCS python text_preprocessor.py
+super_duper_process_spawner -n $N_PROCS python text_preprocessor.py
 
 echo "Finishing preprocessing data."
