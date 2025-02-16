@@ -1,1 +1,1 @@
-# list of all the packages required for this project
+# TODO: list of all the packages required for this project
