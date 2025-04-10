@@ -5,7 +5,7 @@ from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
 
 def data_collator(batch):
-    # Each sample is a dict with "tokens" (list of ints) and "labels" (same as tokens)
+    # Each sample is a dict with "tokens" and "labels" (data should be hopefully pepared in this form)
     input_ids = [sample["tokens"] for sample in batch]
     labels = [sample["labels"] for sample in batch]
     return {"input_ids": input_ids, "labels": labels}

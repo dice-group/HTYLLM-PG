@@ -3,6 +3,7 @@ import time
 import json
 import argparse
 from datasets import load_dataset
+from transformers import AutoTokenizer
 
 def preprocess_text(text):
     return text.lower().strip().split()
@@ -31,6 +32,8 @@ def main():
     total_procs = int(os.getenv("TOTAL_PROCS", "1"))
 
     os.makedirs(args.output_dir, exist_ok=True)
+    tokenizer = AutoTokenizer.from_pretrained("facebook/opt-1.3b", use_fast=True)
+    #tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf", use_fast=True)
 
     dataset = load_dataset(
         args.dataset_name,
@@ -51,9 +54,10 @@ def main():
             text = example.get("text", "")
             if not text:
                 continue
-            tokens = preprocess_text(text)
-            f_out.write(json.dumps({"text": " ".join(tokens)}) + "\n")
-            #f_out.write(json.dumps({"tokens": tokens}) + "\n")
+            tokens = tokenizer.encode(text, add_special_tokens=False, truncation=True, max_length=2048)
+            if len(tokens) < 5:
+                continue
+            f_out.write(json.dumps({"tokens": tokens}) + "\n")
             line_count += 1
             token_count += len(tokens)
 

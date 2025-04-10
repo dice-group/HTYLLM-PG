@@ -5,7 +5,7 @@ export OUTPUT_DIR="/data/output_realnews"
 
 mkdir -p $OUTPUT_DIR
 
-# Spawn training processes
+#spawn processes
 for ((i=0; i<$TOTAL_PROCS; i++))
 do
     echo "Launching training process $i / $TOTAL_PROCS"
