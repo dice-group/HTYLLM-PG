@@ -1,0 +1,23 @@
+you Need to create ssh key add to gitlab Account of uni 
+and get a vpn Connection
+
+then 
+ssh joeldag@sshgate.cs.upb.de
+then
+ssh joeldag@htyllm-pg.cs.uni-paderborn.de
+
+um in einen schritt direkt auf htyllm zu kommen braucht man meine config +  muss den ssh key unter authroized keys auf der htyllm Maschine unter ~/.ssh/authorized_keys oder so hinzufügen
+to get on the machines in one step via vs code remote ssh connection extension, you need to add a 
+file ~username/.ssh/config
+
+Host sshgate
+    HostName sshgate.cs.upb.de
+    User joeldag
+    IdentityFile ~/.ssh/id_ed25519
+    ForwardAgent yes
+
+Host htyllm-pg
+    HostName htyllm-pg.cs.uni-paderborn.de
+    User joeldag
+    ProxyJump sshgate
+    ForwardAgent yes
