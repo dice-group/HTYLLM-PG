@@ -50,3 +50,10 @@ htmlcov/
 
 # Windows
 Thumbs.db
+
+# Datasets
+input.txt
+datasets/
+*.zip
+*.csv
+*.txt
