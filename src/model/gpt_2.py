@@ -1,4 +1,4 @@
-
+# taken from https://github.com/openai/gpt-2/blob/master/src/model.py
 import numpy as np
 import tensorflow as tf
 
