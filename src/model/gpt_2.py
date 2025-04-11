@@ -12,7 +12,7 @@ import inspect
 import os
 import time
 from dataclasses import dataclass
-
+import tiktoken
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -369,14 +369,19 @@ if __name__ == '__main__':
 
     # Byte-level tokenization
     chars = sorted(list(set(text)))
-    vocab_size = len(chars)
+    vocab_size = 50257
     print(f"Vocabulary size: {vocab_size}")
     
+    encoding = tiktoken.get_encoding("gpt2")
+    encode = lambda s: encoding.encode(s)
+    decode = lambda l: encoding.decode(l)
+
     # Create mappings
     stoi = {ch:i for i, ch in enumerate(chars)}
     itos = {i:ch for i, ch in enumerate(chars)}
-    encode = lambda s: [stoi[c] for c in s]
-    decode = lambda l: ''.join([itos[i] for i in l])
+    # encode = lambda s: [stoi[c] for c in s]
+    # decode = lambda l: ''.join([itos[i] for i in l])
+    
 
     # Create train/val splits
     data = torch.tensor(encode(text), dtype=torch.long)
