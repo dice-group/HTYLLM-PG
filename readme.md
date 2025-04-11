@@ -1,3 +1,13 @@
+## 🧪 Setup (Conda)
+
+Create and activate the environment:
+
+```bash
+conda create -n icebreaker python=3.12.9
+conda activate icebreaker
+pip install -e .
+```
+
 https://www.kaggle.com/datasets/rtatman/3-million-german-sentences/data 
 
 https://www.kaggle.com/code/steffenhaeussler/train-a-language-model-from-scratch#Model-Training
