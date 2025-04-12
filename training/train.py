@@ -39,7 +39,9 @@ def main():
     tokenizer.pad_token = tokenizer.eos_token
 
     config = GPT2Config(
-        vocab_size=50257,
+        vocab_size=tokenizer.vocab_size,
+        n_positions=1024,
+        n_ctx=1024,
         n_embd=768,
         n_layer=12,
         n_head=12,
@@ -48,15 +50,17 @@ def main():
 
     training_args = TrainingArguments(
         output_dir=args.output_model_dir,
-        per_device_train_batch_size=args.per_device_train_batch_size,
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        num_train_epochs=args.num_train_epochs,
-        learning_rate=args.learning_rate,
-        logging_steps=25,
-        save_steps=50,
-        save_total_limit=2,
+        per_device_train_batch_size=16,
+        gradient_accumulation_steps=1,
+        num_train_epochs=20,
+        learning_rate=1e-4,
+        warmup_steps=500,
+        weight_decay=0.01,
+        logging_steps=10,
+        save_steps=500,
+        save_total_limit=3,
         remove_unused_columns=False,
-        fp16=True if torch.cuda.is_available() else False,
+        fp16=True,
         dataloader_num_workers=16,
     )
 
