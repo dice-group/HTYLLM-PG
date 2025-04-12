@@ -73,6 +73,7 @@ def main():
 
     trainer.train()
     trainer.save_model(args.output_model_dir)
+    tokenizer.save_pretrained(args.output_model_dir)
 
 if __name__ == "__main__":
     main()
