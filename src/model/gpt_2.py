@@ -359,13 +359,41 @@ if __name__ == '__main__':
     n_layer = 6
     dropout = 0.2
     
-    input_file = 'input.txt'
+    input_file = 'datasets/deu_news_2015_3M-sentences.txt'
     
-    if not os.path.exists(input_file):
-        os.system(f'wget {data_url}')
-    
+    # Read the raw text
     with open(input_file, 'r', encoding='utf-8') as f:
-        text = f.read()
+        raw_text = f.readlines()
+    
+    # Clean the data by removing line numbers and timestamps
+    cleaned_lines = []
+    for line in raw_text:
+        # Remove the line number (pattern: number + tab)
+        if '\t' in line:
+            line = line.split('\t', 1)[1]
+        
+        # Remove timestamps (common patterns observed in the data)
+        timestamp_patterns = [
+            r'^\d{2}:\d{2}\s', # e.g. "00:00 "
+            r'^\d{2}\.\d{2}\s[Uu]hr', # e.g. "00.00 Uhr"
+            r'^\d{2}\.\d{2}\.\d{4}', # e.g. "01.01.2015"
+            r'^\d{2}\.\d{2}\.\d{2}', # e.g. "01.02.14"
+            r'^\d{5}\s', # e.g. "01050 "
+        ]
+        
+        import re
+        for pattern in timestamp_patterns:
+            line = re.sub(pattern, '', line)
+        
+        # Add to cleaned lines
+        cleaned_lines.append(line)
+    
+    # Join the cleaned lines back into a single text
+    text = ''.join(cleaned_lines)
+    
+    # Print a sample of the cleaned text for verification
+    print("Sample of cleaned text:")
+    print(text[:1000])
 
     # Byte-level tokenization
     chars = sorted(list(set(text)))
@@ -376,12 +404,11 @@ if __name__ == '__main__':
     encode = lambda s: encoding.encode(s)
     decode = lambda l: encoding.decode(l)
 
-    # Create mappings
-    stoi = {ch:i for i, ch in enumerate(chars)}
-    itos = {i:ch for i, ch in enumerate(chars)}
+     # Create mappings
+    # stoi = {ch:i for i, ch in enumerate(chars)}
+    # itos = {i:ch for i, ch in enumerate(chars)}
     # encode = lambda s: [stoi[c] for c in s]
     # decode = lambda l: ''.join([itos[i] for i in l])
-    
 
     # Create train/val splits
     data = torch.tensor(encode(text), dtype=torch.long)
