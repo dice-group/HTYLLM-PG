@@ -57,3 +57,13 @@ datasets/
 *.zip
 *.csv
 *.txt
+
+# Exclude binary files
+*.bin
+
+# Exclude Parquet files
+*.parquet
+
+# (Optionally) exclude entire directories:
+pre_processed_data/
+tokenized_data/

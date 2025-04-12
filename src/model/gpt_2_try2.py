@@ -235,7 +235,7 @@ if __name__ == '__main__':
     learning_rate = 3e-4
     eval_interval = 500
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
+    
     # Paths to the pre-tokenized binary files.
     train_bin = "tokenized_data/train.bin"
     val_bin   = "tokenized_data/val.bin"
@@ -264,6 +264,7 @@ if __name__ == '__main__':
         bias=True
     )
     model = GPT(model_config).to(device)
+    print(next(model.parameters()).device)
     print(f"Model initialized with {model.get_num_params()/1e6:.2f}M parameters")
 
     # Create optimizer using the model's configuration function.

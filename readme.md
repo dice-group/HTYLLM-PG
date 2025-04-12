@@ -32,6 +32,10 @@ output will be under pre_processed_data parquet files
 
 tokenizer:
 
-python scr/data/tokenizer.py
+python src/data/tokenizer.py
 
 output will be under tokenized_data as binary files
+
+train:
+
+python src/model/gpt_2_try2.py
