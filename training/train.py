@@ -2,27 +2,21 @@ import os
 import argparse
 import torch
 from datasets import load_dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
+from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer, GPT2Config, GPT2LMHeadModel
 
+dataset = load_dataset("json", data_files="/data/joel/prepared/realnewslike/shard_0_*.json", split="train")
+print(dataset[0])
 
 def data_collator(batch, tokenizer):
     input_ids = [torch.tensor(sample["tokens"], dtype=torch.long) for sample in batch]
     input_ids = torch.nn.utils.rnn.pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
-
     labels = input_ids.clone()
-
-    return {
-        "input_ids": input_ids,
-        "labels": labels,
-        "attention_mask": (input_ids != tokenizer.pad_token_id).long()
-    }
-
+    return {"input_ids": input_ids, "labels": labels}
 
 def main():
-    parser = argparse.ArgumentParser(description="Train LLM on preprocessed chunks")
-    parser.add_argument("--processed_dir", type=str, default=os.getenv("OUTPUT_DIR", "./output"),
-                        help="Directory of preprocessed JSON chunks")
-    parser.add_argument("--model_name", type=str, default="facebook/opt-350m")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--processed_dir", type=str, default=os.getenv("INPUT_DIR", "./output"))
+    parser.add_argument("--model_name", type=str, default="gpt2")
     parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument("--per_device_train_batch_size", type=int, default=1)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
@@ -33,7 +27,7 @@ def main():
     proc_rank = int(os.getenv("PROC_RANK", "0"))
     total_procs = int(os.getenv("TOTAL_PROCS", "1"))
     
-    data_files = os.path.join(args.processed_dir, f"chunk_{proc_rank}_*.json")
+    data_files = os.path.join(args.processed_dir, f"shard_{proc_rank}_*.json")
     dataset = load_dataset("json", data_files=data_files, split="train")
     
     def add_labels(example):
@@ -42,7 +36,15 @@ def main():
     dataset = dataset.map(add_labels, num_proc=16)
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, use_fast=True)
-    model = AutoModelForCausalLM.from_pretrained(args.model_name)
+    tokenizer.pad_token = tokenizer.eos_token
+
+    config = GPT2Config(
+        vocab_size=50257,
+        n_embd=768,
+        n_layer=12,
+        n_head=12,
+    )
+    model = GPT2LMHeadModel(config) 
 
     training_args = TrainingArguments(
         output_dir=args.output_model_dir,
@@ -62,7 +64,7 @@ def main():
         model=model,
         args=training_args,
         train_dataset=dataset,
-        data_collator=lambda batch: data_collator(batch, tokenizer),
+        data_collator=lambda batch: data_collator(batch, tokenizer)
     )
 
     trainer.train()
