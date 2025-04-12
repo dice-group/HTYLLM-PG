@@ -20,3 +20,18 @@ This dataset is released under a CC-BY 4.0 license. If you use this dataset in y
 
 D. Goldhahn, T. Eckart & U. Quasthoff: Building Large Monolingual Dictionaries at the Leipzig Corpora Collection: From 100 to 200 Languages.
 In: Proceedings of the 8th International Language Resources and Evaluation (LREC'12), 2012
+
+
+
+Preprocessing: 
+
+python src/data/preprocess.py
+
+output will be under pre_processed_data parquet files
+
+
+tokenizer:
+
+python scr/data/tokenizer.py
+
+output will be under tokenized_data as binary files
