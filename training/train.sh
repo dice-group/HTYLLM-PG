@@ -10,7 +10,7 @@ GRADIENT_ACCUMULATION_STEPS=8
 LEARNING_RATE=5e-5
 OUTPUT_MODEL_DIR="./model_output"
 
-python3 train_test.py \
+python3 train.py \
     --processed_dir "$INPUT_DIR" \
     --model_name "$MODEL_NAME" \
     --num_train_epochs $NUM_TRAIN_EPOCHS \
