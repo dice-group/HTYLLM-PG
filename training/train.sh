@@ -1,16 +1,22 @@
 #!/bin/bash
 
-export TOTAL_PROCS=32
-export OUTPUT_DIR="/data/output_realnews"
-
+export OUTPUT_DIR="/data/joel/output_realnews"
 mkdir -p $OUTPUT_DIR
 
-#spawn processes
-for ((i=0; i<$TOTAL_PROCS; i++))
-do
-    echo "Launching training process $i / $TOTAL_PROCS"
-    PROC_RANK=$i TOTAL_PROCS=$TOTAL_PROCS OUTPUT_DIR=$OUTPUT_DIR python3 train_test.py &
-done
+MODEL_NAME="facebook/opt-350m"
+NUM_TRAIN_EPOCHS=1
+PER_DEVICE_TRAIN_BATCH_SIZE=1
+GRADIENT_ACCUMULATION_STEPS=8
+LEARNING_RATE=5e-5
+OUTPUT_MODEL_DIR="./model_output"
 
-wait
-echo "Training finishe"
+python3 train_test.py \
+    --processed_dir "$OUTPUT_DIR" \
+    --model_name "$MODEL_NAME" \
+    --num_train_epochs $NUM_TRAIN_EPOCHS \
+    --per_device_train_batch_size $PER_DEVICE_TRAIN_BATCH_SIZE \
+    --gradient_accumulation_steps $GRADIENT_ACCUMULATION_STEPS \
+    --learning_rate $LEARNING_RATE \
+    --output_model_dir "$OUTPUT_MODEL_DIR"
+
+echo "Training finished."
