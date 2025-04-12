@@ -5,67 +5,62 @@ import argparse
 from datasets import load_dataset
 from transformers import AutoTokenizer
 
-def preprocess_text(text):
-    return text.lower().strip().split()
-
 def main():
-    parser = argparse.ArgumentParser(
-        description="Preprocess C4 RealNewsLike dataset for LLM training."
-    )
-    parser.add_argument(
-        "--output_dir",
-        default=os.getenv("OUTPUT_DIR", "./output"),
-    )
-    parser.add_argument(
-        "--dataset_name",
-        default=os.getenv("DATASET_NAME", "allenai/c4"),
-        help="Dataset to load (default: C4).",
-    )
-    parser.add_argument(
-        "--dataset_config",
-        default=os.getenv("DATASET_CONFIG", "realnewslike"),
-        help="Dataset configuration (default: realnewslike).",
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output_dir", default=os.getenv("OUTPUT_DIR", "./output"))
+    parser.add_argument("--dataset_name", default=os.getenv("DATASET_NAME", "allenai/c4"))
+    parser.add_argument("--dataset_config", default=os.getenv("DATASET_CONFIG", "realnewslike"))
+    parser.add_argument("--chunk_size", type=int, default=1024)
     args = parser.parse_args()
-
+    os.makedirs(args.output_dir, exist_ok=True)
+    
     proc_rank = int(os.getenv("PROC_RANK", "0"))
     total_procs = int(os.getenv("TOTAL_PROCS", "1"))
 
-    os.makedirs(args.output_dir, exist_ok=True)
-    tokenizer = AutoTokenizer.from_pretrained("facebook/opt-1.3b", use_fast=True)
-    #tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf", use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained("gpt2", use_fast=True)
 
-    dataset = load_dataset(
-        args.dataset_name,
-        args.dataset_config,
-        split="train",
-    )
+    dataset = load_dataset(args.dataset_name, args.dataset_config, split="train")
+    print("data laoded, next create subsets")
+    #subset = dataset.shuffle(seed=42).shard(num_shards=total_procs, index=proc_rank) #i assume shuffling is taking the concurrency right? so thats why it takes so long, TODO: find solution for later
+    subset = dataset.shard(num_shards=total_procs, index=proc_rank)
 
-    subset = dataset.shuffle(seed=42).shard(num_shards=total_procs, index=proc_rank) #shuffle and shard
-
-    #preprocess and save
-    output_file = os.path.join(args.output_dir, f"processed_{proc_rank}.jsonl")
-    line_count = 0
-    token_count = 0
+    all_tokens = []
+    shard = []
+    chunk_count = 0
+    shard_idx = 0
     start_time = time.time()
 
-    with open(output_file, "w", encoding="utf-8") as f_out:
-        for example in subset:
-            text = example.get("text", "")
-            if not text:
-                continue
-            tokens = tokenizer.encode(text, add_special_tokens=False, truncation=True, max_length=2048)
-            if len(tokens) < 5:
-                continue
-            f_out.write(json.dumps({"tokens": tokens}) + "\n")
-            line_count += 1
-            token_count += len(tokens)
+    for example in subset:
+        text = example.get("text", "")
+        if not text:
+            continue
+        #tokens = text.lower().strip().split()  # for debugging
+        tokens = tokenizer.encode(text, add_special_tokens=False, truncation=True, max_length=args.chunk_size)
+        if len(tokens) < 5:
+            continue
+        all_tokens.extend(tokens)
+
+        while len(all_tokens) >= args.chunk_size:
+            chunk = all_tokens[:args.chunk_size]
+            all_tokens = all_tokens[args.chunk_size:]
+            shard.append({"tokens": chunk})
+            chunk_count += 1
+
+            if len(shard) >= 10000:  #this is appropriate for c4 realnewslike TODO: calculate this, or use huggingface map function later
+                output_path = os.path.join(args.output_dir, f"shard_{proc_rank}_{shard_idx}.json")
+                with open(output_path, "w", encoding="utf-8") as f_out:
+                    json.dump(shard, f_out)
+                shard = []
+                shard_idx += 1
+
+    # Save remaining chunks
+    if shard:
+        output_path = os.path.join(args.output_dir, f"shard_{proc_rank}_{shard_idx}.json")
+        with open(output_path, "w", encoding="utf-8") as f_out:
+            json.dump(shard, f_out)
 
     elapsed = time.time() - start_time
-    print(
-        f"Process {proc_rank}/{total_procs}: {line_count} lines, "
-        f"{token_count} tokens processed in {elapsed:.2f}s. Output -> {output_file}"
-    )
+    print(f"Process {proc_rank}/{total_procs}: {chunk_count} chunks saved in {elapsed:.2f}s. Output -> {args.output_dir}")
 
 if __name__ == "__main__":
     main()
