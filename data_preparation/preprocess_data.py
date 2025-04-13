@@ -9,9 +9,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output_dir", default=os.getenv("OUTPUT_DIR", "./output"))
     parser.add_argument("--datasets", nargs="+", required=True)
-    parser.add_argument("--tokenizer", default=os.getenv("TOKENIZER", "gpt2"))
+    parser.add_argument("--tokenizer", default=os.getenv("TOKENIZER", "microsoft/phi-2"))
     parser.add_argument("--hf_cache_dir", default=os.getenv("HF_CACHE_DIR", "/data/hf_cache/"))
-    parser.add_argument("--chunk_size", type=int, default=1024)
+    parser.add_argument("--chunk_size", type=int, default=2048)
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
     

@@ -1,11 +1,10 @@
 import os
 import argparse
 import torch
-from datasets import load_dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer, GPT2Config, GPT2LMHeadModel
 
-dataset = load_dataset("json", data_files="/data/joel/prepared/realnewslike/shard_0_*.json", split="train")
-print(dataset[0])
+from glob import glob
+from datasets import load_dataset
+from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer, PhiForCausalLM, PhiConfig
 
 def data_collator(batch, tokenizer):
     input_ids = [torch.tensor(sample["tokens"], dtype=torch.long) for sample in batch]
@@ -16,7 +15,7 @@ def data_collator(batch, tokenizer):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--processed_dir", type=str, default=os.getenv("INPUT_DIR", "./output"))
-    parser.add_argument("--model_name", type=str, default="gpt2")
+    parser.add_argument("--model_name", type=str, default="microsoft/phi-2")
     parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument("--per_device_train_batch_size", type=int, default=1)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
@@ -27,7 +26,10 @@ def main():
     proc_rank = int(os.getenv("PROC_RANK", "0"))
     total_procs = int(os.getenv("TOTAL_PROCS", "1"))
     
-    data_files = os.path.join(args.processed_dir, f"shard_{proc_rank}_*.json")
+    data_files = glob(os.path.join(args.processed_dir, "*", "shard_*.json"))
+    print(f"Loading {len(data_files)} preprocessed files")
+    #for file in data_files:
+        #print(f" - {file}")
     dataset = load_dataset("json", data_files=data_files, split="train")
     
     def add_labels(example):
@@ -38,15 +40,17 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, use_fast=True)
     tokenizer.pad_token = tokenizer.eos_token
 
-    config = GPT2Config(
-        vocab_size=tokenizer.vocab_size,
-        n_positions=1024,
-        n_ctx=1024,
-        n_embd=768,
-        n_layer=12,
-        n_head=12,
+    config = PhiConfig(
+        vocab_size=len(tokenizer),
+        hidden_size=2048,
+        num_hidden_layers=24,
+        num_attention_heads=16,
+        intermediate_size=8192,
+        max_position_embeddings=2048,
+        rope_theta=10000.0,
+        initializer_range=0.02,
     )
-    model = GPT2LMHeadModel(config) 
+    model = PhiForCausalLM(config)
 
     training_args = TrainingArguments(
         output_dir=args.output_model_dir,

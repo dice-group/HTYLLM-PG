@@ -1,9 +1,9 @@
 #!/bin/bash
 
 export HF_HOME=/data/hf_cache/
-export INPUT_DIR="/data/joel/prepared/realnewslike/"
+export INPUT_DIR="/data/joel/prepared"
 
-MODEL_NAME="gpt2"
+MODEL_NAME="microsoft/phi-2"
 NUM_TRAIN_EPOCHS=1
 PER_DEVICE_TRAIN_BATCH_SIZE=1
 GRADIENT_ACCUMULATION_STEPS=8

@@ -9,7 +9,7 @@ DATASETS_DOWNLOAD=(
 )
 DATASETS_STRING="${DATASETS_DOWNLOAD[@]}"
 
-echo "Start downlaoding the dataset"
+echo "Start downlaoding the datasets"
 python download_datasets.py --datasets $DATASETS_STRING --hf_cache_dir $CACHE_DIR
 echo "Download of all datasets finished"
 
@@ -18,11 +18,12 @@ echo "Download of all datasets finished"
 export HF_HOME="$CACHE_DIR"
 OUTPUT_DIR="/data/joel/prepared"
 TOTAL_PROCS=32
+TOKENIZER=microsoft/phi-2
 mkdir -p $OUTPUT_DIR
 #define datasets here agian like this dataset:dataset_config:tokenizer
 DATASETS_PREPROCESS=(
-    "wikitext:wikitext-2-raw-v1:gpt2"
-    "ag_news:default:gpt2"
+    "wikitext:wikitext-2-raw-v1:microsoft/phi-2"
+    "ag_news:default:microsoft/phi-2"
 )
 DATASETS_PREPROCESS_STRING="${DATASETS_PREPROCESS[@]}"
 
@@ -30,7 +31,7 @@ for (( i=0; i<$TOTAL_PROCS; i++ ))
 do
     echo "Launching process $i / $TOTAL_PROCS"
     PROC_RANK=$i TOTAL_PROCS=$TOTAL_PROCS OUTPUT_DIR=$OUTPUT_DIR \
-    python preprocess_data.py --output_dir $OUTPUT_DIR --datasets $DATASETS_PREPROCESS_STRING &
+    python preprocess_data.py --output_dir $OUTPUT_DIR --datasets $DATASETS_PREPROCESS_STRING --tokenizer $TOKENIZER &
 done
 
 wait
