@@ -54,10 +54,10 @@ def main():
 
     training_args = TrainingArguments(
         output_dir=args.output_model_dir,
-        per_device_train_batch_size=16,
-        gradient_accumulation_steps=1,
-        num_train_epochs=20,
-        learning_rate=1e-4,
+        per_device_train_batch_size=args.per_device_train_batch_size,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        num_train_epochs=args.num_train_epochs,
+        learning_rate=args.learning_rate,
         warmup_steps=500,
         weight_decay=0.01,
         logging_steps=10,
