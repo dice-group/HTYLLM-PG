@@ -11,6 +11,7 @@ import math
 import inspect
 import os
 import time
+import argparse
 from dataclasses import dataclass
 import tiktoken
 import torch
@@ -347,26 +348,101 @@ def estimate_loss(model, eval_iters, get_batch):
     return out
 
 if __name__ == '__main__':
+    # Add command line argument parsing
+    parser = argparse.ArgumentParser(description='GPT-2 model training and inference')
+    parser.add_argument('--load_model', type=str, help='Path to a saved model to load')
+    parser.add_argument('--inference_only', action='store_true', help='Run in inference mode only (requires --load_model)')
+    parser.add_argument('--generate_text', type=str, default="你好，你叫什么名字？", help='Text prompt for generation')
+    parser.add_argument('--max_tokens', type=int, default=500, help='Maximum number of tokens to generate')
+    parser.add_argument('--temperature', type=float, default=0.1, help='Sampling temperature')
+    parser.add_argument('--top_k', type=int, default=10, help='Top-k sampling parameter')
+    args = parser.parse_args()
+
     # Model hyperparameters
-    batch_size = 192  # Increased for A100 40GB
-    gradient_accumulation_steps = 2  # Effective batch size of 384
+    batch_size = 126  
+    gradient_accumulation_steps = 2  
     block_size = 256
-    max_iters = 10000  # Increased for better convergence
+    max_iters = 10000  
     eval_interval = 500
     learning_rate = 3e-4
-    min_lr = 1e-5  # Minimum learning rate for scheduler
-    checkpoint_interval = 1000  # Save checkpoints every 1000 iterations
+    min_lr = 1e-5  
+    checkpoint_interval = 1000  
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     eval_iters = 200
     n_embd = 384
     n_head = 6
     n_layer = 6
     dropout = 0.2
-    use_amp = True  # Enable mixed precision training
+    use_amp = True  
     
-    # Load the BabyLM German dataset from Hugging Face
-    print("Loading the BabyLM German dataset...")
-    ds = load_dataset("bbunzeck/babylm-german")
+    # Use GPT-2 tokenizer
+    encoding = tiktoken.get_encoding("gpt2")
+    encode = lambda s: encoding.encode(s)
+    decode = lambda l: encoding.decode(l)
+    vocab_size = 50257  
+    
+    # Initialize model configuration
+    model_config = GPTConfig(
+        block_size=block_size,
+        vocab_size=vocab_size,
+        n_layer=n_layer,
+        n_head=n_head,
+        n_embd=n_embd,
+        dropout=dropout,
+        bias=True
+    )
+    
+    # Create model instance
+    model = GPT(model_config)
+    
+    # Load model if specified
+    if args.load_model:
+        print(f"Loading model from {args.load_model}")
+        try:
+            checkpoint = torch.load(args.load_model, map_location=device)
+            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                # Load from checkpoint dictionary
+                model.load_state_dict(checkpoint['model_state_dict'])
+                print(f"Successfully loaded model from checkpoint. Training iteration: {checkpoint.get('iter', 'N/A')}")
+            else:
+                # Load from direct state dict
+                model.load_state_dict(checkpoint)
+                print("Successfully loaded model state dict")
+            
+            model = model.to(device)
+            print(f"Model loaded with {model.get_num_params()/1e6:.2f}M parameters")
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            exit(1)
+    else:
+        model = model.to(device)
+        print(f"Model initialized with {model.get_num_params()/1e6:.2f}M parameters")
+    
+    # Run in inference mode only
+    if args.inference_only:
+        if not args.load_model:
+            print("Error: --inference_only requires --load_model")
+            exit(1)
+        
+        print("Running in inference mode...")
+        model.eval()
+        
+        # Generate text
+        print(f"Generating text with prompt: '{args.generate_text}'")
+        context = torch.tensor(encode(args.generate_text), dtype=torch.long).unsqueeze(0).to(device)
+        generated_text = model.generate(
+            context, 
+            max_new_tokens=args.max_tokens, 
+            temperature=args.temperature, 
+            top_k=args.top_k
+        )[0].tolist()
+        print("\nGenerated text:")
+        print(decode(generated_text))
+        exit(0)
+    
+    # Continue with training mode
+    print("Loading the chinese-iching-divination-text dataset...")
+    ds = load_dataset("pokkoa/chinese-iching-divination-text")
     
     # Combine all texts from the training set
     text = " ".join(ds["train"]["text"])
@@ -374,12 +450,6 @@ if __name__ == '__main__':
     # Print a sample of the text for verification
     print("Sample of dataset text:")
     print(text[:1000])
-
-    # Use GPT-2 tokenizer
-    encoding = tiktoken.get_encoding("gpt2")
-    encode = lambda s: encoding.encode(s)
-    decode = lambda l: encoding.decode(l)
-    vocab_size = 50257  # GPT-2 vocab size
     print(f"Vocabulary size: {vocab_size}")
 
     # Create train/val splits
@@ -398,20 +468,6 @@ if __name__ == '__main__':
         x, y = x.to(device), y.to(device)
         return x, y
     
-    # Initialize the model
-    model_config = GPTConfig(
-        block_size=block_size,
-        vocab_size=vocab_size,
-        n_layer=n_layer,
-        n_head=n_head,
-        n_embd=n_embd,
-        dropout=dropout,
-        bias=True
-    )
-    model = GPT(model_config)
-    model = model.to(device)
-    print(f"Model initialized with {model.get_num_params()/1e6:.2f}M parameters")
-    
     # Create optimizer
     optimizer = model.configure_optimizers(
         weight_decay=0.1,
@@ -419,6 +475,20 @@ if __name__ == '__main__':
         betas=(0.9, 0.95),
         device_type=device
     )
+    
+    # Load optimizer state if available
+    if args.load_model and isinstance(checkpoint, dict) and 'optimizer_state_dict' in checkpoint:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        print("Optimizer state loaded from checkpoint")
+        
+        # Set starting iteration if available
+        if 'iter' in checkpoint:
+            start_iter = checkpoint['iter'] + 1
+            print(f"Resuming training from iteration {start_iter}")
+        else:
+            start_iter = 0
+    else:
+        start_iter = 0
     
     # Create learning rate scheduler (cosine decay)
     def get_lr(iter):
@@ -441,7 +511,12 @@ if __name__ == '__main__':
     t0 = time.time()
     best_val_loss = float('inf')
     
-    for iter in range(max_iters):
+    # If resuming, get the best val loss from checkpoint
+    if args.load_model and isinstance(checkpoint, dict) and 'val_loss' in checkpoint:
+        best_val_loss = checkpoint['val_loss']
+        print(f"Previous best validation loss: {best_val_loss:.4f}")
+    
+    for iter in range(start_iter, max_iters):
         # Update learning rate based on schedule
         current_lr = get_lr(iter)
         for param_group in optimizer.param_groups:
@@ -460,18 +535,9 @@ if __name__ == '__main__':
                     'optimizer_state_dict': optimizer.state_dict(),
                     'iter': iter,
                     'val_loss': best_val_loss,
-                }, 'gpt2_babylm_german_best.pt')
+                }, 'gpt2_generated_chat_0.4M_chinese_best.pt')
                 print(f"Saved best model with val loss: {best_val_loss:.4f}")
         
-        # Save checkpoint periodically
-        if (iter % checkpoint_interval == 0 and iter > 0) or iter == max_iters - 1:
-            torch.save({
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'iter': iter,
-                'val_loss': losses['val'] if 'val' in locals() else None,
-            }, f'checkpoints/gpt2_babylm_german_iter_{iter}.pt')
-            print(f"Saved checkpoint at iteration {iter}")
         
         # Gradient accumulation loop
         optimizer.zero_grad(set_to_none=True)
@@ -503,12 +569,17 @@ if __name__ == '__main__':
     print(f"Best validation loss: {best_val_loss:.4f}")
     
     # Save the final model
-    model_save_path = 'gpt2_babylm_german.pt'
+    model_save_path = 'gpt2_generated_chat_0.4M_chinese.pt'
     torch.save(model.state_dict(), model_save_path)
     print(f"Final model saved to {model_save_path}")
     
     # Generate some text
     print("Generating text...")
-    context = encode("Hallo, wie geht es dir?")
-    generated_text = model.generate(context, max_new_tokens=500, temperature=0.8, top_k=40)[0].tolist()
+    context = torch.tensor(encode(args.generate_text), dtype=torch.long).unsqueeze(0).to(device)
+    generated_text = model.generate(
+        context, 
+        max_new_tokens=args.max_tokens, 
+        temperature=args.temperature, 
+        top_k=args.top_k
+    )[0].tolist()
     print(decode(generated_text))
