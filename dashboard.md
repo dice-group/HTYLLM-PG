@@ -28,7 +28,7 @@ Sciebo is our cloud storage solution for securely sharing files and documents re
 ---
 
 ### 4. **Weekly Report Form**
-Before each weekly meeting, all team members are required to fill out a designated report form. The purpose of this form is to reflect on your weekly progress, outline challenges, and prepare updates for the meeting. 
+All team members are required to fill out a designated report form **by the start of each week**. The purpose of this form is to reflect on your weekly progress, outline challenges, and prepare updates for the meeting. 
 
 Please ensure to complete the form before our weekly meetings!
 
