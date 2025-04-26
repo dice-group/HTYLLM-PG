@@ -4,8 +4,8 @@
 CACHE_DIR="/data/hf_cache/"
 
 DATASETS_DOWNLOAD=(
-    "wikitext:wikitext-2-raw-v1"
-    "ag_news:"
+    "angeluriot/french_instruct:"
+    "DiscoResearch/germanrag:"
 )
 DATASETS_STRING="${DATASETS_DOWNLOAD[@]}"
 
@@ -16,14 +16,14 @@ echo "Download of all datasets finished"
 
 ################### Preprocessing datasets ###################
 export HF_HOME="$CACHE_DIR"
-OUTPUT_DIR="/data/joel/prepared"
-TOTAL_PROCS=32
-TOKENIZER=microsoft/phi-2
+OUTPUT_DIR="/data/joel/prepared/langauge_adapters"
+TOTAL_PROCS=2
+TOKENIZER=xlm-roberta-base
 mkdir -p $OUTPUT_DIR
 #define datasets here agian like this dataset:dataset_config:tokenizer
 DATASETS_PREPROCESS=(
-    "wikitext:wikitext-2-raw-v1:microsoft/phi-2"
-    "ag_news:default:microsoft/phi-2"
+    "angeluriot/french_instruct::$TOKENIZER"
+    "DiscoResearch/germanrag::$TOKENIZER"
 )
 DATASETS_PREPROCESS_STRING="${DATASETS_PREPROCESS[@]}"
 
