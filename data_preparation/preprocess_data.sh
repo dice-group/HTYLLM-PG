@@ -31,7 +31,7 @@ for (( i=0; i<$TOTAL_PROCS; i++ ))
 do
     echo "Launching process $i / $TOTAL_PROCS"
     PROC_RANK=$i TOTAL_PROCS=$TOTAL_PROCS OUTPUT_DIR=$OUTPUT_DIR \
-    python preprocess_data.py --output_dir $OUTPUT_DIR --datasets $DATASETS_PREPROCESS_STRING --tokenizer $TOKENIZER &
+    python preprocess_data.py --output_dir $OUTPUT_DIR --datasets $DATASETS_PREPROCESS_STRING --tokenizer $TOKENIZER --log_level info &
 done
 
 wait
