@@ -18,6 +18,10 @@ def extract_text(example):
         return example["content"]
     if "instruction" in example and example["instruction"]:
         return example["instruction"]
+    if "contexts" in example and example["contexts"]:
+        if isinstance(example["contexts"], list):
+            return " ".join(example["contexts"])
+        return example["contexts"]
     return ""
 
 
@@ -66,6 +70,7 @@ def main():
             text = extract_text(example)
             if not text:
                 continue
+            text = " ".join(text.strip().split())
 
             tokens = tokenizer.encode(text, add_special_tokens=False, truncation=True, max_length=args.chunk_size)
             if len(tokens) < 5:

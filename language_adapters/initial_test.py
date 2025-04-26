@@ -1,18 +1,16 @@
 import json
 from datasets import Dataset
-from adapter_transformers import (
-    AutoModelWithHeads,
-    AutoTokenizer,
-    TrainingArguments,
-    Trainer,
-)
+from transformers import AutoTokenizer, Trainer, TrainingArguments
+from adapters import AutoAdapterModel
+from transformers import DataCollatorForLanguageModeling
 
-model = AutoModelWithHeads.from_pretrained("microsoft/deberta-v3-large")
+model = AutoAdapterModel.from_pretrained("microsoft/deberta-v3-large")
 tokenizer = AutoTokenizer.from_pretrained("microsoft/deberta-v3-large")
+data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=True, mlm_probability=0.15,)
 
-model.add_adapter("french")
+model.add_adapter("french", config="pfeiffer")
+model.add_masked_lm_head("french")
 model.train_adapter("french")
-model.add_classification_head("french", num_labels=2)
 model.set_active_adapters("french")
 
 # model.add_adapter("german")
@@ -26,7 +24,14 @@ def load_dataset_from_json(path):
             data.extend(json.load(f))
     return Dataset.from_list(data)
 
+def preprocess(example):
+    return {
+        "input_ids": example["tokens"],
+        "attention_mask": [1] * len(example["tokens"]),
+    }
+
 french_ds = load_dataset_from_json("/data/joel/prepared/langauge_adapters/angeluriot_french_instruct_")
+french_ds = french_ds.map(preprocess)
 
 training_args = TrainingArguments(
     output_dir="./results-french",
@@ -35,12 +40,14 @@ training_args = TrainingArguments(
     num_train_epochs=3,
     logging_dir="./logs-french",
     save_strategy="epoch",
+    remove_unused_columns=False,
 )
 
 trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=french_ds,
+    data_collator=data_collator,
 )
 
 trainer.train()
