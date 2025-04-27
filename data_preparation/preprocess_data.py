@@ -72,10 +72,12 @@ def main():
                 continue
             text = " ".join(text.strip().split())
 
-            tokens = tokenizer.encode(text, add_special_tokens=False, truncation=True, max_length=args.chunk_size)
+            tokens = tokenizer.encode(text, add_special_tokens=True, truncation=True, max_length=args.chunk_size)
+
             if len(tokens) < 5:
                 continue
-            all_tokens.extend(tokens)
+            #all_tokens.extend(tokens)
+            shard.append({"tokens": tokens})
 
             while len(all_tokens) >= args.chunk_size:
                 chunk = all_tokens[:args.chunk_size]

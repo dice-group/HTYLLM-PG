@@ -18,7 +18,7 @@ echo "Download of all datasets finished"
 export HF_HOME="$CACHE_DIR"
 OUTPUT_DIR="/data/joel/prepared/langauge_adapters"
 TOTAL_PROCS=4
-TOKENIZER=microsoft/deberta-v3-large
+TOKENIZER=microsoft/phi-2
 mkdir -p $OUTPUT_DIR
 #define datasets here agian like this dataset:dataset_config:tokenizer
 DATASETS_PREPROCESS=(

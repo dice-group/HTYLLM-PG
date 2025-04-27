@@ -1,3 +1,5 @@
 torch
 datasets
+sentencepiece
 transformers[torch]
+adapter-transformers
