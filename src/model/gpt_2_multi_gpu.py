@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import os
+import sys
 
-# -----------------------------------------------------------------------------
 
 class CausalSelfAttention(nn.Module):
 
@@ -208,13 +208,20 @@ import tiktoken
 import numpy as np
 
 def load_tokens(filename):
-    npt = np.load(filename)
-    npt = npt.astype(np.int32) # added after video
-    ptt = torch.tensor(npt, dtype=torch.long)
-    return ptt
+    print(f"DEBUG: Loading tokens from {filename}", flush=True)
+    try:
+        npt = np.load(filename)
+        npt = npt.astype(np.int32) # added after video
+        ptt = torch.tensor(npt, dtype=torch.long)
+        print(f"DEBUG: Successfully loaded tokens, shape: {ptt.shape}", flush=True)
+        return ptt
+    except Exception as e:
+        print(f"ERROR: Failed to load tokens from {filename}: {e}", flush=True)
+        raise
 
 class DataLoaderLite:
     def __init__(self, B, T, process_rank, num_processes, split):
+        print(f"DEBUG: Initializing DataLoaderLite with rank={process_rank}, processes={num_processes}, split={split}", flush=True)
         self.B = B
         self.T = T
         self.process_rank = process_rank
@@ -225,7 +232,14 @@ class DataLoaderLite:
 
         data_root = os.path.join(os.path.dirname(__file__), "..", "data", "edu_fineweb10B")
         data_root = os.path.abspath(data_root)
-        shards = os.listdir(data_root)
+        print(f"DEBUG: Looking for data in {data_root}", flush=True)
+        
+        try:
+            shards = os.listdir(data_root)
+            print(f"DEBUG: Found {len(shards)} total files in data directory", flush=True)
+        except Exception as e:
+            print(f"ERROR: Failed to list directory {data_root}: {e}", flush=True)
+            raise
 
         shards = [s for s in shards if split in s]
         shards = sorted(shards)
@@ -234,6 +248,7 @@ class DataLoaderLite:
         assert len(shards) > 0, f"no shards found for split {split}"
         if master_process:
             print(f"found {len(shards)} shards for split {split}")
+            print(f"DEBUG: First few shards: {shards[:3]}", flush=True)
         self.reset()
 
     def reset(self):
@@ -285,136 +300,171 @@ else:
         device = "mps"
     print(f"using device: {device}")
 
-torch.manual_seed(1337)
-if torch.cuda.is_available():
-    torch.cuda.manual_seed(1337)
+if __name__ == "__main__":
 
-enc = tiktoken.get_encoding("gpt2")
+    torch.manual_seed(1337)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(1337)
 
-total_batch_size = 524288
-B = 32 # "micro" batch size
-T = 1024 # sequence length
-assert total_batch_size % B * T * ddp_world_size == 0, f"total batch size {total_batch_size} must be divisible by B*T*ddp_world_size {B*T*ddp_world_size}"
-grad_acum_steps = total_batch_size // (B * T * ddp_world_size)
-if master_process:
-    print(f"total desired batch size: {total_batch_size} = {B} * {T} * {grad_acum_steps}") 
+    enc = tiktoken.get_encoding("gpt2")
 
-import sys; 
-print("This is GPU ", ddp_local_rank)
-
-torch.set_float32_matmul_precision('high')
-
-train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split='train') # max batch size depends on your GPU memory (should be power of 2)
-val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val")
-
-model = GPT(GPTConfig(vocab_size=50304))
-model.to(device)
-model = torch.compile(model)
-if ddp: 
-    model = DDP(model, device_ids=[ddp_local_rank])
-raw_model = model.module if ddp else model # unwrapped model
-
-max_lr = 6e-4
-min_lr = max_lr * 0.1
-warmup_steps = 715 # scaled values according to gpt-2 paper (we use other dataset)
-max_steps = 19073 # scaled values according to gpt-2 paper (we use other dataset)
-
-def get_lr(it):
-    if it < warmup_steps:
-        return max_lr * (it+1) / warmup_steps
-    if it >max_steps:
-        return min_lr
-    decay_ratio = (it - warmup_steps) / (max_steps - warmup_steps)
-    assert 0 <= decay_ratio <= 1
-    coeff = 0.5 * (1 + math.cos(math.pi * decay_ratio))
-    return min_lr + coeff * (max_lr - min_lr)
-
-import time
-# optimize!
-optimizer = raw_model.configure_optimizers(weight_decay=0.1, learning_rate=max_lr, device=device)
-if master_process:
-    print("training...")
-for step in range(max_steps):
-    t0  = time.time()
-    # validation
-    if step % 100 == 0:
-        model.eval()
-        val_loader.reset()
-        with torch.no_grad():
-            val_loss_accum = 0.0
-            val_loss_steps = 20
-            for _ in range(val_loss_steps):
-                x, y = val_loader.next_batch()
-                x, y = x.to(device), y.to(device)
-                with torch.autocast(device_type=device, dtype=torch.bfloat16):
-                    logits, loss = model(x, y)
-                loss = loss / val_loss_steps
-                val_loss_accum += loss.detach()
-        if ddp:
-            dist.all_reduce(val_loss_accum, op=dist.ReduceOp.AVG)
-        if master_process:
-            print(f"step {step+1}/{max_steps}; val loss {val_loss_accum:.4f}")
-        model.train()
-    # generate from model
-    if step > 0 and step % 100 == 0:
-        model.eval()
-        num_return_sequences = 4
-        max_length = 32
-        tokens = enc.encode("What happend on the ")
-        tokens = torch.tensor(tokens, dtype=torch.long) # (8,)
-        tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # (5, 8)
-        xgen = tokens.to(device)
-        sample_rng = torch.Generator(device=device)
-        sample_rng.manual_seed(42 + ddp_rank)
-        while xgen.size(1) < max_length:
-            with torch.no_grad():
-                logits, loss = model(xgen)
-                logits = logits[:, -1, :] # (B, vocab_size)
-                probs = F.softmax(logits, dim=-1)
-                topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)
-                ix = torch.multinomial(topk_probs, 1, generator=sample_rng) # (B, 1)
-                xcol = torch.gather(topk_indices, -1, ix) # (B, 1)
-                xgen = torch.cat((xgen, xcol), dim=1)
-                
-        for i in range(num_return_sequences):
-            tokens = xgen[i, :max_length].tolist()
-            decoded = enc.decode(tokens)
-            print(f"rank {ddp_rank} and sample {i}: {decoded}")
-                
-
-    optimizer.zero_grad()
-    loss_accum = 0.0
-    for micro_step in range(grad_acum_steps):
-        x, y = train_loader.next_batch()
-        x, y = x.to(device), y.to(device)
-        with torch.autocast(device_type=device, dtype=torch.bfloat16):
-            logits, loss = model(x, y)
-        loss = loss / grad_acum_steps
-        loss_accum += loss.detach()
-        if ddp: 
-            model.require_backward_grad_sync = (micro_step == grad_acum_steps - 1)
-        loss.backward()
-    if ddp:
-        dist.all_reduce(loss_accum, op=dist.ReduceOp.AVG)
-    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-
-    lr = get_lr(step)
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-    optimizer.step()
-    t1 = time.time()
-    dt =  (t1 - t0) 
-    tokens_processed = B * T * grad_acum_steps * ddp_world_size
-    tokens_per_second = tokens_processed / dt
+    total_batch_size = 524288
+    B = 32 # "micro" batch size
+    T = 1024 # sequence length
+    assert total_batch_size % B * T * ddp_world_size == 0, f"total batch size {total_batch_size} must be divisible by B*T*ddp_world_size {B*T*ddp_world_size}"
+    grad_acum_steps = total_batch_size // (B * T * ddp_world_size)
     if master_process:
-        print(f"step {step+1}/{max_steps}; loss {loss_accum.item():.4f}; norm {norm:.2f}; lr {lr:.6f}; "
-            f"tokens/sec {tokens_per_second:.2f}; dt {dt:.2f}ms")
+        print(f"total desired batch size: {total_batch_size} = {B} * {T} * {grad_acum_steps}") 
 
-# Save the model after training completes
-if master_process:
-    model_path = f"gpt2_model_steps_{max_steps}.pt"
-    torch.save(raw_model.state_dict(), model_path)
-    print(f"Model saved to {model_path}")
+    import sys; 
+    print("This is GPU ", ddp_rank)
 
-if ddp:
-    destroy_process_group()
+    torch.set_float32_matmul_precision('high')
+
+    train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split='train') # max batch size depends on your GPU memory (should be power of 2)
+    val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val")
+
+    model = GPT(GPTConfig(vocab_size=50304))
+    model.to(device)
+    model = torch.compile(model)
+    if ddp: 
+        model = DDP(model, device_ids=[ddp_local_rank])
+    raw_model = model.module if ddp else model # unwrapped model
+
+    max_lr = 6e-4
+    min_lr = max_lr * 0.1
+    warmup_steps = 715 # scaled values according to gpt-2 paper (we use other dataset)
+    max_steps = 19073 # scaled values according to gpt-2 paper (we use other dataset)
+
+    def get_lr(it):
+        if it < warmup_steps:
+            return max_lr * (it+1) / warmup_steps
+        if it >max_steps:
+            return min_lr
+        decay_ratio = (it - warmup_steps) / (max_steps - warmup_steps)
+        assert 0 <= decay_ratio <= 1
+        coeff = 0.5 * (1 + math.cos(math.pi * decay_ratio))
+        return min_lr + coeff * (max_lr - min_lr)
+
+    import time
+    # optimize!
+    optimizer = raw_model.configure_optimizers(weight_decay=0.1, learning_rate=max_lr, device=device)
+
+    # Create directory for checkpoints
+    checkpoint_dir = "checkpoints"
+    if master_process:
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        print(f"Created checkpoint directory: {checkpoint_dir}")
+
+    # Define checkpoint frequency
+    checkpoint_interval = 1000  # Save a checkpoint every 1000 steps
+
+    if master_process:
+        print("training...")
+    for step in range(max_steps):
+        t0 = time.time()
+        # validation
+        if step % 100 == 0:
+            model.eval()
+            val_loader.reset()
+            with torch.no_grad():
+                val_loss_accum = 0.0
+                val_loss_steps = 20
+                for _ in range(val_loss_steps):
+                    x, y = val_loader.next_batch()
+                    x, y = x.to(device), y.to(device)
+                    with torch.autocast(device_type=device, dtype=torch.bfloat16):
+                        logits, loss = model(x, y)
+                    loss = loss / val_loss_steps
+                    val_loss_accum += loss.detach()
+            if ddp:
+                dist.all_reduce(val_loss_accum, op=dist.ReduceOp.AVG)
+            if master_process:
+                print(f"step {step+1}/{max_steps}; val loss {val_loss_accum:.4f}")
+            model.train()
+        
+        # Save checkpoint
+        if step > 0 and step % checkpoint_interval == 0 and master_process:
+            checkpoint_path = os.path.join(checkpoint_dir, f"gpt2_model_step_{step}.pt")
+            torch.save({
+                'step': step,
+                'model_state_dict': raw_model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_loss': val_loss_accum.item() if 'val_loss_accum' in locals() else None,
+            }, checkpoint_path)
+            print(f"Saved checkpoint at step {step} to {checkpoint_path}")
+        
+        # generate from model
+        if step > 0 and step % 100 == 0:
+            model.eval()
+            num_return_sequences = 4
+            max_length = 32
+            tokens = enc.encode("What happend on the ")
+            tokens = torch.tensor(tokens, dtype=torch.long) # (8,)
+            tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # (5, 8)
+            xgen = tokens.to(device)
+            sample_rng = torch.Generator(device=device)
+            sample_rng.manual_seed(42 + ddp_rank)
+            while xgen.size(1) < max_length:
+                with torch.no_grad():
+                    logits, loss = model(xgen)
+                    logits = logits[:, -1, :] # (B, vocab_size)
+                    probs = F.softmax(logits, dim=-1)
+                    topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)
+                    ix = torch.multinomial(topk_probs, 1, generator=sample_rng) # (B, 1)
+                    xcol = torch.gather(topk_indices, -1, ix) # (B, 1)
+                    xgen = torch.cat((xgen, xcol), dim=1)
+                    
+            for i in range(num_return_sequences):
+                tokens = xgen[i, :max_length].tolist()
+                decoded = enc.decode(tokens)
+                print(f"rank {ddp_rank} and sample {i}: {decoded}")
+                    
+        optimizer.zero_grad()
+        loss_accum = 0.0
+        for micro_step in range(grad_acum_steps):
+            x, y = train_loader.next_batch()
+            x, y = x.to(device), y.to(device)
+            with torch.autocast(device_type=device, dtype=torch.bfloat16):
+                logits, loss = model(x, y)
+            loss = loss / grad_acum_steps
+            loss_accum += loss.detach()
+            if ddp: 
+                model.require_backward_grad_sync = (micro_step == grad_acum_steps - 1)
+            loss.backward()
+        if ddp:
+            dist.all_reduce(loss_accum, op=dist.ReduceOp.AVG)
+
+        norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
+        lr = get_lr(step)
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+        optimizer.step()
+        t1 = time.time()
+        dt =  (t1 - t0) 
+        tokens_processed = B * T * grad_acum_steps * ddp_world_size
+        tokens_per_second = tokens_processed / dt
+        if master_process:
+            print(f"step {step+1}/{max_steps}; loss {loss_accum.item():.4f}; norm {norm:.2f}; lr {lr:.6f}; "
+                f"tokens/sec {tokens_per_second:.2f}; dt {dt:.2f}ms")
+
+    # Save the final model after training completes
+    if master_process:
+        final_model_path = f"gpt2_fineweb2_model_steps_{max_steps}.pt"
+        model_to_save = raw_model
+        if hasattr(model_to_save, 'module'):
+            model_to_save = model_to_save.module
+        if hasattr(model_to_save, '_orig_mod'):
+            model_to_save = model_to_save._orig_mod
+
+        torch.save({
+            'step': step,
+            'model_state_dict': model_to_save.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+        }, final_model_path)
+
+        print(f"Final model saved to {final_model_path}")
+
+    if ddp:
+        destroy_process_group()
