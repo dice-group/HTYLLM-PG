@@ -6,6 +6,8 @@ import torch.nn as nn
 from torch.nn import functional as F
 import os
 import sys
+import argparse
+import random
 
 
 class CausalSelfAttention(nn.Module):
@@ -220,7 +222,7 @@ def load_tokens(filename):
         raise
 
 class DataLoaderLite:
-    def __init__(self, B, T, process_rank, num_processes, split):
+    def __init__(self, B, T, process_rank, num_processes, split, data_path):
         print(f"DEBUG: Initializing DataLoaderLite with rank={process_rank}, processes={num_processes}, split={split}", flush=True)
         self.B = B
         self.T = T
@@ -228,10 +230,7 @@ class DataLoaderLite:
         self.num_processes = num_processes
         assert split in {'train', 'val'}
 
-        import os
-
-        data_root = os.path.join(os.path.dirname(__file__), "..", "data", "edu_fineweb10B")
-        data_root = os.path.abspath(data_root)
+        data_root = os.path.abspath(data_path)
         print(f"DEBUG: Looking for data in {data_root}", flush=True)
         
         try:
@@ -273,34 +272,51 @@ class DataLoaderLite:
 
 # -----------------------------------------------------------------------------
 
-import torch.distributed as dist
-from torch.distributed import init_process_group, destroy_process_group
-from torch.nn.parallel import DistributedDataParallel as DDP
-
-ddp = int(os.environ.get('RANK', -1)) != -1 # is this ddp run?
-
-if ddp:
-    ddp_rank = int(os.environ.get('RANK'))
-    ddp_local_rank = int(os.environ.get('LOCAL_RANK'))
-    ddp_world_size = int(os.environ.get('WORLD_SIZE'))
-    device = f"cuda:{ddp_local_rank}"
-    torch.cuda.set_device(ddp_local_rank)
-    master_process = ddp_rank == 0
-    # Initialize process group
-    init_process_group(backend='nccl')
-else:
-    ddp_rank = 0
-    ddp_local_rank = 0
-    ddp_world_size = 1
-    master_process = True
-    device = "cpu"
-    if torch.cuda.is_available():
-        device = "cuda"
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        device = "mps"
-    print(f"using device: {device}")
-
 if __name__ == "__main__":
+    
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Train GPT-2 model')
+    parser.add_argument('--data_path', type=str, default="../data/edu_fineweb10B",
+                        help='Path to the data directory containing training shards')
+    parser.add_argument('--batch_size', type=int, default=524288,
+                        help='Total batch size for training')
+    parser.add_argument('--micro_batch', type=int, default=32,
+                        help='Micro batch size')
+    parser.add_argument('--seq_len', type=int, default=1024,
+                        help='Sequence length')
+    parser.add_argument('--checkpoint_dir', type=str, default="checkpoints",
+                        help='Directory to save model checkpoints')
+    parser.add_argument('--checkpoint_interval', type=int, default=1000,
+                        help='Save a checkpoint every N steps')
+    args = parser.parse_args()
+    
+    import torch.distributed as dist
+    from torch.distributed import init_process_group, destroy_process_group
+    from torch.nn.parallel import DistributedDataParallel as DDP
+
+    ddp = int(os.environ.get('RANK', -1)) != -1 # is this ddp run?
+
+    if ddp:
+        ddp_rank = int(os.environ.get('RANK'))
+        ddp_local_rank = int(os.environ.get('LOCAL_RANK'))
+        ddp_world_size = int(os.environ.get('WORLD_SIZE'))
+        device = f"cuda:{ddp_local_rank}"
+        torch.cuda.set_device(ddp_local_rank)
+        master_process = ddp_rank == 0
+        # Initialize process group
+        init_process_group(backend='nccl')
+    else:
+        ddp_rank = 0
+        ddp_local_rank = 0
+        ddp_world_size = 1
+        master_process = True
+        device = "cpu"
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            device = "mps"
+        print(f"using device: {device}")
+
 
     torch.manual_seed(1337)
     if torch.cuda.is_available():
@@ -308,9 +324,9 @@ if __name__ == "__main__":
 
     enc = tiktoken.get_encoding("gpt2")
 
-    total_batch_size = 524288
-    B = 32 # "micro" batch size
-    T = 1024 # sequence length
+    total_batch_size = args.batch_size
+    B = args.micro_batch  # "micro" batch size
+    T = args.seq_len  # sequence length
     assert total_batch_size % B * T * ddp_world_size == 0, f"total batch size {total_batch_size} must be divisible by B*T*ddp_world_size {B*T*ddp_world_size}"
     grad_acum_steps = total_batch_size // (B * T * ddp_world_size)
     if master_process:
@@ -321,8 +337,8 @@ if __name__ == "__main__":
 
     torch.set_float32_matmul_precision('high')
 
-    train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split='train') # max batch size depends on your GPU memory (should be power of 2)
-    val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val")
+    train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split='train', data_path=args.data_path) # max batch size depends on your GPU memory (should be power of 2)
+    val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val", data_path=args.data_path)
 
     model = GPT(GPTConfig(vocab_size=50304))
     model.to(device)
@@ -333,8 +349,8 @@ if __name__ == "__main__":
 
     max_lr = 6e-4
     min_lr = max_lr * 0.1
-    warmup_steps = 715 # scaled values according to gpt-2 paper (we use other dataset)
-    max_steps = 19073 # scaled values according to gpt-2 paper (we use other dataset)
+    warmup_steps = 715 * 54 # scaled values according to gpt-2 paper (we use other dataset)
+    max_steps = 19073 * 54 # scaled values according to gpt-2 paper (we use other dataset)
 
     def get_lr(it):
         if it < warmup_steps:
@@ -351,13 +367,13 @@ if __name__ == "__main__":
     optimizer = raw_model.configure_optimizers(weight_decay=0.1, learning_rate=max_lr, device=device)
 
     # Create directory for checkpoints
-    checkpoint_dir = "checkpoints"
+    checkpoint_dir = args.checkpoint_dir
     if master_process:
         os.makedirs(checkpoint_dir, exist_ok=True)
         print(f"Created checkpoint directory: {checkpoint_dir}")
 
     # Define checkpoint frequency
-    checkpoint_interval = 1000  # Save a checkpoint every 1000 steps
+    checkpoint_interval = args.checkpoint_interval
 
     if master_process:
         print("training...")
@@ -399,10 +415,50 @@ if __name__ == "__main__":
             model.eval()
             num_return_sequences = 4
             max_length = 32
-            tokens = enc.encode("What happend on the ")
-            tokens = torch.tensor(tokens, dtype=torch.long) # (8,)
-            tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # (5, 8)
+            
+            # Define 10 English and 10 German sentence beginnings
+            english_prompts = [
+                "What happened on the ",
+                "The most important thing is ",
+                "I would like to discuss ",
+                "Once upon a time there was ",
+                "The best way to learn is ",
+                "Scientists have discovered that ",
+                "When I look at the stars ",
+                "The history of the world ",
+                "Technology has changed how we ",
+                "In the beginning there was "
+            ]
+            
+            german_prompts = [
+                "Eines Tages werde ich ",
+                "Die wichtigste Sache ist ",
+                "Ich möchte gerne über ",
+                "Es war einmal ein ",
+                "Der beste Weg zu lernen ist ",
+                "Wissenschaftler haben entdeckt, dass ",
+                "Wenn ich die Sterne betrachte ",
+                "Die Geschichte der Welt ",
+                "Technologie hat verändert, wie wir ",
+                "Am Anfang war "
+            ]
+            
+            # Combine all prompts into one list
+            all_prompts = english_prompts + german_prompts
+            
+            # Randomly select one prompt
+            random.seed(step + ddp_rank)  # Ensure reproducibility but different per step and rank
+            selected_prompt = random.choice(all_prompts)
+            
+            # Encode the selected prompt
+            tokens = enc.encode(selected_prompt)
+            tokens = torch.tensor(tokens, dtype=torch.long)
+            tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1)
             xgen = tokens.to(device)
+            
+            # Track which type of prompt was selected for logging
+            prompt_type = "English" if selected_prompt in english_prompts else "German"
+            
             sample_rng = torch.Generator(device=device)
             sample_rng.manual_seed(42 + ddp_rank)
             while xgen.size(1) < max_length:
@@ -418,7 +474,7 @@ if __name__ == "__main__":
             for i in range(num_return_sequences):
                 tokens = xgen[i, :max_length].tolist()
                 decoded = enc.decode(tokens)
-                print(f"rank {ddp_rank} and sample {i}: {decoded}")
+                print(f"rank {ddp_rank}, sample {i}, prompt type: {prompt_type}: {decoded}")
                     
         optimizer.zero_grad()
         loss_accum = 0.0

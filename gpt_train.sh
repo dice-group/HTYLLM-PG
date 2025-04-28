@@ -26,4 +26,4 @@ srun torchrun \
 --rdzv_id $RANDOM \
 --rdzv_backend c10d \
 --rdzv_endpoint $head_node_ip:29500 \
-src/model/gpt_2_multi_gpu.py 
+src/model/gpt_2_multi_gpu.py --data_path src/data/deu_Latn_fineweb2/
