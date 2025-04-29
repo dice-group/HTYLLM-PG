@@ -1,101 +1,108 @@
-import os
 from pathlib import Path
-import shutil
 import pandas as pd
-import kagglehub
-from kagglehub import KaggleDatasetAdapter
+import sys
+from random import random
 from datasets import load_dataset
 
-def clean_text(examples: dict) -> dict:
+def size_in_bytes(example: str) -> int:
+    """Calculate the size of a single dataset example in bytes."""
+    return sys.getsizeof(example)
+
+def clean_text_streaming(example: str) -> str:
     """
-    Cleans a batch of raw text examples.
+    Cleans a single raw text example.
 
     Assumes each line in the raw text file has the following format:
         <id>\t<timestamp>:<actual sentence>
-
-    The cleaning process splits each line by the tab ('\t') and then
-    by the colon (':') to retrieve the actual sentence. It then strips
-    any leading/trailing whitespace.
     """
     cleaned_texts = []
-    for text in examples["text"]:
-        if text.strip():
-            parts = text.split("\t")
+    for line in example.split("\n"):
+        if line.strip():  # Ignore empty lines
+            parts = line.split("\t")
             if len(parts) >= 2:
-                # Take the part after the first tab, then split by colon,
-                # taking the substring after the colon and stripping whitespace.
+                # Extract the actual sentence
                 sentence = parts[1].split(":", 1)[-1].strip()
                 cleaned_texts.append(sentence)
             else:
-                # If not in expected format, simply strip the text
-                cleaned_texts.append(text.strip())
-    return {"text": cleaned_texts}
+                # If the format is unexpected, include the cleaned line
+                cleaned_texts.append(line.strip())
+    return "\n".join(cleaned_texts)
+
+def process_limited_dataset(dataset, size_limit_gb=10, test_split_ratio=0.01):
+    """
+    Process and split the dataset dynamically in streaming mode.
+
+    Args:
+        dataset: The Hugging Face dataset in streaming mode
+        size_limit_gb: The maximum size to process, in gigabytes
+        test_split_ratio: Percent of examples to put into the test set
+
+    Returns:
+        train_data: A list of processed training examples
+        test_data: A list of processed test examples
+    """
+    train_data = []
+    test_data = []
+    total_size = 0
+    total_examples = 0
+    size_limit_bytes = size_limit_gb * (1024 ** 3)  # Convert GB to bytes
+
+    for raw_example in dataset:
+        raw_text = raw_example["text"]
+
+        # Clean the raw text
+        cleaned_example = clean_text_streaming(raw_text)
+
+        # Measure size of the cleaned example
+        example_size = size_in_bytes(cleaned_example)
+        total_size += example_size
+
+        print(f"Progress: {round(total_size/size_limit_bytes*100, 2)} %")
+
+        # Split into training and testing
+        if random() < test_split_ratio:
+            test_data.append(cleaned_example)
+        else:
+            train_data.append(cleaned_example)
+
+        total_examples += 1
+
+        # Stop processing once we hit the predefined size limit
+        if total_size >= size_limit_bytes:
+            print(f"Processed up to {size_limit_gb} GB. Stopping...")
+            break
+
+    print(f"Total examples processed: {total_examples}")
+    print(f"Total size processed: {total_size / (1024 ** 3):.2f} GB")
+
+    return train_data, test_data
 
 def main():
-    # 1. Ensure local directory for dataset (root-level "datasets/")
-    dataset_dir = Path("datasets")
-    dataset_dir.mkdir(parents=True, exist_ok=True)
+    print("Downloading and streaming the dataset from Hugging Face...")
 
-    # 2. Define the dataset file to look for
-    data_file = dataset_dir / "deu_news_2015_3M-sentences.txt"
-
-    # 3. If the file doesn't exist, download it using KaggleHub
-    if not data_file.exists():
-        print(f"Dataset file not found at: {data_file}")
-        print("Downloading from KaggleHub (rtatman/3-million-german-sentences)...")
-        # Remove the target_dir parameter (not supported)
-        downloaded_path = kagglehub.dataset_download("rtatman/3-million-german-sentences")
-        print("Downloaded dataset files to:", downloaded_path)
-
-        # 4. Copy the required file into the datasets/ directory
-        downloaded_file = Path(downloaded_path) / "deu_news_2015_3M-sentences.txt"
-        if downloaded_file.exists():
-            shutil.copy(downloaded_file, data_file)
-            print("Copied dataset file to:", data_file)
-        else:
-            print("Warning: Expected file not found in downloaded dataset.")
-            return
-    else:
-        print(f"Dataset file found locally at: {data_file}")
-
-    # 5. Load the dataset using Hugging Face Datasets
-    print("Loading raw data...")
     try:
-        dataset = load_dataset(
-            "text",
-            data_files=str(data_file),
-            split="train",
-            streaming=False  # Loads data into memory (change to True for large files)
-        )
-        print(f"Loaded dataset with {len(dataset)} examples.")
+        # Load the "train" split in streaming mode
+        dataset = load_dataset('HuggingFaceFW/fineweb-edu', split='train', streaming=True)
+
+        # Process and split dataset dynamically
+        train_data, test_data = process_limited_dataset(dataset, size_limit_gb=10)
     except Exception as e:
-        print(f"Error loading dataset from {data_file}: {e}")
+        print(f"Error loading or processing dataset: {e}")
         return
 
-    # 6. Clean the dataset
-    print("Cleaning the dataset...")
-    dataset = dataset.map(clean_text, batched=True)
-    print("Cleaning complete.")
+    print(f"Train data size: {len(train_data)} examples.")
+    print(f"Test data size: {len(test_data)} examples.")
 
-    # 7. Split the dataset (99% train, 1% test)
-    print("Splitting the dataset into train and test splits...")
-    split_dataset = dataset.train_test_split(test_size=0.01, seed=42)
-    train_dataset = split_dataset["train"]
-    test_dataset = split_dataset["test"]
-
-    print(f"Train dataset length: {len(train_dataset)}")
-    print(f"Test dataset length: {len(test_dataset)}")
-
-    # 8. Convert to pandas DataFrame and save as Parquet in a root-level 'pre_processed_data/' directory
+    # Save the split datasets to disk
     processed_data_path = Path("pre_processed_data")
     processed_data_path.mkdir(exist_ok=True, parents=True)
 
     train_file = processed_data_path / "train_data.snap.parquet"
     test_file = processed_data_path / "eval_data.snap.parquet"
 
-    print("Saving datasets as Parquet files...")
-    pd.DataFrame({"text": train_dataset["text"]}).to_parquet(train_file, compression="snappy")
-    pd.DataFrame({"text": test_dataset["text"]}).to_parquet(test_file, compression="snappy")
+    print("Saving processed datasets...")
+    pd.DataFrame({"text": train_data}).to_parquet(train_file, compression="snappy")
+    pd.DataFrame({"text": test_data}).to_parquet(test_file, compression="snappy")
 
     print(f"Train data saved to: {train_file}")
     print(f"Evaluation data saved to: {test_file}")
