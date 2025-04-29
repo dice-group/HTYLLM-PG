@@ -4,9 +4,11 @@ import sys
 from random import random
 from datasets import load_dataset
 
+
 def size_in_bytes(example: str) -> int:
     """Calculate the size of a single dataset example in bytes."""
     return sys.getsizeof(example)
+
 
 def clean_text_streaming(example: str) -> str:
     """
@@ -27,6 +29,7 @@ def clean_text_streaming(example: str) -> str:
                 # If the format is unexpected, include the cleaned line
                 cleaned_texts.append(line.strip())
     return "\n".join(cleaned_texts)
+
 
 def process_limited_dataset(dataset, size_limit_gb=10, test_split_ratio=0.01):
     """
@@ -57,7 +60,7 @@ def process_limited_dataset(dataset, size_limit_gb=10, test_split_ratio=0.01):
         example_size = size_in_bytes(cleaned_example)
         total_size += example_size
 
-        print(f"Progress: {round(total_size/size_limit_bytes*100, 2)} %")
+        print(f"Progress: {round(total_size / size_limit_bytes * 100, 2)} %")
 
         # Split into training and testing
         if random() < test_split_ratio:
@@ -76,6 +79,49 @@ def process_limited_dataset(dataset, size_limit_gb=10, test_split_ratio=0.01):
     print(f"Total size processed: {total_size / (1024 ** 3):.2f} GB")
 
     return train_data, test_data
+
+
+def create_val_dataset(dataset, size_limit_gb=0.25):
+    """
+    Process the dataset dynamically in streaming mode.
+
+    Args:
+        dataset: The Hugging Face dataset in streaming mode
+        size_limit_gb: The maximum size to process, in gigabytes
+
+    Returns:
+        val_data: A list of processed validation examples
+    """
+    val_data = []
+    total_size = 0
+    total_examples = 0
+    size_limit_bytes = size_limit_gb * (1024 ** 3)  # Convert GB to bytes
+
+    for raw_example in dataset:
+        raw_text = raw_example["text"]
+
+        # Clean the raw text
+        cleaned_example = clean_text_streaming(raw_text)
+
+        # Measure size of the cleaned example
+        example_size = size_in_bytes(cleaned_example)
+        total_size += example_size
+
+        print(f"Progress: {round(total_size / size_limit_bytes * 100, 2)} %")
+
+        val_data.append(cleaned_example)
+        total_examples += 1
+
+        # Stop processing once we hit the predefined size limit
+        if total_size >= size_limit_bytes:
+            print(f"Processed up to {size_limit_gb} GB. Stopping...")
+            break
+
+    print(f"Total examples processed: {total_examples}")
+    print(f"Total size processed: {total_size / (1024 ** 3):.2f} GB")
+
+    return val_data
+
 
 def main():
     print("Downloading and streaming the dataset from Hugging Face...")
@@ -106,7 +152,34 @@ def main():
 
     print(f"Train data saved to: {train_file}")
     print(f"Evaluation data saved to: {test_file}")
+
+    # might out-comment this if only train and test data needed
+    # or might also evacuate this into a separate script if more validations sets shall be loaded
+    print("Downloading and streaming the validation dataset from Hugging Face...")
+
+    try:
+        # Load the "val" split in streaming mode
+        dataset = load_dataset('HuggingFaceFW/fineweb-2', 'fra_Latn', split='test', streaming=True)
+
+        # Process and split dataset dynamically
+        val_data = create_val_dataset(dataset, size_limit_gb=0.25)
+    except Exception as e:
+        print(f"Error loading or processing dataset: {e}")
+        return
+
+    print(f"Validation data size: {len(val_data)} examples.")
+
+    # Save the split datasets to disk
+    val_file = processed_data_path / "val_data.snap.parquet"
+
+    print("Saving processed dataset...")
+    pd.DataFrame({"text": val_data}).to_parquet(val_file, compression="snappy")
+
+    print(f"Validation data saved to: {val_file}")
+
     print("Processing finished.")
+
+
 
 if __name__ == "__main__":
     main()
