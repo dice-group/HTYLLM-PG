@@ -1,3 +1,16 @@
+"""
+Run this script with the following command:
+    python src/cli_chat.py --checkpoint gpt2_model_steps_19073.pt
+
+Additional options:
+    --max_new_tokens [NUMBER] : Set the number of tokens to generate (default: 50)
+    --temperature [NUMBER] : Set the sampling temperature (default: 1.0)
+    --top_k [NUMBER] : Set the top-k sampling parameter (default: 50)
+    --device [cuda/cpu] : Specify the device to run on (default: cuda if available, otherwise cpu)
+
+Example with all options:
+    python src/cli_chat.py --checkpoint gpt2_model_steps_19073.pt --max_new_tokens 100 --temperature 0.8 --top_k 40
+"""
 import argparse
 import torch
 import torch.nn.functional as F
