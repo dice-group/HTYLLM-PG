@@ -33,3 +33,19 @@ All team members are required to fill out a designated report form **by the star
 Please ensure to complete the form before our weekly meetings!
 
 ▶️ [Fill Out the Weekly Report Form](https://umfragen.uni-paderborn.de/index.php/116716)
+
+
+
+
+# 1. tokenizer
+python tokenizer/train_tokenizer.py --files_glob "data/processed/*.txt"
+
+# 2. init model
+python -m mixtral_project.models.build --save_dir checkpoints/init
+
+# 3. pre-train
+accelerate launch src/mixtral_project/train.py \
+    --model_path checkpoints/init \
+    --tokenizer_path tokenizer \
+    --data_glob "data/processed/*.txt" \
+    --output_dir checkpoints/run-$(date +%F)
