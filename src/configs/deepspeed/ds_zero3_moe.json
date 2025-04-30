@@ -1,0 +1,14 @@
+{
+    "train_batch_size": 32,
+    "bf16": {"enabled": true},
+    "zero_optimization": {
+      "stage": 3,
+      "offload_param": {"device": "cpu"},
+      "overlap_comm": true
+    },
+    "moe": {
+      "enabled": true,
+      "loss_coef": 0.001,
+      "router_aux_loss_coef": 0.001
+    }
+  }
