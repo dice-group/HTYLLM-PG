@@ -64,6 +64,14 @@ datasets/
 # Exclude Parquet files
 *.parquet
 
+# Exclude PyTorch model files
+*.pt
+
+# Exclude everything in data directory except .py files
+src/data/*
+!src/data/**/*.py
+
 # (Optionally) exclude entire directories:
 pre_processed_data/
 tokenized_data/
+*.out
