@@ -1,9 +1,11 @@
-"""Lightweight Trainer script for tiny Mixtral using HuggingFace + DeepSpeed."""
+"""Pre‑train tiny Mixtral from JSONL(GZ) or TXT corpora using HF‑Trainer + DeepSpeed."""
 
-import os
+from __future__ import annotations
+
+import gzip, json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterator, List
+from typing import List
 
 import torch
 from datasets import load_dataset
@@ -19,32 +21,41 @@ from transformers import (
 
 @dataclass
 class ScriptArgs:
-    # paths / names
     model_path: str = "checkpoints/init"
     tokenizer_path: str = "tokenizer"
-    data_glob: str = "data/processed/*.txt"
+    data_glob: str = "data/corpus/*"
     output_dir: str = "checkpoints/pretrain-run"
 
-    # training
     seq_length: int = 1024
     batch_size: int = 4
     grad_accum: int = 8
     lr: float = 3e-4
     epochs: int = 3
     deepspeed_config: str = "configs/deepspeed/ds_zero3_moe.json"
+    json_field: str = "text"  # field that holds the document text
 
 
-# --------------------------------------------------------------------------
+# ---------------- tokenisation helper ----------------
 
-def tokenize_and_chunk(stream, tokenizer, seq_len):
-    """Concatenate text lines then chunk to fixed length token IDs."""
-    buffer: List[int] = []
-    for item in stream:
-        ids = tokenizer(item["text"], add_special_tokens=False).input_ids
-        buffer.extend(ids + [tokenizer.eos_token_id])
-        while len(buffer) >= seq_len:
-            chunk, buffer = buffer[:seq_len], buffer[seq_len:]
-            yield {"input_ids": chunk}
+def tokenize_and_chunk(text: str, tokenizer, seq_len: int):
+    """Yield fixed‑length input‑id chunks from a raw text string."""
+    ids = tokenizer(text, add_special_tokens=False).input_ids + [tokenizer.eos_token_id]
+    for i in range(0, len(ids) - seq_len, seq_len):
+        yield {"input_ids": ids[i : i + seq_len]}
+
+
+# --------------- dataset loader ----------------------
+
+def get_streaming_dataset(files: list[str], field: str):
+    """Return a streaming HF dataset with a single `text` column."""
+    # if extension is txt → use 'text' loader, else use 'json'
+    sample_ext = Path(files[0]).suffix.lower()
+    if sample_ext in {".txt", ".text"}:
+        ds = load_dataset("text", data_files=files, split="train", streaming=True)
+    else:
+        ds = load_dataset("json", data_files=files, split="train", streaming=True)
+        ds = ds.rename_column(field, "text")  # unify
+    return ds
 
 
 def main():
@@ -53,16 +64,18 @@ def main():
 
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
 
-    # ------------------------------------------------------------------ DATA
-    raw = load_dataset("text", data_files=list(Path().glob(args.data_glob)), split="train", streaming=True)
-    token_ds = raw.map(lambda x: tokenize_and_chunk([x], tokenizer, args.seq_length))
+    files = [str(p) for p in Path().glob(args.data_glob)]
+    if not files:
+        raise SystemExit(f"No files match {args.data_glob}")
+
+    raw = get_streaming_dataset(files, args.json_field)
+
+    # map each document → sequence chunks lazily
+    token_ds = raw.map(lambda ex: tokenize_and_chunk(ex["text"], tokenizer, args.seq_length), batched=True)
 
     data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
-
-    # --------------------------------------------------------------- MODEL
     model = MixtralForCausalLM.from_pretrained(args.model_path)
 
-    # ----------------------------------------------------------- TRAINER
     targs = TrainingArguments(
         output_dir=args.output_dir,
         per_device_train_batch_size=args.batch_size,
@@ -76,13 +89,7 @@ def main():
         deepspeed=args.deepspeed_config,
     )
 
-    trainer = Trainer(
-        model=model,
-        args=targs,
-        train_dataset=token_ds,
-        data_collator=data_collator,
-    )
-
+    trainer = Trainer(model=model, args=targs, train_dataset=token_ds, data_collator=data_collator)
     trainer.train()
 
 

@@ -1,0 +1,1 @@
+python tokenizer\train_tokenizer.py --files_glob "fineweb2_subset\**\*.jsonl.gz" --output_dir tokenizer
