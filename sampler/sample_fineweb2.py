@@ -106,15 +106,17 @@ def main():
         num_languages_to_select -= 1  # Reserve one spot for English
         logger.info(f"Including English, reducing other languages to {num_languages_to_select}")
     
-    # Select languages (take the last N languages for least resourced first)
-    selected_languages = sorted_languages[-min(num_languages_to_select, len(sorted_languages)):]
+    # Select languages (take the first N most resourced languages)
+    selected_languages = sorted_languages[:min(num_languages_to_select, len(sorted_languages))]
+    logger.info(f"Selected {len(selected_languages)} languages from most resourced")
     
-    # Reverse to start from the least resourced languages
-    selected_languages.reverse()
-    logger.info(f"Selected {len(selected_languages)} languages, starting from least resourced")
+    # Reverse the order for processing to start from least resourced
+    processing_order = selected_languages.copy()
+    processing_order.reverse()
+    logger.info(f"Processing languages from least to most resourced")
     
     remaining_docs = args.total_docs
-    remaining_langs = len(selected_languages)
+    remaining_langs = len(processing_order)
     
     stats = {
         "parameters": {
@@ -131,7 +133,7 @@ def main():
     # Create tasks list for execution
     TASKS = []
     
-    for lang_subset in selected_languages:
+    for lang_subset in processing_order:
         if remaining_docs <= 0 or remaining_langs <= 0:
             break
             
@@ -154,7 +156,7 @@ def main():
                     ParquetReader(reader_path, limit=docs_to_sample),
                     JsonlWriter(output_path)
                 ],
-                tasks=4  # amount of processes which download data concurrently
+                tasks=1  # Reduced from 4 to 1 to avoid rate limiting
             ))
             
             # Update tracking variables
@@ -190,27 +192,34 @@ def main():
         
         english_output_path = os.path.join(output_dir, "english.jsonl")
         
-        # Use the fineweb dataset for English
-        TASKS.append(LocalPipelineExecutor(
+        # Add English data pipeline
+        english_pipeline = LocalPipelineExecutor(
             pipeline=[
-                ParquetReader("hf://datasets/HuggingFaceFW/fineweb/data", limit=remaining_docs),
+                ParquetReader("hf://datasets/HuggingFaceFW/fineweb/data/CC-MAIN-2024-10", limit=remaining_docs),
                 JsonlWriter(english_output_path)
             ],
-            tasks=4
-        ))
+            tasks=1  # Using 1 task to avoid rate limiting
+        )
         
-        stats["languages"]["english"] = {
-            "name": "English",
-            "fair_share": remaining_docs,
-            "available": "unlimited",  # We assume there are plenty of English documents
-            "sampled": remaining_docs
-        }
-        stats["total_actual"] += remaining_docs
-        
-        # Reset remaining docs since we've allocated all
-        remaining_docs = 0
-    
-    # Execute all tasks
+        try:
+            logger.info(f"Processing English data, sampling up to {remaining_docs} documents")
+            english_pipeline.run()
+            stats["languages"]["english"] = {
+                "name": "English",
+                "fair_share": remaining_docs,
+                "available": "unknown",  # We don't know the total available count
+                "sampled": remaining_docs
+            }
+            stats["total_actual"] += remaining_docs
+            logger.info(f"Completed English data sampling")
+        except Exception as exc:
+            logger.error(f"English data sampling generated an exception: {exc}")
+            stats["languages"]["english"] = {
+                "name": "English",
+                "error": str(exc),
+                "sampled": 0
+            }
+
     logger.info(f"Executing {len(TASKS)} sampling tasks sequentially")
 
     for i, executor in enumerate(TASKS):
