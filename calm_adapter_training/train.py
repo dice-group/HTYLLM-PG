@@ -80,7 +80,9 @@ def train(argv: Sequence[str]) -> None:
 
   model = calm.CALM(calm_config)
   train_data = datasets.load_dataset(
-      path='Salesforce/wikitext', name='wikitext-2-raw-v1'
+    "HuggingFaceFW/fineweb-2",
+    name="abk_Cyrl",
+    split={"train": "train[:1%]", "test": "train[1%:2%]"}
   )
 
   def preprocess_function(examples):
@@ -88,7 +90,11 @@ def train(argv: Sequence[str]) -> None:
         examples['text'], truncation=True, padding='max_length', max_length=512
     )
 
-  train_data = train_data.map(preprocess_function, batched=True)
+  #train_data = train_data.map(preprocess_function, batched=True)
+  train_data = {
+    split: data.map(preprocess_function, batched=True)
+    for split, data in train_data.items()
+  }
   data_collator = DataCollatorForLanguageModeling(
       tokenizer=tokenizer, mlm=False
   )
@@ -117,6 +123,7 @@ def train(argv: Sequence[str]) -> None:
       learning_rate=learning_rate,
       label_names=[],
       report_to=['tensorboard'],
+      save_total_limit=1,
   )
 
   trainer = Trainer(
