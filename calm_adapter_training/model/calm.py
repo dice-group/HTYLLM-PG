@@ -19,9 +19,12 @@ import os
 from typing import Callable, List, Optional, Tuple, Union
 from model import layers
 from model import utils
+from transformers import AutoModelForCausalLM
 import torch
 import transformers
 
+model = AutoModelForCausalLM.from_pretrained("google/gemma-3-4b-it")
+print("!!!! GEmma 2 model", model)
 
 class CALMConfig(transformers.PretrainedConfig):
   """CALM configuration.
@@ -106,11 +109,13 @@ class CALM(transformers.PreTrainedModel):
     super().__init__(config)  # pylint: disable=too-many-function-args
     if config.anchor_config is None:
       config.anchor_config = transformers.AutoConfig.from_pretrained(
-          config.anchor_model
+          config.anchor_model,
+          trust_remote_code=True
       )
     if config.aug_config is None:
       config.aug_config = transformers.AutoConfig.from_pretrained(
-          config.aug_model
+          config.aug_model,
+          trust_remote_code=True
       )
     if isinstance(config.anchor_config, dict):
       config.anchor_config = transformers.GemmaConfig.from_dict(
@@ -129,8 +134,17 @@ class CALM(transformers.PreTrainedModel):
     )
     self.vocab_size = self.anchor_model.config.vocab_size
     self.config = config
-    self.num_anchor_layers = len(self.anchor_model.model.layers)
-    self.num_aug_layers = len(self.aug_model.model.layers)
+    #self.num_anchor_layers = len(self.anchor_model.model.layers)
+    try:
+      self.num_anchor_layers = len(self.anchor_model.model.layers)
+    except AttributeError:
+      self.num_anchor_layers = len(self.anchor_model.language_model.model.layers)
+    #self.num_aug_layers = len(self.aug_model.model.layers)
+    try:
+      self.num_aug_layers = len(self.aug_model.model.layers)
+    except AttributeError:
+      self.num_aug_layers = len(self.aug_model.language_model.model.layers)
+
 
     assert (config.connections is None) ^ (config.num_connections is None)
 
@@ -151,9 +165,11 @@ class CALM(transformers.PreTrainedModel):
       aug_connection_idx = connection[1]
       hook = layers.ExtractHiddenStateHook()
       self.extract_hidden_state_hooks[tuple(connection)] = hook
-      self.aug_model.model.layers[aug_connection_idx].register_forward_hook(
-          hook
-      )
+      try:
+        aug_layer = self.aug_model.model.layers[aug_connection_idx]
+      except AttributeError:
+          aug_layer = self.aug_model.language_model.model.layers[aug_connection_idx]
+      aug_layer.register_forward_hook(hook)
 
     self.connection_hidden_dims = []
     for connection in self.connections:
@@ -241,7 +257,7 @@ class CALM(transformers.PreTrainedModel):
           input_ids=input_ids,
           attention_mask=attention_mask,
           position_ids=position_ids,
-          past_key_values=past_key_values,
+          #past_key_values=past_key_values,
           inputs_embeds=inputs_embeds,
           labels=labels,
           use_cache=use_cache,
@@ -331,7 +347,8 @@ class CALM(transformers.PreTrainedModel):
         past_key_values=past_key_values,
         inputs_embeds=inputs_embeds,
         labels=labels,
-        use_cache=use_cache,
+        #use_cache=use_cache,
+        use_cache=False, 
         output_attentions=output_attentions,
         output_hidden_states=output_hidden_states,
         return_dict=return_dict,
@@ -419,7 +436,8 @@ class CALM(transformers.PreTrainedModel):
         past_length = cache_position[0] if cache_position is not None else past_key_values.get_seq_length()  # pylint: disable=line-too-long
         max_cache_length = (
             torch.tensor(past_key_values.get_max_length(), device=input_ids.device)  # pylint: disable=line-too-long
-            if past_key_values.get_max_length() is not None
+            #if past_key_values.get_max_length() is not None
+            if hasattr(past_key_values, "get_max_length") and past_key_values.get_max_length() is not None
             else None
         )
         cache_length = (

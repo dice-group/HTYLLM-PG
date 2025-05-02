@@ -51,16 +51,27 @@ def get_connections(
 
   return list(zip(anchor_layer, aug_layer))
 
-
 def get_hidden_dims(
     anchor_model,
     aug_model,
     connection: tuple[int, int],
 ) -> tuple[int, int]:
-  """Gets the hidden dimensions for the given layers."""
-  anchor_layer, aug_layer = connection
-  anchor_hidden_dim = anchor_model.model.layers[anchor_layer].hidden_size
-  aug_hidden_dim = aug_model.model.layers[aug_layer].hidden_size
+    """Gets the hidden dimensions for the given layers, supports Gemma 2 & 3."""
+    anchor_layer_idx, aug_layer_idx = connection
 
-  return anchor_hidden_dim, aug_hidden_dim
+    # Anchor model: Gemma 2 or 3
+    try:
+        anchor_layer = anchor_model.model.layers[anchor_layer_idx]
+    except AttributeError:
+        anchor_layer = anchor_model.language_model.model.layers[anchor_layer_idx]
 
+    # Augmenting model: Gemma 2 or 3
+    try:
+        aug_layer = aug_model.model.layers[aug_layer_idx]
+    except AttributeError:
+        aug_layer = aug_model.language_model.model.layers[aug_layer_idx]
+
+    # Access hidden size attribute
+    anchor_hidden_dim = anchor_layer.hidden_size
+    aug_hidden_dim = aug_layer.hidden_size
+    return anchor_hidden_dim, aug_hidden_dim
