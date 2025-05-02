@@ -1,10 +1,16 @@
-python train.py \
-  --anchor_model_dir google/gemma-2b \
-  --aug_model_dir NickyNicky/gemma-2b-it_oasst2_Cluster_2_aya_dataset_multilingual_chatml_response_json_V1 \
-  --output_dir ./output_calm_multilingual \
-  --learning_rate 3e-4 \
-  --batch_size 2 \
-  --epochs 3 \
+#!/bin/bash
+export CUDA_VISIBLE_DEVICES=0
+export NCCL_DEBUG=INFO
+export NCCL_P2P_LEVEL=SYS
+export NCCL_IB_DISABLE=1
+source /opt/miniforge3/etc/profile.d/conda.sh
+conda activate htyllm
+
+accelerate launch --config_file accelerate_config.yaml train.py \
+  --anchor_model_dir google/gemma-7b \
+  --aug_model_dir google/gemma-2b \
   --num_heads 2 \
   --num_connections 2 \
-  --max_steps 1000
+  --learning_rate 3e-4 \
+  --batch_size 4 \
+  --output_dir '/data/joel/calm-results/gemma2_7b'

@@ -69,26 +69,16 @@ def train(argv: Sequence[str]) -> None:
   logging.info('Loading Tokenizer...')
   tokenizer = AutoTokenizer.from_pretrained(anchor_model_path)
   logging.info('Loading Composed Model...')
-  connections = [
-    (4, 4),
-    (8, 8),
-    (12, 12),
-    (16, 16),
-    (20, 20),
-   ]   
   calm_config = calm.CALMConfig(
       anchor_model=anchor_model_path,
       aug_model=aug_model_path,
       anchor_config=None,
       aug_config=None,
-      connections=connections,
       num_connections=num_connections,
       num_heads=num_heads,
   )
 
   model = calm.CALM(calm_config)
-  print("Anchor layers:", model.num_anchor_layers)
-  print("Aug layers:   ", model.num_aug_layers)
   train_data = datasets.load_dataset(
       path='Salesforce/wikitext', name='wikitext-2-raw-v1'
   )

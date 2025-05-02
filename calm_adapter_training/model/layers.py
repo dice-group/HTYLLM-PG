@@ -122,9 +122,7 @@ class CrossAttentionHook(torch.nn.Module):
       The modified output of the cross attention hook.
     """
     query, output = process_hook_args(*hook_args)
-    #assert self.aug_hidden_state is not None
-    if self.aug_hidden_state is None:
-        return output
+    assert self.aug_hidden_state is not None
     assert self.aug_mask is not None
     key = self.proj(self.aug_hidden_state)
     value = self.proj(self.aug_hidden_state)
@@ -165,4 +163,5 @@ class ExtractHiddenStateHook(torch.nn.Module):
     hidden_state, out = process_hook_args(*hook_args)
     self.hidden_state = hidden_state
     return out
+
 
