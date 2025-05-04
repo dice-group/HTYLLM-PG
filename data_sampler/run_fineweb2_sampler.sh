@@ -1,6 +1,6 @@
 #!/bin/bash
 
-TOTAL_DOCS=1000000
+TOTAL_DOCS=10000000
 NUM_LANGUAGES=150
 OUTPUT_DIR="/data/fineweb2_subset"
 META_FILE="fineweb2_meta.json"
