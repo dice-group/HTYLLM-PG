@@ -38,4 +38,4 @@ output will be under tokenized_data as binary files
 
 train:
 
-python src/model/gpt_2_try2.py
+python src/model/mBERT_2.py
