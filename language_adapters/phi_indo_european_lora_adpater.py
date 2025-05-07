@@ -39,9 +39,10 @@ training_args = TrainingArguments(
     logging_dir="/data/joel/phi2-lora-multilingual/logs",
     logging_steps=50,
     save_strategy="steps",
-    save_steps=100,
+    save_steps=20,
     fp16=True,
     save_total_limit=2,
+    report_to=["tensorboard"],  
 )
 
 trainer = Trainer(
@@ -50,8 +51,19 @@ trainer = Trainer(
     train_dataset=dataset,
     tokenizer=tokenizer,
     data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
-    callbacks=[LMEvalCallback(tokenizer_name=model_name, eval_interval=500, eval_tasks=["hellaswag", "arc_easy"])]
-
+    callbacks=[
+        LMEvalCallback(
+            tokenizer_name=model_name, 
+            eval_interval=21, 
+            eval_tasks = [
+                "truthfulqa", "mmlu", "hellaswag", "xcopa", "xwinograd",
+                "pawsx", "xnli", "lambada", "belebele"
+            ],
+            #eval_tasks = ["hellaswag"],
+            output_dir="/data/joel/phi2-lora-multilingual/lm_eval",
+            tb_logdir=training_args.logging_dir,
+            )
+        ]
 )
 
 trainer.train()
