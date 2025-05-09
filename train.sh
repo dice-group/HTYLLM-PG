@@ -28,6 +28,6 @@ srun torchrun \
 --rdzv_endpoint $head_node_ip:29500 \
 src/train.py --model_path checkpoints/init \
     --tokenizer_path tokenizer \
-    --data_glob "fineweb2_subset\**\*.jsonl.gz" \
+    --dataset_dir data/processed \
     --output_dir checkpoints/pretrain_run_fineweb2 \
     --deepspeed_config configs/deepspeed/ds_zero3_moe.json
