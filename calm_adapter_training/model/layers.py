@@ -25,6 +25,7 @@ def freeze_model(model):
   """Freezes the model."""
   for param in model.parameters():
     param.requires_grad = False
+  model.eval()
 
 
 def process_hook_args(
@@ -99,6 +100,15 @@ class CrossAttentionHook(torch.nn.Module):
         vdim=self.embed_dim,
         batch_first=True,
     )
+    
+    # ↓ keep weights tiny to avoid early overflow
+    torch.nn.init.xavier_uniform_(self.proj.weight,  gain=0.05)
+    torch.nn.init.constant_(self.proj.bias, 0.0)
+    for p in self.cross_attention.parameters():
+        if p.dim() > 1:                     # only weight matrices
+            torch.nn.init.xavier_uniform_(p, gain=0.05)
+
+    
     self.aug_hidden_state = None
     self.aug_mask = None
     self.attn_weights = None
@@ -127,11 +137,16 @@ class CrossAttentionHook(torch.nn.Module):
     key = self.proj(self.aug_hidden_state)
     value = self.proj(self.aug_hidden_state)
 
-    self.aug_mask = self.aug_mask.float()
+    #self.aug_mask = self.aug_mask.float()
+    #attn_output, attn_weights = self.cross_attention(
+    #    query, key, value, need_weights=True
+    #)
+    #self.attn_weights = attn_weights
+    # MultiheadAttention expects False‑for‑keep, so invert the mask
+    key_padding = (self.aug_mask == 0) if self.aug_mask is not None else None
     attn_output, attn_weights = self.cross_attention(
-        query, key, value, need_weights=True
+        query, key, value, key_padding_mask=key_padding, need_weights=True
     )
-    self.attn_weights = attn_weights
 
     attn_output = self.post_attention_layernorm(attn_output)
     output_fin = attn_output + query

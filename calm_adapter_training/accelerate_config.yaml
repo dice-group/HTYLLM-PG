@@ -1,6 +1,6 @@
 compute_environment: LOCAL_MACHINE
 debug: false
-distributed_type: NO
+distributed_type: MULTI_GPU
 downcast_bf16: 'no'
 fsdp_config: {}
 #fsdp_config:
@@ -16,9 +16,9 @@ fsdp_config: {}
   #fsdp_use_orig_params: true
 machine_rank: 0
 main_training_function: train
-mixed_precision: bf16
+mixed_precision: 'no'
 num_machines: 1
-num_processes: 1
+num_processes: 2
 rdzv_backend: static
 same_network: true
 tpu_env: []

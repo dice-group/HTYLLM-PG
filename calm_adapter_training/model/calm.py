@@ -23,8 +23,6 @@ from transformers import AutoModelForCausalLM
 import torch
 import transformers
 
-model = AutoModelForCausalLM.from_pretrained("google/gemma-3-4b-it")
-print("!!!! GEmma 2 model", model)
 
 class CALMConfig(transformers.PretrainedConfig):
   """CALM configuration.
@@ -72,7 +70,7 @@ class CALMConfig(transformers.PretrainedConfig):
     self.num_connections = num_connections
     self.num_heads = num_heads
     self.anchor_config = anchor_config
-    self.aug_config = aug_config
+    self.aug_config = aug_config   
     super().__init__(**kwargs)
 
 
@@ -89,6 +87,10 @@ class CALM(transformers.PreTrainedModel):
   @property
   def lm_head(self):
     """Returns the language model head."""
+    if torch.isnan(logits).any() or torch.isinf(logits).any():
+      print("!!! NaNs or Infs in logits !!!")
+      print("Logits range:", logits.min().item(), logits.max().item())
+      raise ValueError("Logits contain NaNs or Infs")
     return self.anchor_model.lm_head
 
   def __init__(self, config: CALMConfig):
@@ -191,9 +193,15 @@ class CALM(transformers.PreTrainedModel):
               rms_norm_eps=self.anchor_model.config.rms_norm_eps,
           )
       )
+      
+    anchor_dtype = self.anchor_model.model.embed_tokens.weight.dtype
+    for hook in self.cross_attention_hooks:
+        hook.to(dtype=anchor_dtype)
 
     layers.freeze_model(self.anchor_model)
     layers.freeze_model(self.aug_model)
+    
+    self.anchor_model.eval() 
 
     for connection_idx, connection in enumerate(self.connections):
       connection_anchor_layer_idx = connection[0]
