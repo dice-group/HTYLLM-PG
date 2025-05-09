@@ -3,3 +3,8 @@ datasets
 sentencepiece
 transformers[torch]
 adapter-transformers
+peft
+bitsandbytes
+tensorboard
+accelerate
+lm-harness-eval @ git+https://github.com/EleutherAI/lm-evaluation-harness.git
