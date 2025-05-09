@@ -27,7 +27,7 @@ class LMEvalCallback(TrainerCallback):
             "--model", "hf",
             "--model_args", f"pretrained={model_path},tokenizer={self.tokenizer_name}",
             "--tasks", ",".join(self.eval_tasks),
-            "--batch_size", "4",
+            "--batch_size", "2",
             "--limit", "10",
             "--output_path", str(step_dir),
         ], check=True)
@@ -41,7 +41,7 @@ class LMEvalCallback(TrainerCallback):
 
         for task, metrics in results.items():
             for k, v in metrics.items():
-                if "acc" in k and isinstance(v, (int, float)):
+                if isinstance(v, (int, float)):
                     tag = f"{task}/{k.replace(',', '_')}"
                     self.tb_writer.add_scalar(tag, v, state.global_step)
 

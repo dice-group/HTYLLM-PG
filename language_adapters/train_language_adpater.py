@@ -1,58 +1,115 @@
-import json
-import glob
-from datasets import Dataset
-from transformers import AutoTokenizer, Trainer, TrainingArguments
-from adapters import AutoAdapterModel
-from transformers import DataCollatorForLanguageModeling
+import os
+import gzip
+import argparse
+import torch
 
-model = AutoAdapterModel.from_pretrained("microsoft/phi-2")
-tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2")
-data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=True, mlm_probability=0.15, pad_to_multiple_of=8,)
+from datasets import Dataset, load_from_disk
+from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments, DataCollatorForLanguageModeling, BitsAndBytesConfig
+from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_training
+from lm_harness_eval import LMEvalCallback
 
-#model.add_adapter("french", config="pfeiffer")
-#model.add_masked_lm_head("french")
-#model.train_adapter("french")
-#model.set_active_adapters("french")
+def read_gz_folder(folder_path):
+    for root, _, files in os.walk(folder_path):
+        for file in files:
+            if file.endswith(".gz"):
+                path = os.path.join(root, file)
+                with gzip.open(path, 'rt', encoding='utf-8', errors='ignore') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and len(line) > 10:
+                            yield {"text": line}
 
-model.add_adapter("german", config="pfeiffer")
-model.add_masked_lm_head("german")
-model.train_adapter("german")
-model.set_active_adapters("german")
 
-def load_dataset_from_json(path):
-    data = []
-    for shard_path in glob.glob(f"{path}/shard_*.json"):
-        with open(shard_path, "r", encoding="utf-8") as f:
-            data.extend(json.load(f))
-    return Dataset.from_list(data)
+def tokenize_data(data_dir, model_name, tokenized_output_dir):
+    print(f"Tokenizing data from {data_dir} using tokenizer {model_name}")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer.pad_token = tokenizer.eos_token
 
-def preprocess(example):
-    return {
-        "input_ids": example["tokens"],
-        "attention_mask": [1] * len(example["tokens"]),
-    }
+    raw_dataset = Dataset.from_generator(lambda: read_gz_folder(data_dir))
+    tokenized_dataset = raw_dataset.map(
+        lambda batch: tokenizer(batch["text"], truncation=True, max_length=512),
+        batched=True, num_proc=24
+    )
+    tokenized_dataset.save_to_disk(tokenized_output_dir)
+    print(f"Tokenized data saved to {tokenized_output_dir}")
 
-german_ds = load_dataset_from_json("/data/joel/prepared/langauge_adapters/DiscoResearch_germanrag_")
-german_ds = german_ds.map(preprocess, remove_columns=["tokens"])
 
-training_args = TrainingArguments(
-    output_dir="./results/german-phi2",
-    learning_rate=5e-5,
-    per_device_train_batch_size=2,
-    num_train_epochs=1,
-    logging_dir="./results/german-phi2/logs",
-    save_strategy="steps",
-    save_steps=1250,
-    remove_unused_columns=False,
-)
+def train_model(tokenized_data_dir, model_name, output_dir, logging_dir):
+    dataset = load_from_disk(tokenized_data_dir)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer.pad_token = tokenizer.eos_token
 
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=german_ds,
-    data_collator=data_collator,
-)
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True, 
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16
+    )
 
-trainer.train()
-tokenizer.save_pretrained("./results/german-phi2")
-model.save_adapter("./results/german-phi2/adapter", "german")
+    model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=bnb_config, device_map="auto")
+    model = prepare_model_for_kbit_training(model)
+
+    lora_config = LoraConfig(
+        r=8, lora_alpha=16, lora_dropout=0.1,
+        bias="none", task_type=TaskType.CAUSAL_LM,
+        target_modules=["query_key_value", "dense"]
+    )
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
+    model.config.pad_token_id = tokenizer.eos_token_id
+
+    training_args = TrainingArguments(
+        output_dir=output_dir,
+        per_device_train_batch_size=32,
+        gradient_accumulation_steps=3,
+        num_train_epochs=1,
+        logging_dir=logging_dir,
+        logging_steps=20,
+        save_strategy="steps",
+        save_steps=200,
+        bf16=True,
+        save_total_limit=200,
+        report_to=["tensorboard"],
+        dataloader_num_workers=28
+    )
+
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=dataset,
+        tokenizer=tokenizer,
+        data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
+        callbacks=[
+            LMEvalCallback(
+                tokenizer_name=model_name,
+                eval_interval=250,
+                eval_tasks=["hellaswag", "mmlu", "belebele"],
+                output_dir=os.path.join(output_dir, "lm_eval"),
+                tb_logdir=logging_dir
+            )
+        ]
+    )
+    trainer.train()
+    model.save_pretrained(os.path.join(output_dir, "adapter"))
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_dir", required=True)
+    parser.add_argument("--tokenized_dir", required=True)
+    parser.add_argument("--model_name", required=True, default="bigscience/bloom-560m")
+    parser.add_argument("--output_dir", required=True)
+    parser.add_argument("--logging_dir", required=True)
+
+    args = parser.parse_args()
+
+    if not os.path.exists(args.tokenized_dir):
+        tokenize_data(args.data_dir, args.model_name, args.tokenized_dir)
+    else:
+        print(f"Tokenized data already exists at {args.tokenized_dir}, skipping tokenization.")
+
+    train_model(args.tokenized_dir, args.model_name, args.output_dir, args.logging_dir)
+
+if __name__ == "__main__":
+    torch.backends.cuda.matmul.allow_tf32 = True
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+    main()
