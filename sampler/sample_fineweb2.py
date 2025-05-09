@@ -49,6 +49,7 @@ def load_data(total_docs: int, num_languages: int | str, dont_include_english: b
         print(f"Current fair share per language: {fair_share_per_lang} of language {lang['Subset']} which has {lang['Documents']} documents")
         available_docs = lang['Documents']
         docs_to_sample = min(fair_share_per_lang, available_docs)
+        print(f"Sampling {docs_to_sample} documents for language {lang['Subset']}")
 
         if docs_to_sample > 0:
             lang_name = lang['Subset'].strip('`')
