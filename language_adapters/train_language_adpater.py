@@ -77,5 +77,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     torch.backends.cuda.matmul.allow_tf32 = True
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
     train_model(args.tokenized_dir, args.model_name, args.output_dir, args.logging_dir)
