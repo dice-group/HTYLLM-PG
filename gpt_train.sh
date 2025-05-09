@@ -1,13 +1,14 @@
 #!/bin/bash
 
 #SBATCH --job-name=multinode-example
-#SBATCH --nodes=16   
+#SBATCH --nodes=16  
 #SBATCH --ntasks=16
 #SBATCH --cpus-per-task=4
 #SBATCH --time=12:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:a100:1
 #SBATCH --mem=64GB
+#SBATCH --account=hpc-prf-merlin
 
 
 nodes=( $( scontrol show hostnames $SLURM_JOB_NODELIST ) )
@@ -26,4 +27,4 @@ srun torchrun \
 --rdzv_id $RANDOM \
 --rdzv_backend c10d \
 --rdzv_endpoint $head_node_ip:29500 \
-src/model/gpt_2_multi_gpu.py --data_path src/data/deu_Latn_fineweb2/
+src/model/gpt_2_multi_gpu.py --data_path src/data/fineweb_tokenized/

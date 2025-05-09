@@ -30,7 +30,7 @@ if __name__ == "__main__":
     # Load all .jsonl.gz files recursively
     dataset = load_dataset(
         "json",
-        data_files="fineweb2_subset/**/*.jsonl.gz",
+        data_files="../../data/**/*.jsonl.gz",
         split="train",
         streaming=True  
     )
