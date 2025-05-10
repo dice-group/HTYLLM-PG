@@ -2,3 +2,6 @@
 data
 language_adapters/results
 .venv_calm
+fineweb2_subset
+logs
+launch.json
