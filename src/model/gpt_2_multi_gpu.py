@@ -349,8 +349,8 @@ if __name__ == "__main__":
 
     max_lr = 6e-4
     min_lr = max_lr * 0.1
-    warmup_steps = 715 * 54 # scaled values according to gpt-2 paper (we use other dataset)
-    max_steps = 19073 * 54 # scaled values according to gpt-2 paper (we use other dataset)
+    warmup_steps = 715 * 10 # scaled values according to gpt-2 paper (we use other dataset)
+    max_steps = 19073 * 10 # scaled values according to gpt-2 paper (we use other dataset)
 
     def get_lr(it):
         if it < warmup_steps:

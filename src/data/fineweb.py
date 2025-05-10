@@ -10,7 +10,7 @@ local_dir = "fineweb_tokenized"
 DATA_CACHE_DIR = os.path.join(os.path.dirname(__file__), local_dir)
 os.makedirs(DATA_CACHE_DIR, exist_ok=True)
 shard_size = int(1e8)
-nprocs = max(1, os.cpu_count()//2)  # Use half the CPU cores
+nprocs = max(1, os.cpu_count())  # Use half the CPU cores
 
 # Initialize tokenizer
 enc = tiktoken.get_encoding("gpt2")
