@@ -68,3 +68,6 @@ datasets/
 pre_processed_data/
 tokenized_data/
 results/
+lm_eval_results/
+runs/
+logs/
