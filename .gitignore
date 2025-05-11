@@ -75,3 +75,7 @@ src/data/*
 pre_processed_data/
 tokenized_data/
 *.out
+
+
+data/
+checkpoints/
