@@ -22,15 +22,24 @@ class LMEvalCallback(TrainerCallback):
 
         # start eval subprocess based on latest checkpoint
         model_path = self.get_latest_checkpoint(args.output_dir)
-        subprocess.run([
-            "lm_eval",
-            "--model", "hf",
-            "--model_args", f"pretrained={model_path},tokenizer={self.tokenizer_name}",
-            "--tasks", ",".join(self.eval_tasks),
-            "--batch_size", "1",
-            "--limit", "10",
-            "--output_path", str(step_dir),
-        ], check=True)
+        env = os.environ.copy()
+        env["CUDA_VISIBLE_DEVICES"] = "0"  # Single GPU
+        env["WORLD_SIZE"] = "1"  # Disable distributed
+
+        try:
+            subprocess.run([
+                "lm_eval",
+                "--model", "hf",
+                "--model_args", f"pretrained={model_path},tokenizer={self.tokenizer_name}",
+                "--tasks", ",".join(self.eval_tasks),
+                "--device", "cuda:0",
+                "--batch_size", "auto",
+                "--limit", "100",
+                "--output_path", str(step_dir),
+            ], check=True, env=env)
+        except subprocess.CalledProcessError as e:
+            print(f"Evaluation failed at step {state.global_step}: {e}")
+            return control
 
         result_files = list(step_dir.glob("*/results_*.json"))
         if not result_files:

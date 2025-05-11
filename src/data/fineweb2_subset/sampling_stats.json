@@ -1,72 +1,306 @@
 {
   "parameters": {
-    "total_target": 10,
-    "num_languages": 10,
+    "total_target": 5000,
+    "num_languages": 50,
     "include_english": true,
     "output_dir": "./fineweb2_subset",
     "metadata_file": "./sampler/fineweb2_meta.json"
   },
-  "total_actual": 10,
+  "total_actual": 5000,
   "languages": {
-    "ksf_Latn": {
-      "name": "Bafia",
-      "fair_share": 1,
-      "available": 1,
-      "sampled": 1
+    "kat_Geor": {
+      "name": "Georgian",
+      "fair_share": 102,
+      "available": 3645892,
+      "sampled": 102
     },
-    "adl_Latn": {
-      "name": "Galo",
-      "fair_share": 1,
-      "available": 1,
-      "sampled": 1
+    "mar_Deva": {
+      "name": "Marathi",
+      "fair_share": 102,
+      "available": 3762395,
+      "sampled": 102
     },
-    "brx_Latn": {
-      "name": "Bodo (India)",
-      "fair_share": 1,
-      "available": 1,
-      "sampled": 1
+    "srp_Cyrl": {
+      "name": "Serbian",
+      "fair_share": 102,
+      "available": 3842269,
+      "sampled": 102
     },
-    "asg_Latn": {
-      "name": "Cishingini",
-      "fair_share": 1,
-      "available": 1,
-      "sampled": 1
+    "mkd_Cyrl": {
+      "name": "Macedonian",
+      "fair_share": 102,
+      "available": 3885664,
+      "sampled": 102
     },
-    "ald_Latn": {
-      "name": "Alladian",
-      "fair_share": 1,
-      "available": 1,
-      "sampled": 1
+    "urd_Arab": {
+      "name": "Urdu",
+      "fair_share": 102,
+      "available": 4164316,
+      "sampled": 102
     },
-    "bwi_Latn": {
-      "name": "Baniwa",
-      "fair_share": 1,
-      "available": 1,
-      "sampled": 1
+    "npi_Deva": {
+      "name": "Nepali (individual language)",
+      "fair_share": 102,
+      "available": 4264777,
+      "sampled": 102
     },
-    "nnl_Latn": {
-      "name": "Northern Rengma Naga",
-      "fair_share": 1,
-      "available": 1,
-      "sampled": 1
+    "tam_Taml": {
+      "name": "Tamil",
+      "fair_share": 102,
+      "available": 5450192,
+      "sampled": 102
     },
-    "mzl_Latn": {
-      "name": "Mazatl\u00e1n Mixe",
-      "fair_share": 1,
-      "available": 1,
-      "sampled": 1
+    "ary_Arab": {
+      "name": "Moroccan Arabic",
+      "fair_share": 102,
+      "available": 6111598,
+      "sampled": 102
     },
-    "fad_Latn": {
-      "name": "Wagi",
-      "fair_share": 2,
-      "available": 1,
-      "sampled": 1
+    "azj_Latn": {
+      "name": "North Azerbaijani",
+      "fair_share": 102,
+      "available": 6753102,
+      "sampled": 102
     },
-    "english": {
-      "name": "English",
-      "fair_share": 1,
-      "available": "unlimited",
-      "sampled": 1
+    "lvs_Latn": {
+      "name": "Standard Latvian",
+      "fair_share": 102,
+      "available": 7754179,
+      "sampled": 102
+    },
+    "als_Latn": {
+      "name": "Tosk Albanian",
+      "fair_share": 102,
+      "available": 8016293,
+      "sampled": 102
+    },
+    "zsm_Latn": {
+      "name": "Standard Malay",
+      "fair_share": 102,
+      "available": 8832556,
+      "sampled": 102
+    },
+    "ekk_Latn": {
+      "name": "Standard Estonian",
+      "fair_share": 102,
+      "available": 9629380,
+      "sampled": 102
+    },
+    "slv_Latn": {
+      "name": "Slovenian",
+      "fair_share": 102,
+      "available": 11561268,
+      "sampled": 102
+    },
+    "lit_Latn": {
+      "name": "Lithuanian",
+      "fair_share": 102,
+      "available": 12364135,
+      "sampled": 102
+    },
+    "heb_Hebr": {
+      "name": "Hebrew",
+      "fair_share": 102,
+      "available": 13639095,
+      "sampled": 102
+    },
+    "ben_Beng": {
+      "name": "Bengali",
+      "fair_share": 102,
+      "available": 14129440,
+      "sampled": 102
+    },
+    "cat_Latn": {
+      "name": "Catalan",
+      "fair_share": 102,
+      "available": 15512049,
+      "sampled": 102
+    },
+    "bos_Latn": {
+      "name": "Bosnian",
+      "fair_share": 102,
+      "available": 19390133,
+      "sampled": 102
+    },
+    "hin_Deva": {
+      "name": "Hindi",
+      "fair_share": 102,
+      "available": 20587135,
+      "sampled": 102
+    },
+    "hrv_Latn": {
+      "name": "Croatian",
+      "fair_share": 102,
+      "available": 20637731,
+      "sampled": 102
+    },
+    "bul_Cyrl": {
+      "name": "Bulgarian",
+      "fair_share": 102,
+      "available": 23838661,
+      "sampled": 102
+    },
+    "slk_Latn": {
+      "name": "Slovak",
+      "fair_share": 102,
+      "available": 26470482,
+      "sampled": 102
+    },
+    "fin_Latn": {
+      "name": "Finnish",
+      "fair_share": 102,
+      "available": 33162591,
+      "sampled": 102
+    },
+    "nob_Latn": {
+      "name": "Norwegian Bokm\u00e5l",
+      "fair_share": 102,
+      "available": 35502989,
+      "sampled": 102
+    },
+    "tha_Thai": {
+      "name": "Thai",
+      "fair_share": 102,
+      "available": 35949449,
+      "sampled": 102
+    },
+    "vie_Latn": {
+      "name": "Vietnamese",
+      "fair_share": 102,
+      "available": 40741340,
+      "sampled": 102
+    },
+    "dan_Latn": {
+      "name": "Danish",
+      "fair_share": 102,
+      "available": 42975661,
+      "sampled": 102
+    },
+    "ell_Grek": {
+      "name": "Modern Greek (1453-)",
+      "fair_share": 102,
+      "available": 44202550,
+      "sampled": 102
+    },
+    "swe_Latn": {
+      "name": "Swedish",
+      "fair_share": 102,
+      "available": 45329979,
+      "sampled": 102
+    },
+    "hun_Latn": {
+      "name": "Hungarian",
+      "fair_share": 102,
+      "available": 46879826,
+      "sampled": 102
+    },
+    "ukr_Cyrl": {
+      "name": "Ukrainian",
+      "fair_share": 102,
+      "available": 47552562,
+      "sampled": 102
+    },
+    "fas_Arab": {
+      "name": "Persian",
+      "fair_share": 102,
+      "available": 51043666,
+      "sampled": 102
+    },
+    "ron_Latn": {
+      "name": "Romanian",
+      "fair_share": 102,
+      "available": 54128784,
+      "sampled": 102
+    },
+    "arb_Arab": {
+      "name": "Standard Arabic",
+      "fair_share": 102,
+      "available": 57752149,
+      "sampled": 102
+    },
+    "kor_Hang": {
+      "name": "Korean",
+      "fair_share": 102,
+      "available": 58160164,
+      "sampled": 102
+    },
+    "ces_Latn": {
+      "name": "Czech",
+      "fair_share": 102,
+      "available": 62703458,
+      "sampled": 102
+    },
+    "tur_Latn": {
+      "name": "Turkish",
+      "fair_share": 102,
+      "available": 88769907,
+      "sampled": 102
+    },
+    "ind_Latn": {
+      "name": "Indonesian",
+      "fair_share": 102,
+      "available": 92992647,
+      "sampled": 102
+    },
+    "nld_Latn": {
+      "name": "Dutch",
+      "fair_share": 102,
+      "available": 133855612,
+      "sampled": 102
+    },
+    "pol_Latn": {
+      "name": "Polish",
+      "fair_share": 102,
+      "available": 138337436,
+      "sampled": 102
+    },
+    "por_Latn": {
+      "name": "Portuguese",
+      "fair_share": 102,
+      "available": 189851449,
+      "sampled": 102
+    },
+    "ita_Latn": {
+      "name": "Italian",
+      "fair_share": 102,
+      "available": 219117921,
+      "sampled": 102
+    },
+    "fra_Latn": {
+      "name": "French",
+      "fair_share": 102,
+      "available": 332646715,
+      "sampled": 102
+    },
+    "jpn_Jpan": {
+      "name": "Japanese",
+      "fair_share": 102,
+      "available": 376134745,
+      "sampled": 102
+    },
+    "spa_Latn": {
+      "name": "Spanish",
+      "fair_share": 102,
+      "available": 405634303,
+      "sampled": 102
+    },
+    "deu_Latn": {
+      "name": "German",
+      "fair_share": 102,
+      "available": 427700394,
+      "sampled": 102
+    },
+    "cmn_Hani": {
+      "name": "Mandarin Chinese",
+      "fair_share": 103,
+      "available": 578332129,
+      "sampled": 103
+    },
+    "rus_Cyrl": {
+      "name": "Russian",
+      "fair_share": 103,
+      "available": 605468615,
+      "sampled": 103
     }
   }
 }

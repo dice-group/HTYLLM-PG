@@ -71,3 +71,5 @@ results/
 lm_eval_results/
 runs/
 logs/
+fineweb2_subset_old/
+fineweb2_subset/

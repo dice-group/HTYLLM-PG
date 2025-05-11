@@ -23,12 +23,9 @@ In: Proceedings of the 8th International Language Resources and Evaluation (LREC
 
 
 
-Preprocessing: 
+Run mbert_train.sh
 
-python src/data/preprocess.py
-
-output will be under pre_processed_data parquet files
-
+or alternatively run below commands.
 
 tokenizer:
 

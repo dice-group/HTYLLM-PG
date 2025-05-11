@@ -43,7 +43,7 @@ class BinaryPretrainingDataset(Dataset):
 
 # Evaluate on other languages here (with zero- / few-shot analysis)
 model = BertForPreTraining.from_pretrained('bert-base-multilingual-uncased')
-k = 1  # change to higher k later
+k = 1000 # change to higher k later
 block_size = 256
 tokenized_data = "tokenized_data"
 model.eval()
@@ -63,8 +63,14 @@ for bin_file in glob.glob(os.path.join(tokenized_data, "*.bin")):
     # Load the full binary dataset
     full_dataset = BinaryPretrainingDataset(bin_file, block_size)
 
+    # Sample k examples or fewer if not enough
+    num_samples = min(k, len(full_dataset))
+    if num_samples == 0:
+        print(f"Skipping {lang} due to empty dataset.")
+        continue
+
     # Sample k examples
-    indices = np.linspace(0, len(full_dataset) - 1, k, dtype=int)
+    indices = np.linspace(0, len(full_dataset) - 1, num_samples, dtype=int)
     subset = torch.utils.data.Subset(full_dataset, indices)
     loader = DataLoader(subset, batch_size=1)
 
@@ -81,5 +87,5 @@ for bin_file in glob.glob(os.path.join(tokenized_data, "*.bin")):
 
 # Save results to CSV
 df = pd.DataFrame(results)
-df.to_csv("before_fine_tune_fewshot_eval_results.csv", index=False)
+df.to_csv("before_fine_tune_zeroshot_eval_results.csv", index=False)
 print("Saved evaluation results to before_fine_tune_fewshot_eval_results.csv")
