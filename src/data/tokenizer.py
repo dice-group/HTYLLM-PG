@@ -8,8 +8,8 @@ from transformers import BertTokenizer
 import gzip
 import json
 
-#data_folder = "/scratch/hpc-prf-merlin/htyllm-pg/data/fineweb2_subset"
-data_folder = "src/data/fineweb2_subset"
+data_folder = "/scratch/hpc-prf-merlin/htyllm-pg/data/fineweb2_subset"
+#data_folder = "src/data/fineweb2_subset"
 tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-uncased')
 
 num_proc = 8
