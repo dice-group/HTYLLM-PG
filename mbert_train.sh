@@ -17,3 +17,5 @@ export TF_CPP_MIN_LOG_LEVEL=3
 torchrun --nproc_per_node=$NUM_GPUS src/model/mBERT_2.py 
 
 #python src/model/mBERT_2.py
+echo "Step 3: Evaluating the model..."
+python src/model/model_evaluation.py

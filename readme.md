@@ -36,3 +36,7 @@ output will be under tokenized_data as binary files
 train:
 
 python src/model/mBERT_2.py
+
+Evaluate:
+
+python src/model/model_evaluation.py
