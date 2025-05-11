@@ -34,4 +34,4 @@ src/train.py --model_path checkpoints/init \
     --tokenizer_path tokenizer \
     --dataset_dir data/processed \
     --output_dir checkpoints/pretrain_run_fineweb2 \
-    --deepspeed_config configs/deepspeed/ds_zero3_moe.json
+    --deepspeed_config /scratch/hpc-prf-merlin/htyllm-pg/luke/HTYLLM-PG/src/configs/deepspeed/ds_zero3_moe.json
