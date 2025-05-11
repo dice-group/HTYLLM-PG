@@ -77,3 +77,6 @@ tokenized_data/
 *.out
 
 checkpoints/
+
+
+data/
