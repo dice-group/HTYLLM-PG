@@ -4,7 +4,7 @@
 #SBATCH --nodes=16
 #SBATCH --ntasks=16
 #SBATCH --cpus-per-task=4
-#SBATCH --time=12:00:00
+#SBATCH --time=10:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:a100:1
 #SBATCH --mem=64GB
@@ -19,6 +19,10 @@ echo Node IP: $head_node_ip
 export LOGLEVEL=INFO
 
 source ~/miniconda3/bin/activate icebreaker
+
+# Load CUDA and set CUDA_HOME
+module load system/CUDA/12.1.1
+export CUDA_HOME=$(dirname $(dirname $(which nvcc)))
 
 srun torchrun \
 --nnodes 16 \
