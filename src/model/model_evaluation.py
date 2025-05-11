@@ -1,21 +1,22 @@
-from pathlib import Path
 import os
-import pandas as pd
-from torch.utils.data import DataLoader
 import glob
-from transformers import BertForPreTraining, TrainingArguments, Trainer, BertTokenizer
-import numpy as np
 import torch
-from torch.utils.data import Dataset
-import warnings
-import csv
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import Dataset, DataLoader, Subset
+from torch.utils.data.distributed import DistributedSampler
+import numpy as np
+from transformers import BertForPreTraining, BertTokenizer
+import pandas as pd
+from pathlib import Path
 
 tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-uncased')
+
 class BinaryPretrainingDataset(Dataset):
     def __init__(self, bin_file: str, block_size: int):
-        self.bin_file = bin_file
-        self.block_size = block_size
         self.data = np.memmap(bin_file, dtype=np.uint16, mode='r')
+        self.block_size = block_size
 
     def __len__(self):
         return (len(self.data) - 1) // self.block_size
@@ -24,14 +25,12 @@ class BinaryPretrainingDataset(Dataset):
         i = idx * self.block_size
         input_ids = torch.tensor(self.data[i: i + self.block_size], dtype=torch.long)
         attention_mask = torch.ones_like(input_ids)
-
-        # Mask 15% of tokens for MLM (BERT-style)
         labels = input_ids.clone()
+
         rand = torch.rand(input_ids.shape)
         mask_arr = (rand < 0.15) & (input_ids != tokenizer.cls_token_id) & (input_ids != tokenizer.sep_token_id)
         input_ids[mask_arr] = tokenizer.mask_token_id
 
-        # Dummy NSP label (assuming single sequences, not sentence pairs)
         next_sentence_label = torch.tensor(1, dtype=torch.long)
 
         return {
@@ -41,52 +40,70 @@ class BinaryPretrainingDataset(Dataset):
             "next_sentence_label": next_sentence_label
         }
 
-# Evaluate on other languages here (with zero- / few-shot analysis)
-k = 1000  # change to higher k later
-block_size = 256
-tokenized_data = "tokenized_data"
-
-model=BertForPreTraining.from_pretrained("./results/mbert_fine_tuned_model", local_files_only=True)
-model.eval()
-
-results = []
-
-
-def compute_loss_on_batch(batch):
+def compute_loss_on_batch(model, batch):
     with torch.no_grad():
         outputs = model(**batch)
         return outputs.loss.item()
 
+def evaluate_on_gpu(rank, world_size, k, block_size, tokenized_data, result_list):
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    torch.cuda.set_device(rank)
 
-for bin_file in glob.glob(os.path.join(tokenized_data, "*.bin")):
-    lang = Path(bin_file).stem
+    model = BertForPreTraining.from_pretrained("./results/mbert_fine_tuned_model", local_files_only=True)
+    model.to(rank)
+    model = DDP(model, device_ids=[rank])
+    model.eval()
 
-    # Load the full binary dataset
-    full_dataset = BinaryPretrainingDataset(bin_file, block_size)
+    for bin_file in glob.glob(os.path.join(tokenized_data, "*.bin")):
+        lang = Path(bin_file).stem
+        full_dataset = BinaryPretrainingDataset(bin_file, block_size)
 
-    # Sample k examples or fewer if not enough
-    num_samples = min(k, len(full_dataset))
-    if num_samples == 0:
-        print(f"Skipping {lang} due to empty dataset.")
-        continue
+        num_samples = min(k, len(full_dataset))
+        if num_samples == 0:
+            if rank == 0:
+                print(f"Skipping {lang} due to empty dataset.")
+            continue
 
-    # Sample k examples
-    indices = np.linspace(0, len(full_dataset) - 1, num_samples, dtype=int)
-    subset = torch.utils.data.Subset(full_dataset, indices)
-    loader = DataLoader(subset, batch_size=1)
+        indices = np.linspace(0, len(full_dataset) - 1, num_samples, dtype=int)
+        subset = Subset(full_dataset, indices)
+        sampler = DistributedSampler(subset, num_replicas=world_size, rank=rank, shuffle=False)
+        loader = DataLoader(subset, batch_size=8, sampler=sampler)
 
-    # Collect losses
-    losses = []
-    for batch in loader:
-        batch = {k: v.to(model.device) for k, v in batch.items()}
-        loss = compute_loss_on_batch(batch)
-        losses.append(loss)
+        local_losses = []
+        for batch in loader:
+            batch = {k: v.to(rank) for k, v in batch.items()}
+            loss = compute_loss_on_batch(model, batch)
+            local_losses.append(loss)
 
-    avg_loss = np.mean(losses)
-    results.append({"language": lang, "avg_loss": avg_loss})
-    print(f"{lang}: loss={avg_loss:.4f}")
+        local_avg_loss = torch.tensor(np.mean(local_losses), device=rank)
+        dist.all_reduce(local_avg_loss, op=dist.ReduceOp.SUM)
+        avg_loss = local_avg_loss.item() / world_size
 
-# Save results to CSV
-df = pd.DataFrame(results)
-df.to_csv("zeroshot_eval_results.csv", index=False)
-print("Saved evaluation results to zeroshot_eval_results.csv")
+        if rank == 0:
+            result_list.append({"language": lang, "avg_loss": avg_loss})
+            print(f"{lang}: loss={avg_loss:.4f}")
+
+    dist.destroy_process_group()
+
+def main():
+    world_size = torch.cuda.device_count()
+    k = 1000
+    block_size = 256
+    tokenized_data = "tokenized_data"
+    manager = mp.Manager()
+    result_list = manager.list()  # Shared list for multiprocessing-safe results
+
+    mp.spawn(
+        evaluate_on_gpu,
+        args=(world_size, k, block_size, tokenized_data, result_list),
+        nprocs=world_size,
+        join=True
+    )
+
+    # Save results only once
+    df = pd.DataFrame(list(result_list))
+    df.to_csv("zeroshot_eval_results.csv", index=False)
+    print("Saved evaluation results to zeroshot_eval_results.csv")
+
+if __name__ == "__main__":
+    main()
