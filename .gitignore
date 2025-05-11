@@ -74,9 +74,11 @@ src/data/*
 # (Optionally) exclude entire directories:
 pre_processed_data/
 tokenized_data/
-*.out
-
+results/
+lm_eval_results/
+runs/
+logs/
+fineweb2_subset_old/
+fineweb2_subset/
 checkpoints/
-
-
 data/

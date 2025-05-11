@@ -30,4 +30,7 @@ torchrun \
     src/model/mBERT_2.py
 
 echo "Step 3: Evaluating the model..."
-python src/model/model_evaluation.py
+torchrun \
+    --nnodes 16 \
+    --nproc_per_node 1 \
+    src/model/model_eval.py
