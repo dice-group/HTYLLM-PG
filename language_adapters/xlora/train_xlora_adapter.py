@@ -44,30 +44,35 @@ def train_model(tokenized_data_dir, model_name, output_dir, logging_dir):
                 "adapter_2": "./adapter_2",
                 "adapter_3": "./adapter_3",
                 "adapter_4": "./adapter_4",
+                "adapter_5": "./adapter_5",
+                "adapter_6": "./adapter_6",
+                "adapter_7": "./adapter_7",
+                "adapter_8": "./adapter_8",
             }
         ),
         verbose=True
-    )   
-    model.set_topk_lora(2)
-    
+    )
+    model.set_topk_lora(1)
+
     model.print_trainable_parameters()
     model.config.pad_token_id = tokenizer.eos_token_id
 
     training_args = TrainingArguments(
         output_dir=output_dir,
-        per_device_train_batch_size=8,
-        gradient_accumulation_steps=3,
+        per_device_train_batch_size=28,
+        gradient_accumulation_steps=4,
         num_train_epochs=1,
         learning_rate=2e-4,
         lr_scheduler_type="cosine",
         logging_dir=logging_dir,
-        logging_steps=20,
+        logging_steps=50,
         save_strategy="steps",
-        save_steps=200,
+        save_steps=20,
         bf16=True,
-        save_total_limit=200,
-        report_to=["tensorboard"],
-        dataloader_num_workers=28
+        save_total_limit=20,
+        report_to=["wandb"],
+        run_name="weights_an_biases_test",
+        dataloader_num_workers=24
     )
 
     trainer = Trainer(
@@ -78,7 +83,8 @@ def train_model(tokenized_data_dir, model_name, output_dir, logging_dir):
         data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
         callbacks=[LMEvalCallback(
             tokenizer_name=model_name,
-            eval_interval=250,
+            base_model_path=model_name,
+            eval_interval=25,
             eval_tasks=["hellaswag", "mmlu", "belebele"],
             output_dir=os.path.join(output_dir, "lm_eval"),
             tb_logdir=logging_dir
