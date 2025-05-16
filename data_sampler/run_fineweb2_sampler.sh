@@ -1,16 +1,12 @@
 #!/bin/bash
 
-TOTAL_DOCS=10000000
-NUM_LANGUAGES=150
-OUTPUT_DIR="/data/fineweb2_subset"
-META_FILE="fineweb2_meta.json"
-LOG_LEVEL="INFO"
-INCLUDE_ENGLISH="--include_english"
+TOTAL_DOCS=14000000 #20 000 000 ~ 95GB #14 000 000 ~ 67.37gb of data
+NUM_LANGUAGES=190
+OUTPUT_DIR="/data/fineweb2_subset_190_most_used_languages"
+META_FILE="filtered_fineweb2_meta.json"
 
 python sample_fineweb2.py \
   --total_docs $TOTAL_DOCS \
   --num_languages $NUM_LANGUAGES \
   --output_dir $OUTPUT_DIR \
   --meta_file $META_FILE \
-  --log_level $LOG_LEVEL \
-  $INCLUDE_ENGLISH
