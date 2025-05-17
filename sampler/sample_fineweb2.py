@@ -2,6 +2,8 @@ from datatrove.executor import LocalPipelineExecutor
 from datatrove.pipeline.readers import ParquetReader
 from datatrove.pipeline.writers import JsonlWriter
 from multiprocessing import freeze_support
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import os
 import logging
 import json
@@ -9,6 +11,7 @@ import argparse
 import time
 import random
 import requests
+import json
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Sample data from fineweb-2 dataset.')
@@ -18,6 +21,7 @@ def parse_arguments():
     parser.add_argument('--output_dir', type=str, default='./fineweb2_subset')
     parser.add_argument('--meta_file', type=str, default='./sampler/fineweb2_meta.json')
     parser.add_argument('--dont_include_english', action='store_true')
+    parser.add_argument('--num_proc', type=int, default=1, help='max. Number of processes, each will download a single language concurrently')
     return parser.parse_args()
 
 
@@ -26,10 +30,12 @@ def load_metadata(meta_file):
         return json.load(f)
 
 
-def load_data(total_docs: int, num_languages: int | str, dont_include_english: bool, output_dir: str, meta_file: str):
+def load_data(total_docs: int, num_languages: int | str, dont_include_english: bool, output_dir: str, meta_file: str, num_proc: int):
     metadata_list = load_metadata(meta_file)
     if num_languages == "all":
         num_languages = len(metadata_list)
+        
+    results = {}
 
     # Sort languages by number of documents in descending order
     sorted_languages = sorted(metadata_list, key=lambda x: x['Documents'], reverse=True)
@@ -49,6 +55,7 @@ def load_data(total_docs: int, num_languages: int | str, dont_include_english: b
         print(f"Current fair share per language: {fair_share_per_lang} of language {lang['Subset']} which has {lang['Documents']} documents")
         available_docs = lang['Documents']
         docs_to_sample = min(fair_share_per_lang, available_docs)
+        results[lang['Subset']] = docs_to_sample
         print(f"Sampling {docs_to_sample} documents for language {lang['Subset']}")
 
         if docs_to_sample > 0:
@@ -72,6 +79,7 @@ def load_data(total_docs: int, num_languages: int | str, dont_include_english: b
 
     if not dont_include_english:
         english_docs_to_sample = max(fair_share_per_lang, remaining_docs)
+        results["english"] = english_docs_to_sample
 
         if english_docs_to_sample > 0:
             english_output_path = os.path.join(output_dir, "english.jsonl")
@@ -85,12 +93,23 @@ def load_data(total_docs: int, num_languages: int | str, dont_include_english: b
             )
             TASKS.append(("english", english_pipeline))
             
-    for _, executor in TASKS:
-        executor.run()
+    with ThreadPoolExecutor(max_workers=num_proc) as executor:
+        futures = {executor.submit(task.run): lang['Subset'] if isinstance(lang, dict) else lang for lang, task in TASKS}
+        for future in as_completed(futures):
+            lang = futures[future]
+            try:
+                future.result()
+                print(f"{lang} completed.")
+            except Exception as e:
+                print(f"Error processing {lang}: {e}")
+
+        
+    with open(os.path.join(output_dir, "sampling_summary.json"), "w") as f:
+        json.dump(results, f, indent=2)
 
 def main():
     args = parse_arguments()
-    load_data(args.total_docs, args.num_languages, args.dont_include_english, args.output_dir, args.meta_file)
+    load_data(args.total_docs, args.num_languages, args.dont_include_english, args.output_dir, args.meta_file, args.num_proc)
 
 if __name__ == '__main__':
     freeze_support()
