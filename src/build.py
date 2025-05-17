@@ -1,8 +1,8 @@
-"""Helpers to create a downsized (7×17 M) Mixtral MoE model."""
+"""Helpers to create a downsized (7×17 M) Mixtral MoE model."""
 
 from __future__ import annotations
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 import torch
 from transformers import MixtralConfig, MixtralForCausalLM
 
@@ -41,6 +41,63 @@ def build_model(cfg: MixtralConfig, device: Optional[str | torch.device] = None)
     return model
 
 
+def ffn_params_per_expert(cfg: MixtralConfig) -> int:
+    """Calculate parameters per expert in MoE layers.
+    
+    Each expert has 3 linear layers (typically with bias=False).
+    """
+    return 3 * cfg.hidden_size * cfg.intermediate_size
+
+
+def count_active_params(total_params: int, cfg: MixtralConfig) -> int:
+    """Calculate active parameters during inference (with only top-k experts)."""
+    ffn_per_exp = ffn_params_per_expert(cfg)
+    num_layers = cfg.num_hidden_layers
+    
+    # All FFN weights stored on disk
+    total_ffn_params = ffn_per_exp * cfg.num_local_experts * num_layers
+    
+    # Keep only top-k experts per layer at run time
+    active_ffn_params = ffn_per_exp * cfg.num_experts_per_tok * num_layers
+    
+    shared_params = total_params - total_ffn_params
+    return shared_params + active_ffn_params
+
+
+def count_parameters(model: torch.nn.Module, cfg: MixtralConfig) -> Dict[str, Any]:
+    """Count total, trainable, and active parameters for a Mixtral model.
+    
+    Returns:
+        Dictionary with parameter counts (total, trainable, active).
+    """
+    # 1) Total parameters (includes frozen weights, experts, everything)
+    total_params = sum(p.numel() for p in model.parameters())
+    
+    # 2) Trainable parameters only
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    
+    # 3) Active parameters per token (MoE-specific)
+    active_params = count_active_params(total_params, cfg)
+    
+    return {
+        "total": total_params,
+        "total_millions": total_params / 1e6,
+        "trainable": trainable_params,
+        "trainable_millions": trainable_params / 1e6,
+        "active": active_params,
+        "active_millions": active_params / 1e6,
+    }
+
+
+def print_parameter_counts(model: torch.nn.Module, cfg: MixtralConfig) -> None:
+    """Print total, trainable, and active parameters for a Mixtral model."""
+    param_counts = count_parameters(model, cfg)
+    
+    print(f"Total params: {param_counts['total']:,}  ({param_counts['total_millions']:.2f} M)")
+    print(f"Trainable params: {param_counts['trainable']:,}  ({param_counts['trainable_millions']:.2f} M)")
+    print(f"~Active params/token: {param_counts['active']:,}  ({param_counts['active_millions']:.2f} M)")
+
+
 def cli():
     import argparse
     ap = argparse.ArgumentParser("init tiny mixtral model")
@@ -51,6 +108,11 @@ def cli():
 
     cfg = MixtralConfig.from_json_file(args.config) if args.config else tiny_mixtral_config()
     model = build_model(cfg, args.device)
+    
+    # Print parameter counts
+    print("Parameter counts:")
+    print_parameter_counts(model, cfg)
+    
     Path(args.save_dir).mkdir(parents=True, exist_ok=True)
     model.save_pretrained(args.save_dir)
     print("Model saved to", Path(args.save_dir).resolve())
