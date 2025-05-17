@@ -21,6 +21,7 @@ def parse_arguments():
     parser.add_argument('--output_dir', type=str, default='./fineweb2_subset')
     parser.add_argument('--meta_file', type=str, default='./sampler/fineweb2_meta.json')
     parser.add_argument('--dont_include_english', action='store_true')
+    parser.add_argument('--num_proc', type=int, default=1, help='max. Number of processes, each will download a single language concurrently')
     return parser.parse_args()
 
 
@@ -29,7 +30,7 @@ def load_metadata(meta_file):
         return json.load(f)
 
 
-def load_data(total_docs: int, num_languages: int | str, dont_include_english: bool, output_dir: str, meta_file: str):
+def load_data(total_docs: int, num_languages: int | str, dont_include_english: bool, output_dir: str, meta_file: str, num_proc: int):
     metadata_list = load_metadata(meta_file)
     if num_languages == "all":
         num_languages = len(metadata_list)
@@ -92,7 +93,7 @@ def load_data(total_docs: int, num_languages: int | str, dont_include_english: b
             )
             TASKS.append(("english", english_pipeline))
             
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=num_proc) as executor:
         futures = {executor.submit(task.run): lang['Subset'] if isinstance(lang, dict) else lang for lang, task in TASKS}
         for future in as_completed(futures):
             lang = futures[future]
@@ -108,7 +109,7 @@ def load_data(total_docs: int, num_languages: int | str, dont_include_english: b
 
 def main():
     args = parse_arguments()
-    load_data(args.total_docs, args.num_languages, args.dont_include_english, args.output_dir, args.meta_file)
+    load_data(args.total_docs, args.num_languages, args.dont_include_english, args.output_dir, args.meta_file, args.num_proc)
 
 if __name__ == '__main__':
     freeze_support()
