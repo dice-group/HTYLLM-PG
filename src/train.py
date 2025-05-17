@@ -40,26 +40,16 @@ class ScriptArgs:
 def main():
     args, = HfArgumentParser(ScriptArgs).parse_args_into_dataclasses()
     
-    # Initialize distributed environment if run with torchrun
-    local_rank = int(os.environ.get("LOCAL_RANK", -1))
-    world_size = int(os.environ.get("WORLD_SIZE", 1))
-    
-    is_distributed = local_rank != -1
-    
-    if is_distributed:
-        torch.cuda.set_device(local_rank)
-        dist.init_process_group(backend="nccl")
-        print(f"Initialized process {local_rank} / {world_size}")
-
     tok = AutoTokenizer.from_pretrained(args.tokenizer_path)  # <-- Use the tokenizer path directly
 
     # ── Load the arrow dataset (zero‑copy memory‑mapped) ────────────────────
     ds = load_from_disk(args.dataset_dir)
     # (optional) shuffle each epoch via Trainer's dataloader, or:
     # ds = ds.shuffle(seed=42)
-
     collator = DataCollatorForLanguageModeling(tok, mlm=False)
-    model = MixtralForCausalLM.from_pretrained(args.model_path)
+    model = MixtralForCausalLM.from_pretrained(args.model_path, torch_dtype=torch.bfloat16, low_cpu_mem_usage=True)
+    model.gradient_checkpointing_enable()
+    model.enable_flash_attention_2d()
 
     targs = TrainingArguments(
         output_dir=args.output_dir,
@@ -69,12 +59,11 @@ def main():
         num_train_epochs=args.epochs,
         max_steps=args.max_steps,
         bf16=torch.cuda.is_available(),
+        optim="adamw_torch_fused",
         logging_steps=args.logging_steps,
         save_steps=1_000,
         report_to=["tensorboard"],
         deepspeed=args.deepspeed_config,
-        # Distributed training parameters
-        local_rank=local_rank,
         ddp_find_unused_parameters=False,
     )
 
@@ -85,9 +74,6 @@ def main():
         data_collator=collator,
     ).train()
     
-    # Clean up process group for distributed training
-    if is_distributed:
-        dist.destroy_process_group()
 
 
 if __name__ == "__main__":
