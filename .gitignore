@@ -5,3 +5,7 @@ language_adapters/results
 fineweb2_subset
 logs
 launch.json
+language_adapters/xlora/venv-jupyterhub
+language_adapters/xlora/adapter_*
+wandb/
+*output.log*
