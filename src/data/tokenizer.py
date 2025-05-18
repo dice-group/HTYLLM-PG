@@ -1,4 +1,4 @@
-import os
+import sys
 from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
@@ -9,7 +9,6 @@ import gzip
 import json
 
 data_folder = "/scratch/hpc-prf-merlin/htyllm-pg/data/"
-#data_folder = "src/data/fineweb2_subset"
 tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-uncased')
 
 num_proc = 8
@@ -25,33 +24,41 @@ def process(example):
 
 
 def main():
+    if len(sys.argv) == 1:
+        given_dataset = input("Please enter the path to the jsonl folder/jsonl.gz file containing the data.\n")
+    else:
+        given_dataset = sys.argv[1]
+
+    while not given_dataset.endswith('.jsonl') and not given_dataset.endswith('.jsonl.gz'):
+        given_dataset = input(f"The given path ({given_dataset}) didn't lead to any valid jsonl folder/jsonl.gz file!\n" +
+                              "Please enter the path to the jsonl folder/jsonl.gz file containing the data.\n")
+
     # Define the paths to the processed Parquet files.
     # These files are now saved in a project-root directory "pre_processed_data"
     dataset_files = {}
-    preproc_dir = Path("pre_processed_data")
+    preproc_dir = Path(given_dataset[:given_dataset.rfind('/')+1] + "pre_processed_data")
     preproc_dir.mkdir(exist_ok=True)
 
-    for lang_folder in os.listdir(data_folder):
-        if lang_folder.endswith('.jsonl'):
-            lang_path = Path(data_folder) / lang_folder
-            if lang_path.is_dir():
-                lang_key = lang_folder.replace(".jsonl", "")  # e.g., "adl_Latn"
+    lang_folder = given_dataset[given_dataset.rfind('/')+1:]
+    if lang_folder.endswith('.jsonl'):
+        if Path(given_dataset).is_dir():
+            lang_key = lang_folder.replace(".jsonl", "")  # e.g., "adl_Latn"
 
-                records = []
-                for gz_file in lang_path.glob("*.jsonl.gz"):
-                    with gzip.open(gz_file, 'rt', encoding='utf-8') as f:
-                        for line in f:
-                            try:
-                                data = json.loads(line)
-                                if "text" in data:
-                                    records.append({"text": data["text"]})
-                            except json.JSONDecodeError:
-                                continue  # skip corrupted lines
+            records = []
+            for gz_file in Path(given_dataset).glob("*.jsonl.gz"):
+                with gzip.open(gz_file, 'rt', encoding='utf-8') as f:
+                    for line in f:
+                        try:
+                            data = json.loads(line)
+                            if "text" in data:
+                                records.append({"text": data["text"]})
+                        except json.JSONDecodeError:
+                            continue  # skip corrupted lines
 
-                if records:
-                    out_path = preproc_dir / f"{lang_key}.parquet"
-                    pd.DataFrame(records).to_parquet(out_path, index=False)
-                    dataset_files[lang_key] = str(out_path)
+            if records:
+                out_path = preproc_dir / f"{lang_key}.parquet"
+                pd.DataFrame(records).to_parquet(out_path, index=False)
+                dataset_files[lang_key] = str(out_path)
 
     ds_dict = load_dataset("parquet", data_files=dataset_files)
 
@@ -71,7 +78,7 @@ def main():
         )
 
     # Define the output directory for the tokenized binary files.
-    output_dir = Path("tokenized_data")
+    output_dir = Path(given_dataset[:given_dataset.rfind('/')+1] + "tokenized_data")
     output_dir.mkdir(exist_ok=True, parents=True)
 
     for lang, ds in ds_dict.items():

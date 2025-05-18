@@ -1,12 +1,11 @@
-### inspired by https://www.kdnuggets.com/implement-cross-lingual-transfer-learning-mbert-hugging-face-transformers
-from pathlib import Path
+# inspired by https://www.kdnuggets.com/implement-cross-lingual-transfer-learning-mbert-hugging-face-transformers
 import os
 import sys
-from transformers import BertForPreTraining, TrainingArguments, Trainer, BertTokenizer, DataCollatorForLanguageModeling
+from pathlib import Path
+from transformers import BertForPreTraining, TrainingArguments, Trainer, BertTokenizer
 import numpy as np
 import torch
-#torch.backends.cuda.matmul.allow_tf32 = True
-
+# torch.backends.cuda.matmul.allow_tf32 = True
 import torch.distributed as dist
 from torch.utils.data import Dataset
 import warnings
@@ -21,14 +20,13 @@ def is_main_process():
 
 
 if is_main_process():
-    if (not sys.argv[1]):
+    if len(sys.argv) == 1:
         given_dataset = input("Please enter the path to the bin file containing the tokenized data.\n")
     else:
         given_dataset = sys.argv[1]
-
-    while (not given_dataset.endswith('.bin')):
-        given_dataset = input("The given path didn't lead to any valid bin file.\n" +
-                              "Please enter the path to the bin file containing the tokenized data.\n")
+    while not Path(given_dataset).is_file() or not given_dataset.endswith('.bin'):
+        given_dataset = Path(input(f"The given path ({given_dataset}) didn't lead to any valid bin file!\n" +
+                                   "Please enter the path to the bin file containing the tokenized data.\n"))
     print(f"Number of GPUs available: {torch.cuda.device_count()}")
     print(torch.cuda.is_available())
 
@@ -82,7 +80,7 @@ def split_binary_file(bin_file: str, split_ratio: float = 0.9):
 
 
 # Load datasets
-if (is_main_process()):
+if is_main_process():
     print(f"Splitting the data located in {given_dataset} into train and val data.")
 train_dataset, val_dataset = split_binary_file(given_dataset)
 
@@ -112,7 +110,7 @@ training_args = TrainingArguments(
 if is_main_process():
     print(f"Fine-tuning on the given dataset now...")
 
-model_location = output_dir + "/mbert_fine_tuned_model_" + given_dataset[given_dataset.rfind('/')+1:-4]
+model_location = output_dir + "/mbert_fine_tuned_model_" + given_dataset[given_dataset.rfind('/') + 1:-4]
 
 trainer = Trainer(
     model=model,
@@ -129,9 +127,9 @@ trainer = Trainer(
 )
 
 trainer.train()
-#trainer.train(resume_from_checkpoint=True)
+# trainer.train(resume_from_checkpoint=True)
 model.save_pretrained(model_location)
-if(is_main_process()):
+if is_main_process():
     print(f"Saved the model to {model_location}.")
 
 if dist.is_initialized():
