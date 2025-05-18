@@ -11,7 +11,7 @@
 
 # Activate the conda environment
 source ~/miniconda3/bin/activate icebreaker 
-python tokenizer/train_tokenizer.py --files_glob "../../data/*/.jsonl.gz"
+python tokenizer/train_tokenizer.py --files_glob "/scratch/hpc-prf-merlin/htyllm-pg/luke/data/**/*.jsonl.gz" --output_dir tokenizer
 
 # Run tokenization on a single node
 srun --nodes=1 --ntasks=1 
