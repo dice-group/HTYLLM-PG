@@ -65,3 +65,4 @@ The training script uses:
 - The data is expected to be in `/data/fineweb2_subset/`
 - Checkpoints will be saved to `checkpoints/pretrain_run_vm/`
 - Evaluation metrics will be logged and available in TensorBoard
+- htop for cpu usage
