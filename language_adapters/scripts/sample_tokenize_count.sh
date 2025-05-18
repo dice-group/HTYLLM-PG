@@ -1,19 +1,21 @@
 #!/bin/bash
-"""
-For langauge adapter training, we first subsample data, 
-then tokenize it,
-then count amount of tokens. 
-Afterwards data is tokenized and saved and thus prepared for training
-TODO: make parts of pipeline concurrent and more efficient if needed, currently not necessary
-"""
+
+# For langauge adapter training, we first subsample data, 
+# then tokenize it,
+# then count amount of tokens. 
+# Afterwards data is tokenized and saved and thus prepared for training
+# TODO: make parts of pipeline concurrent and more efficient if needed, currently not necessary
+
 
 # ----- 1. subsample from original fineweb subset ----- 
-LANGS="apc_Arab,arz_Arab,ary_Arab,ars_Arab,heb_Hebr"
+#LANGS="apc_Arab,arz_Arab,ary_Arab,ars_Arab,heb_Hebr"
+#LANGS="vie_Latn,tha_Thai,khm_Khmr,lao_Lao,msa_Latn"
+LANGS="hin_Deva,urd_Arab,mar_Deva,ben_Beng,pan_Guru"
 INPUT_DIR="/data/fineweb2_subset"
-SUB_SAMPLE_OUTPUT_DIR="/data/joel/language_adapters_subsets/arabic_subset"
-LINES=28000 # this is per langauge
+SUB_SAMPLE_OUTPUT_DIR="/data/joel/language_adapters_subsets/south_asian/"
+LINES=45000 # this is per langauge
 
-python subsample.py \
+python subsample_data.py \
   --langs "$LANGS" \
   --input_dir "$INPUT_DIR" \
   --output_dir "$SUB_SAMPLE_OUTPUT_DIR" \
@@ -22,12 +24,12 @@ python subsample.py \
 
 # ----- 2. Toknenized subsampled data ----- 
 DATA_DIR=$SUB_SAMPLE_OUTPUT_DIR
-TOKENIZED_DATA_DIR="/data/joel/tokenized_adapter_subsets/arabic_subset/"
+TOKENIZED_DATA_DIR="/data/joel/tokenized_adapter_subsets/south_asian/"
 MODEL_NAME="bigscience/bloom-560m"
 CACHE_DIR="/data/shared_home_cache/datasets/joel"
 NUM_PROC=24
 
-python script_name.py \
+python tokenize_subsampled_data.py \
   --data_dir "$DATA_DIR" \
   --tokenized_data_dir "$TOKENIZED_DATA_DIR" \
   --model_name "$MODEL_NAME" \
