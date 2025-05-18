@@ -7,7 +7,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import os
-
 import torch
 import torch.distributed as dist
 from datasets import load_from_disk
@@ -19,7 +18,7 @@ from transformers import (
     TrainingArguments,
     MixtralForCausalLM,
 )
-
+from harness_callback import LMEvalCallback
 
 @dataclass
 class ScriptArgs:
@@ -62,6 +61,12 @@ def main():
         optim="adamw_torch_fused",
         logging_steps=args.logging_steps,
         save_steps=1_000,
+        callbacks=[LMEvalCallback(
+        task_list=("hellaswag", "mmlu", "belebele"),
+        fewshot=0,
+        batch_size=16,
+        prefix="harness",
+        )],
         report_to=["tensorboard"],
         deepspeed=args.deepspeed_config,
         ddp_find_unused_parameters=False,

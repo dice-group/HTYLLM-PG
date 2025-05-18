@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Activate the virtual environment
+source .venv/bin/activate
+
+# Set environment variables for distributed training
+export CUDA_VISIBLE_DEVICES=0,1
+export NCCL_DEBUG=INFO
+
+# Run multi-GPU training with torchrun
+# --nproc_per_node=2 to use both GPUs
+torchrun \
+  --nproc_per_node=2 \
+  src/train.py \
+  --model_path checkpoints/init \
+  --tokenizer_path tokenizer \
+  --dataset_dir data/processed \
+  --output_dir checkpoints/pretrain_run_vm \
+  --deepspeed_config src/configs/deepspeed/ds_zero3_moe.json \
+  --batch_size 8 \
+  --grad_accum 16
+
+echo "Training complete!"
