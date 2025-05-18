@@ -83,7 +83,10 @@ def main():
     # Arrow supports memory‑mapping, so we can save massive datasets safely
     Path(args.out_dir).mkdir(parents=True, exist_ok=True)
     tokenised.save_to_disk(args.out_dir)
-    logging.info(f"✅ wrote {len(tokenised):,} sequences to {args.out_dir}")
+    total_sequences = len(tokenised)
+    total_tokens = total_sequences * args.seq_length
+    logging.info(f"✅ wrote {total_sequences:,} sequences to {args.out_dir}")
+    logging.info(f"📊 Total tokens produced: {total_tokens:,} (sequences × {args.seq_length:,})")
 
 
 if __name__ == "__main__":
