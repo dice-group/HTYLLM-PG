@@ -40,7 +40,7 @@ def stream_jsonl(files: list[str], field: str = "text") -> Iterable[str]:
 
 def train_tokenizer(
     files_glob: str,
-    vocab_size: int = 65536,
+    vocab_size: int = 32768,
     output_dir: str | Path = "tokenizer",
     min_frequency: int = 2,
     json_field: str = "text",
@@ -105,7 +105,7 @@ def train_tokenizer(
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--files_glob", required=True)
-    ap.add_argument("--vocab_size", type=int, default=65536)
+    ap.add_argument("--vocab_size", type=int, default=32768)
     ap.add_argument("--output_dir", default="tokenizer")
     ap.add_argument("--min_frequency", type=int, default=2)
     ap.add_argument("--json_field", default="text", help="Field name containing text inside JSON lines")
