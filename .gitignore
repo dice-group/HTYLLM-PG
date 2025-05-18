@@ -25,10 +25,13 @@ build/
 # PyInstaller
 *.spec
 
+requirements.txt
 # mypy
 .mypy_cache/
 
 # pytest
+# Dataset directories
+fineweb2_subset/
 .pytest_cache/
 
 # coverage
