@@ -1,10 +1,7 @@
 ### inspired by https://www.kdnuggets.com/implement-cross-lingual-transfer-learning-mbert-hugging-face-transformers
 from pathlib import Path
-import re
 import os
-import pandas as pd
-from torch.utils.data import DataLoader
-import glob
+import sys
 from transformers import BertForPreTraining, TrainingArguments, Trainer, BertTokenizer, DataCollatorForLanguageModeling
 import numpy as np
 import torch
@@ -13,22 +10,29 @@ import torch
 import torch.distributed as dist
 from torch.utils.data import Dataset
 import warnings
-import csv
 from lm_harness_eval import LMEvalCallback
 
 # Suppress the specific warning
 warnings.filterwarnings("ignore", message="Was asked to gather along dimension 0, but all input tensors were scalars")
 
+
 def is_main_process():
     return int(os.environ.get("RANK", 0)) == 0
 
+
 if is_main_process():
+    if (not sys.argv[1]):
+        given_dataset = input("Please enter the path to the bin file containing the tokenized data.\n")
+    else:
+        given_dataset = sys.argv[1]
+
+    while (not given_dataset.endswith('.bin')):
+        given_dataset = input("The given path didn't lead to any valid bin file.\n" +
+                              "Please enter the path to the bin file containing the tokenized data.\n")
     print(f"Number of GPUs available: {torch.cuda.device_count()}")
     print(torch.cuda.is_available())
 
-
 tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-uncased')
-tokenized_data = "tokenized_data"  # path to folder containing the tokenized data
 
 
 class BinaryPretrainingDataset(Dataset):
@@ -78,10 +82,11 @@ def split_binary_file(bin_file: str, split_ratio: float = 0.9):
 
 
 # Load datasets
-english_train = tokenized_data + "/english.bin"
-train_dataset, val_dataset = split_binary_file(english_train)
+if (is_main_process()):
+    print(f"Splitting the data located in {given_dataset} into train and val data.")
+train_dataset, val_dataset = split_binary_file(given_dataset)
 
-output_dir = "./results"
+output_dir = "./models"
 
 # Model and training setup
 model = BertForPreTraining.from_pretrained('bert-base-multilingual-uncased')
@@ -91,7 +96,7 @@ if torch.cuda.is_available():
 training_args = TrainingArguments(
     output_dir=output_dir,
     eval_strategy="epoch",
-    save_strategy="steps",       # Save based on steps
+    save_strategy="steps",  # Save based on steps
     save_steps=200,
     logging_dir='./logs',
     logging_steps=20,
@@ -105,7 +110,9 @@ training_args = TrainingArguments(
     ddp_find_unused_parameters=False,
 )
 if is_main_process():
-    print("Fine-tuning on English dataset now...")
+    print(f"Fine-tuning on the given dataset now...")
+
+model_location = output_dir + "/mbert_fine_tuned_model_" + given_dataset[given_dataset.rfind('/')+1:-4]
 
 trainer = Trainer(
     model=model,
@@ -113,17 +120,19 @@ trainer = Trainer(
     train_dataset=train_dataset,
     eval_dataset=val_dataset,
     callbacks=[LMEvalCallback(
-            tokenizer_name='bert-base-multilingual-uncased',
-            eval_interval=500,
-            eval_tasks=["hellaswag","belebele"],
-            output_dir=os.path.join(output_dir, "lm_eval"),
-            tb_logdir="./runs/lm_eval"
-        )]
+        tokenizer_name='bert-base-multilingual-uncased',
+        eval_interval=500,
+        eval_tasks=["hellaswag", "belebele"],
+        output_dir=os.path.join(model_location, "lm_eval"),
+        tb_logdir=model_location + "/runs/lm_eval"
+    )]
 )
 
 trainer.train()
 #trainer.train(resume_from_checkpoint=True)
-model.save_pretrained("./results/mbert_fine_tuned_model")
+model.save_pretrained(model_location)
+if(is_main_process()):
+    print(f"Saved the model to {model_location}.")
 
 if dist.is_initialized():
     dist.barrier()
