@@ -46,9 +46,13 @@ def train_tokenizer(
     json_field: str = "text",
     special_tokens: tuple[str, str, str, str] = ("<s>", "</s>", "<unk>", "<pad>"),
 ) -> None:
-    paths = sorted([str(p) for p in Path().glob(files_glob)])
-    if not paths:
-        raise ValueError(f"No files match pattern {files_glob}")
+    import glob, os
+    if os.path.isabs(files_glob):
+        # absolute path → use glob (supports **)
+        paths = sorted(glob.glob(files_glob, recursive=True))
+    else:
+        # relative path → pathlib is fine (keeps old behaviour)
+        paths = sorted(str(p) for p in Path().glob(files_glob))
     
     # Debug information
     print(f"Found {len(paths)} paths matching pattern {files_glob}")
