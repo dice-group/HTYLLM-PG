@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse, logging, gzip, json
 from pathlib import Path
 from typing import List
+import glob
 
 from datasets import load_dataset, Features, Value, Dataset
 from transformers import AutoTokenizer
@@ -25,7 +26,8 @@ def chunk_batch(texts: List[str], tokenizer, seq_len: int):
 
 
 def get_raw_dataset(pattern: str, text_field: str):
-    files = sorted(str(p) for p in Path().glob(pattern))
+    # Use glob.glob instead of Path().glob to handle absolute paths
+    files = sorted(glob.glob(pattern, recursive=True))
     if not files:
         raise FileNotFoundError(f"No files matched {pattern}")
 
