@@ -8,7 +8,7 @@ from transformers import MixtralConfig, MixtralForCausalLM
 
 
 def tiny_mixtral_config(
-    vocab_size: int = 32768,
+    vocab_size: int = 131_072,
     d_model: int = 384,
     d_ff: int = 1_536,
     n_layers: int = 12,
