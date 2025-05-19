@@ -4,8 +4,8 @@
   "zero_optimization": {
     "stage": 2,               
     "overlap_comm": true,
-    "allgather_bucket_size": "auto",
-    "reduce_bucket_size": "auto",
+    "allgather_bucket_size": 2e8,
+    "reduce_bucket_size": 2e8,
     "contiguous_gradients": true
   },
 
