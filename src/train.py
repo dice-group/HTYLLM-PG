@@ -48,7 +48,7 @@ def main():
     collator = DataCollatorForLanguageModeling(tok, mlm=False)
     model = MixtralForCausalLM.from_pretrained(args.model_path, torch_dtype=torch.bfloat16, low_cpu_mem_usage=True)
     model.gradient_checkpointing_enable()
-    model.enable_flash_attention_2d()
+    #model.enable_flash_attention_2d()
 
     targs = TrainingArguments(
         output_dir=args.output_dir,
