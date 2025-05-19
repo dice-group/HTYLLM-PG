@@ -61,22 +61,24 @@ def main():
         optim="adamw_torch_fused",
         logging_steps=args.logging_steps,
         save_steps=1_000,
-        callbacks=[LMEvalCallback(
-        task_list=("hellaswag", "mmlu", "belebele"),
-        fewshot=0,
-        batch_size=16,
-        prefix="harness",
-        )],
         report_to=["tensorboard"],
         deepspeed=args.deepspeed_config,
         ddp_find_unused_parameters=False,
     )
+
+    callbacks = [LMEvalCallback(
+        task_list=("hellaswag", "mmlu", "belebele"),
+        fewshot=0,
+        batch_size=16,
+        prefix="harness",
+    )]
 
     Trainer(
         model=model,
         args=targs,
         train_dataset=ds,
         data_collator=collator,
+        callbacks=callbacks,
     ).train()
     
 
