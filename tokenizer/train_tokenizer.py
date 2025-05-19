@@ -50,7 +50,7 @@ def train_tokenizer(
     min_frequency: int = 2,
     json_field: str = "text",
     special_tokens: tuple[str, str, str, str] = ("<s>", "</s>", "<unk>", "<pad>"),
-    chunk_size: int = 500,              # NEW parameter to accept CLI flag
+    chunk_size: int = 20,              # NEW parameter to accept CLI flag
 ) -> None:
     import glob, os
     if os.path.isabs(files_glob):
@@ -132,12 +132,12 @@ if __name__ == "__main__":
     ap.add_argument("--output_dir", default="tokenizer")
     ap.add_argument("--min_frequency", type=int, default=2)
     ap.add_argument("--json_field", default="text", help="Field name containing text inside JSON lines")
-    ap.add_argument("--chunk_size", type=int, default=500,
+    ap.add_argument("--chunk_size", type=int, default=20,
                 help="Number of files to train on at once")
     args = ap.parse_args()
     
     # Keep the Rust core single-process to save RAM
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    #os.environ["TOKENIZERS_PARALLELISM"] = "false"
     
     train_tokenizer(**vars(args))
 
