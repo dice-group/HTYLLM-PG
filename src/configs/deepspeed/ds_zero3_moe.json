@@ -9,7 +9,7 @@
     "contiguous_gradients": true
   },
 
-  "train_micro_batch_size_per_gpu": 24,
+  "train_micro_batch_size_per_gpu": 64,
   "gradient_accumulation_steps": 4,
 
   "wall_clock_breakdown": true

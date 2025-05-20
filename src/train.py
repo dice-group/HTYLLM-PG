@@ -27,7 +27,7 @@ class ScriptArgs:
     tokenizer_path: str = "tokenizer"  # <-- Added tokenizer path parameter
     output_dir: str = "checkpoints/pretrain-run"
 
-    batch_size: int = 24
+    batch_size: int = 64
     grad_accum: int = 4
     lr: float = 3e-4
     epochs: int = 3
