@@ -16,6 +16,6 @@ torchrun \
   --output_dir checkpoints/pretrain_run_vm \
   --deepspeed_config src/configs/deepspeed/ds_zero3_moe.json \
   --batch_size 64 \
-  --grad_accum 4
+  --grad_accum 1
 
 echo "Training complete!"
