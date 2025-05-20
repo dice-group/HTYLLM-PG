@@ -24,9 +24,9 @@ if is_main_process():
         given_dataset = input("Please enter the path to the bin file containing the tokenized data.\n")
     else:
         given_dataset = sys.argv[1]
-    while not Path(given_dataset).is_file() or not given_dataset.endswith('.bin'):
-        given_dataset = Path(input(f"The given path ({given_dataset}) didn't lead to any valid bin file!\n" +
-                                   "Please enter the path to the bin file containing the tokenized data.\n"))
+    while not Path(given_dataset).is_file() and not given_dataset.endswith('.bin'):
+        given_dataset = input(f"The given path ({given_dataset}) didn't lead to any valid bin file!\n" +
+                              "Please enter the path to the bin file containing the tokenized data.\n")
     print(f"Number of GPUs available: {torch.cuda.device_count()}")
     print(torch.cuda.is_available())
 
@@ -120,7 +120,7 @@ trainer = Trainer(
     callbacks=[LMEvalCallback(
         tokenizer_name='bert-base-multilingual-uncased',
         eval_interval=500,
-        eval_tasks=["hellaswag", "belebele"],
+        eval_tasks=["hellaswag", "belebele", "xnli"],
         output_dir=os.path.join(model_location, "lm_eval"),
         tb_logdir=model_location + "/runs/lm_eval"
     )]
