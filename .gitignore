@@ -80,3 +80,4 @@ tokenized_data/
 data/
 checkpoints/
 tokenizer/shards/
+**/temp_untracked/
