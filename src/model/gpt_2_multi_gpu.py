@@ -83,9 +83,9 @@ class Block(nn.Module):
 class GPTConfig:
     block_size: int = 1024 # max sequence length
     vocab_size: int = 50257 # number of tokens: 50,000 BPE merges + 256 bytes tokens + 1 <|endoftext|> token
-    n_layer: int = 12 # number of layers
-    n_head: int = 12 # number of heads
-    n_embd: int = 768 # embedding dimension
+    n_layer: int = 24 # number of layers
+    n_head: int = 16 # number of heads
+    n_embd: int = 1024 # embedding dimension
 
 class GPT(nn.Module):
 
@@ -349,8 +349,8 @@ if __name__ == "__main__":
 
     max_lr = 6e-4
     min_lr = max_lr * 0.1
-    warmup_steps = 715 * 10 # scaled values according to gpt-2 paper (we use other dataset)
-    max_steps = 19073 * 10 # scaled values according to gpt-2 paper (we use other dataset)
+    warmup_steps = 1024  # scaled values according to gpt-2 paper (we use other dataset)
+    max_steps = 32_768 # scaled values according to gpt-2 paper (we use other dataset)
 
     def get_lr(it):
         if it < warmup_steps:
