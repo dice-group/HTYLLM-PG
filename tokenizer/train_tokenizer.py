@@ -135,7 +135,7 @@ if __name__ == "__main__":
     ap.add_argument("--chunk_size", type=int, default=20,
                 help="Number of files to train on at once")
     args = ap.parse_args()
-    
+    print("Starting tokenizer training!") 
     # Keep the Rust core single-process to save RAM
     #os.environ["TOKENIZERS_PARALLELISM"] = "false"
     
