@@ -11,7 +11,7 @@ import json
 data_folder = "/scratch/hpc-prf-merlin/htyllm-pg/data/"
 tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-uncased')
 
-num_proc = 8
+num_proc = 48
 
 
 def process(example):

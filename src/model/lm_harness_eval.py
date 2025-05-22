@@ -30,13 +30,15 @@ class LMEvalCallback(TrainerCallback):
             subprocess.run([
                 "lm_eval",
                 "--model", "hf",
-                "--model_args", f"pretrained={model_path},tokenizer={self.tokenizer_name}",
+                "--model_args",
+                f"pretrained={model_path},tokenizer={self.tokenizer_name},max_length=512,truncation=True",
                 "--tasks", ",".join(self.eval_tasks),
                 "--device", "cuda:0",
                 "--batch_size", "auto",
                 "--limit", "100",
                 "--output_path", str(step_dir),
             ], check=True, env=env)
+
         except subprocess.CalledProcessError as e:
             print(f"Evaluation failed at step {state.global_step}: {e}")
             return control
