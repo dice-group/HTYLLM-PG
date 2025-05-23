@@ -2,7 +2,7 @@
 from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
-
+import os
 
 import torch
 from transformers import TrainerCallback, TrainingArguments, TrainerState, TrainerControl
@@ -48,6 +48,11 @@ class LMEvalCallback(TrainerCallback):
         if args.local_rank not in [-1, 0]:
             return control
             
+        # Set datasets cache to local directory to avoid permission issues
+        cache_dir = Path("./cache/huggingface_datasets").absolute()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["HF_DATASETS_CACHE"] = str(cache_dir)
+        
         # Wrap current checkpoint for lm-eval using our stored model/tokenizer
         lm = HFLM(
             pretrained=self.model,
