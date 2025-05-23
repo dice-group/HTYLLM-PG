@@ -44,6 +44,10 @@ class LMEvalCallback(TrainerCallback):
         control: TrainerControl,
         **kwargs,  # Accept any additional kwargs that Trainer might pass
     ):
+        # Only run evaluation on main process in distributed training
+        if args.local_rank not in [-1, 0]:
+            return control
+            
         # Wrap current checkpoint for lm-eval using our stored model/tokenizer
         lm = HFLM(
             pretrained=self.model,
