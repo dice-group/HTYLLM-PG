@@ -80,7 +80,7 @@ def main():
         data_collator=collator,
         callbacks=callbacks,
         tokenizer=tok,
-    ).train()
+    ).train(resume_from_checkpoint=args.model_path)
     
 
 
