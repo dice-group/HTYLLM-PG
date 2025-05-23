@@ -42,6 +42,7 @@ class LMEvalCallback(TrainerCallback):
         args: TrainingArguments,
         state: TrainerState,
         control: TrainerControl,
+        **kwargs,  # Accept any additional kwargs that Trainer might pass
     ):
         # Wrap current checkpoint for lm-eval using our stored model/tokenizer
         lm = HFLM(
