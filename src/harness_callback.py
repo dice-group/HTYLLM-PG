@@ -46,7 +46,7 @@ class LMEvalCallback(TrainerCallback):
     ):
         # Wrap current checkpoint for lm-eval using our stored model/tokenizer
         lm = HFLM(
-            model=self.model,
+            pretrained=self.model,
             tokenizer=self.tokenizer,
             device="cuda" if torch.cuda.is_available() else "cpu",
             batch_size=self.batch_size,
