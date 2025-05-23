@@ -7,6 +7,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import os
+
+# Set datasets cache to local directory to avoid permission issues
+cache_dir = Path("./cache/huggingface_datasets").absolute()
+cache_dir.mkdir(parents=True, exist_ok=True)
+os.environ["HF_DATASETS_CACHE"] = str(cache_dir)
+os.environ["DATASETS_CACHE"] = str(cache_dir)  
+os.environ["HF_HOME"] = str(cache_dir.parent)
+
 import torch
 import torch.distributed as dist
 from datasets import load_from_disk

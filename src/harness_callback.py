@@ -51,7 +51,18 @@ class LMEvalCallback(TrainerCallback):
         # Set datasets cache to local directory to avoid permission issues
         cache_dir = Path("./cache/huggingface_datasets").absolute()
         cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Set multiple environment variables to ensure cache directory is used
         os.environ["HF_DATASETS_CACHE"] = str(cache_dir)
+        os.environ["DATASETS_CACHE"] = str(cache_dir)  
+        os.environ["HF_HOME"] = str(cache_dir.parent)
+        
+        # Also try to set via datasets library if available
+        try:
+            import datasets
+            datasets.config.CACHE_DIR = str(cache_dir)
+        except:
+            pass
         
         # Wrap current checkpoint for lm-eval using our stored model/tokenizer
         lm = HFLM(
