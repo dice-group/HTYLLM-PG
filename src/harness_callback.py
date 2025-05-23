@@ -76,7 +76,6 @@ class LMEvalCallback(TrainerCallback):
         results = evaluator.evaluate(
             lm,
             task_dict=tasks.get_task_dict(self.task_list),
-            num_fewshot=self.fewshot,
             limit=self.limit,
         )
 
