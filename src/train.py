@@ -67,6 +67,8 @@ def main():
     )
 
     callbacks = [LMEvalCallback(
+        model=model,
+        tokenizer=tok,
         task_list=("hellaswag", "mmlu", "belebele"),
         fewshot=0,
         batch_size=16,

@@ -19,12 +19,17 @@ class LMEvalCallback(TrainerCallback):
 
     def __init__(
         self,
+        model,                      # the HF model instance
+        tokenizer,                  # the HF tokenizer instance
         task_list: Sequence[str] = ("hellaswag", "mmlu", "belebele"), 
         fewshot: int = 0,
         limit: int | None = None,
         batch_size: int = 16,
         prefix: str = "harness",
     ) -> None:
+        # Store model and tokenizer for use in on_epoch_end
+        self.model = model
+        self.tokenizer = tokenizer
         self.task_list = list(task_list)
         self.fewshot = fewshot
         self.limit = limit
@@ -37,15 +42,11 @@ class LMEvalCallback(TrainerCallback):
         args: TrainingArguments,
         state: TrainerState,
         control: TrainerControl,
-        **kwargs,
     ):
-        model = kwargs["model"]
-        tokenizer = kwargs["tokenizer"]
-
-        # Wrap current checkpoint for lm-eval
+        # Wrap current checkpoint for lm-eval using our stored model/tokenizer
         lm = HFLM(
-            model=model,
-            tokenizer=tokenizer,
+            model=self.model,
+            tokenizer=self.tokenizer,
             device="cuda" if torch.cuda.is_available() else "cpu",
             batch_size=self.batch_size,
         )
