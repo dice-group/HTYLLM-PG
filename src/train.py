@@ -79,6 +79,7 @@ def main():
         train_dataset=ds,
         data_collator=collator,
         callbacks=callbacks,
+        tokenizer=tok,
     ).train()
     
 
