@@ -44,46 +44,71 @@ class LMEvalCallback(TrainerCallback):
         control: TrainerControl,
         **kwargs,  # Accept any additional kwargs that Trainer might pass
     ):
-        # Only run evaluation on main process in distributed training
-        if args.local_rank not in [-1, 0]:
-            return control
+        # Set datasets cache to local directory to avoid permission issues (only on rank 0)
+        if args.local_rank in [-1, 0]:
+            cache_dir = Path("./cache/huggingface_datasets").absolute()
+            cache_dir.mkdir(parents=True, exist_ok=True)
             
-        # Set datasets cache to local directory to avoid permission issues
-        cache_dir = Path("./cache/huggingface_datasets").absolute()
-        cache_dir.mkdir(parents=True, exist_ok=True)
+            # Set multiple environment variables to ensure cache directory is used
+            os.environ["HF_DATASETS_CACHE"] = str(cache_dir)
+            os.environ["DATASETS_CACHE"] = str(cache_dir)  
+            os.environ["HF_HOME"] = str(cache_dir.parent)
+            
+            # Also try to set via datasets library if available
+            try:
+                import datasets
+                datasets.config.CACHE_DIR = str(cache_dir)
+            except:
+                pass
         
-        # Set multiple environment variables to ensure cache directory is used
-        os.environ["HF_DATASETS_CACHE"] = str(cache_dir)
-        os.environ["DATASETS_CACHE"] = str(cache_dir)  
-        os.environ["HF_HOME"] = str(cache_dir.parent)
+        # Increase NCCL timeout to prevent timeouts during evaluation
+        os.environ["NCCL_BLOCKING_WAIT"] = "1"
+        os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1" 
+        # Set timeout to 30 minutes (1800 seconds)
+        os.environ["NCCL_TIMEOUT"] = "1800"
         
-        # Also try to set via datasets library if available
+        # Synchronize all processes before starting evaluation
+        if args.local_rank != -1:
+            import torch.distributed as dist
+            if dist.is_initialized():
+                dist.barrier()
+        
         try:
-            import datasets
-            datasets.config.CACHE_DIR = str(cache_dir)
-        except:
-            pass
-        
-        # Wrap current checkpoint for lm-eval using our stored model/tokenizer
-        lm = HFLM(
-            pretrained=self.model,
-            tokenizer=self.tokenizer,
-            device="cuda" if torch.cuda.is_available() else "cpu",
-            batch_size=self.batch_size,
-        )
+            # Wrap current checkpoint for lm-eval using our stored model/tokenizer
+            # This will automatically use distributed evaluation if multiple GPUs are available
+            lm = HFLM(
+                pretrained=self.model,
+                tokenizer=self.tokenizer,
+                device="cuda" if torch.cuda.is_available() else "cpu",
+                batch_size=self.batch_size,
+            )
 
-        # Run the harness
-        results = evaluator.evaluate(
-            lm,
-            task_dict=tasks.get_task_dict(self.task_list),
-            limit=self.limit,
-        )
+            # Run the harness (will distribute across available GPUs)
+            results = evaluator.evaluate(
+                lm,
+                task_dict=tasks.get_task_dict(self.task_list),
+                limit=self.limit,
+            )
 
-        # Flatten and push into Trainer's log stream
-        flat = {
-            f"{self.prefix}/{k}": v
-            for k, v in results["results"].items()
-        }
-        control.metrics.update(flat)      # ensures logs & callbacks see the numbers
-        control.should_log = True
+            # Only log results on rank 0 to avoid duplicate logging
+            if args.local_rank in [-1, 0]:
+                # Flatten and push into Trainer's log stream
+                flat = {
+                    f"{self.prefix}/{k}": v
+                    for k, v in results["results"].items()
+                }
+                control.metrics.update(flat)      # ensures logs & callbacks see the numbers
+                control.should_log = True
+            
+        except Exception as e:
+            if args.local_rank in [-1, 0]:
+                print(f"Evaluation failed: {e}")
+            # Continue training even if evaluation fails
+            
+        # Synchronize all processes after evaluation
+        if args.local_rank != -1:
+            import torch.distributed as dist
+            if dist.is_initialized():
+                dist.barrier()
+            
         return control
