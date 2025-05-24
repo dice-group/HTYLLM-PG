@@ -4,19 +4,19 @@ import pandas as pd
 from tqdm import tqdm
 import numpy as np
 from datasets import load_dataset
-from transformers import BertTokenizer
+from transformers import AutoTokenizer
 import gzip
 import json
 
-data_folder = "/scratch/hpc-prf-merlin/htyllm-pg/data/"
-tokenizer = BertTokenizer.from_pretrained('bert-base-multilingual-uncased')
+model_name = "bigscience/bloom-560m"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 num_proc = 48
 
 
 def process(example):
     text = example["text"]
-    tokens = tokenizer(text, truncation=True, padding=False, return_attention_mask=False)
+    tokens = tokenizer(text, padding=False, return_attention_mask=False)
     return {
         "ids": tokens["input_ids"],
         "len": len(tokens["input_ids"]),
@@ -85,7 +85,7 @@ def main():
         print(f"Tokenizing language: {lang}")
 
         tokenized = ds.map(
-            lambda example: tokenizer(example["text"], truncation=True),
+            lambda example: tokenizer(example["text"]),
             remove_columns=["text"],
             desc=f"Tokenizing {lang}",
             num_proc=num_proc,
