@@ -1,6 +1,5 @@
 import math
 from dataclasses import dataclass
-import tiktoken
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -8,6 +7,7 @@ import os
 import sys
 import argparse
 import random
+import sentencepiece as spm
 
 
 class CausalSelfAttention(nn.Module):
@@ -206,7 +206,6 @@ class GPT(nn.Module):
         optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=(0.9, 0.95), eps=1e-8, fused=use_fused)
         return optimizer
 # -----------------------------------------------------------------------------
-import tiktoken
 import numpy as np
 
 def load_tokens(filename):
@@ -240,8 +239,17 @@ class DataLoaderLite:
             print(f"ERROR: Failed to list directory {data_root}: {e}", flush=True)
             raise
 
-        shards = [s for s in shards if split in s]
+        # Filter to only include .npy files and sort them
+        shards = [s for s in shards if s.endswith('.npy')]
         shards = sorted(shards)
+        total_shards = len(shards)
+        split_idx = int(total_shards * 0.9)  # 90% for training
+        
+        if split == 'train':
+            shards = shards[:split_idx]
+        else:  # val
+            shards = shards[split_idx:]
+            
         shards = [os.path.join(data_root, s) for s in shards]
         self.shards = shards
         assert len(shards) > 0, f"no shards found for split {split}"
@@ -278,6 +286,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train GPT-2 model')
     parser.add_argument('--data_path', type=str, default="../data/edu_fineweb10B",
                         help='Path to the data directory containing training shards')
+    parser.add_argument('--tokenizer_path', type=str, default="tokenizer/sp_model.model",
+                        help='Path to the SentencePiece tokenizer model file')
     parser.add_argument('--batch_size', type=int, default=524288,
                         help='Total batch size for training')
     parser.add_argument('--micro_batch', type=int, default=32,
@@ -322,7 +332,12 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         torch.cuda.manual_seed(1337)
 
-    enc = tiktoken.get_encoding("gpt2")
+    # Load SentencePiece tokenizer
+    sp = spm.SentencePieceProcessor()
+    sp.load(args.tokenizer_path)
+    if master_process:
+        print(f"Loaded SentencePiece tokenizer from {args.tokenizer_path}")
+        print(f"Vocabulary size: {sp.get_piece_size()}")
 
     total_batch_size = args.batch_size
     B = args.micro_batch  # "micro" batch size
@@ -340,7 +355,7 @@ if __name__ == "__main__":
     train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split='train', data_path=args.data_path) # max batch size depends on your GPU memory (should be power of 2)
     val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val", data_path=args.data_path)
 
-    model = GPT(GPTConfig(vocab_size=50304))
+    model = GPT(GPTConfig(vocab_size=sp.get_piece_size()))  # Use SentencePiece vocab size
     model.to(device)
     model = torch.compile(model)
     if ddp: 
@@ -450,8 +465,8 @@ if __name__ == "__main__":
             random.seed(step + ddp_rank)  # Ensure reproducibility but different per step and rank
             selected_prompt = random.choice(all_prompts)
             
-            # Encode the selected prompt
-            tokens = enc.encode(selected_prompt)
+            # Encode the selected prompt using SentencePiece
+            tokens = sp.encode(selected_prompt)
             tokens = torch.tensor(tokens, dtype=torch.long)
             tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1)
             xgen = tokens.to(device)
@@ -473,7 +488,7 @@ if __name__ == "__main__":
                     
             for i in range(num_return_sequences):
                 tokens = xgen[i, :max_length].tolist()
-                decoded = enc.decode(tokens)
+                decoded = sp.decode(tokens)  # Use SentencePiece to decode
                 print(f"rank {ddp_rank}, sample {i}, prompt type: {prompt_type}: {decoded}")
                     
         optimizer.zero_grad()

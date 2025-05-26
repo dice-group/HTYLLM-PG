@@ -4,7 +4,7 @@
 #SBATCH --nodes=16  
 #SBATCH --ntasks=16
 #SBATCH --cpus-per-task=4
-#SBATCH --time=48:00:00
+#SBATCH --time=96:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:a100:1
 #SBATCH --mem=64GB
@@ -27,4 +27,4 @@ srun torchrun \
 --rdzv_id $RANDOM \
 --rdzv_backend c10d \
 --rdzv_endpoint $head_node_ip:29500 \
-src/model/gpt_2_multi_gpu.py --data_path src/data/fineweb_tokenized/
+src/model/gpt_2_multi_gpu.py --data_path tokenizer/shards/ --micro_batch 16

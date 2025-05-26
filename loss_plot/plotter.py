@@ -6,7 +6,7 @@ import os
 os.makedirs("plots", exist_ok=True)
 
 # Simulated content from a .out log file (replace this with actual file read)
-with open("slurm-23129227.out", "r") as f:
+with open("slurm-23472998.out", "r") as f:
     lines = f.readlines()
 
 # Data containers
@@ -56,7 +56,7 @@ plt.title("Training & Validation Loss")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("plots/training_validation_loss.png", dpi=300)
+plt.savefig("plots/training_350M_validation_loss.png", dpi=300)
 plt.close()
 
 # Plot additional metrics
@@ -70,7 +70,7 @@ for title, data in metrics:
     plt.xlabel("Step")
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig(f"plots/{title.lower().replace('/', '_per_')}.png", dpi=300)
+    plt.savefig(f"plots/{title.lower().replace('/', '_per_')}_350M.png", dpi=300)
     plt.close()
 
 print("All plots saved to 'plots' directory.")
