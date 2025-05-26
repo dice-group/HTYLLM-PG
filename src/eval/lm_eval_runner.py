@@ -2,7 +2,6 @@ import os
 import sys
 import json
 from pathlib import Path
-from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from lm_eval import evaluator
@@ -15,7 +14,7 @@ def get_checkpoints(checkpoint_dir):
     ])
 
 
-def evaluate_checkpoint(checkpoint_path, output_dir, model_name):
+def evaluate_checkpoint(checkpoint_path, output_dir):
     print(f"Evaluating checkpoint: {checkpoint_path}")
 
     checkpoint_name = Path(checkpoint_path).name
@@ -33,7 +32,7 @@ def evaluate_checkpoint(checkpoint_path, output_dir, model_name):
             "use_cache": True
         },
         tasks=[
-            "hellaswag"
+            "hellaswag"  # add any further eval_tasks here
         ],
         batch_size=48,
         device="cuda" if torch.cuda.is_available() else "cpu"
@@ -65,7 +64,6 @@ def main():
         print(f"Checkpoint directory not found: {checkpoint_dir}")
         sys.exit(1)
 
-    model_name = "bigscience/bloom-560m"
     checkpoints = get_checkpoints(checkpoint_dir)
 
     if not checkpoints:
@@ -75,7 +73,7 @@ def main():
     print(f"Found {len(checkpoints)} checkpoints. Starting evaluation...")
 
     for ckpt in checkpoints:
-        evaluate_checkpoint(ckpt, checkpoint_dir + "/..", model_name)
+        evaluate_checkpoint(ckpt, checkpoint_dir + "/..")
 
     print("All evaluations completed.")
 
