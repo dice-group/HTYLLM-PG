@@ -8,6 +8,115 @@ import sys
 import argparse
 import random
 import sentencepiece as spm
+from typing import Union, Tuple
+from torch.utils.flop_counter import FlopCounterMode
+from torch.utils.tensorboard import SummaryWriter
+import time
+
+
+def get_flops(model, inp: Union[torch.Tensor, Tuple], with_backward=False):
+    """
+    Calculate FLOPs for a model given input tensor or input shape.
+    
+    Args:
+        model: The PyTorch model
+        inp: Either a torch.Tensor or a tuple representing input shape
+        with_backward: If True, includes backward pass FLOPs
+    
+    Returns:
+        total_flops: Total number of FLOPs
+    """
+    istrain = model.training
+    model.eval()
+    
+    # If inp is a tuple, create a random tensor with that shape
+    if isinstance(inp, tuple):
+        # For language models, we need integer token indices, not float values
+        # Generate random integers in the range [0, vocab_size)
+        vocab_size = model.config.vocab_size if hasattr(model, 'config') else 50257
+        inp = torch.randint(0, vocab_size, inp, dtype=torch.long)
+    
+    # Move input to same device as model
+    if hasattr(model, 'parameters'):
+        device = next(model.parameters()).device
+        inp = inp.to(device)
+
+    flop_counter = FlopCounterMode(mods=model, display=False, depth=None)
+    with flop_counter:
+        if with_backward:
+            output = model(inp)
+            if isinstance(output, tuple):
+                # For models that return (logits, loss), use logits
+                output = output[0]
+            output.sum().backward()
+        else:
+            model(inp)
+    
+    total_flops = flop_counter.get_total_flops()
+    
+    # Restore original training state
+    if istrain:
+        model.train()
+    
+    return total_flops
+
+
+def format_flops(flops):
+    """Format FLOP count in human-readable format."""
+    if flops >= 1e12:
+        return f"{flops/1e12:.2f}T"
+    elif flops >= 1e9:
+        return f"{flops/1e9:.2f}G"
+    elif flops >= 1e6:
+        return f"{flops/1e6:.2f}M"
+    elif flops >= 1e3:
+        return f"{flops/1e3:.2f}K"
+    else:
+        return f"{flops:.0f}"
+
+
+def analyze_model_flops(model, batch_size, seq_len, vocab_size):
+    """
+    Comprehensive FLOP analysis for transformer models.
+    
+    Args:
+        model: The transformer model
+        batch_size: Batch size
+        seq_len: Sequence length
+        vocab_size: Vocabulary size
+    
+    Returns:
+        dict: Analysis results
+    """
+    # Get model configuration
+    config = model.config
+    n_layer = config.n_layer
+    n_head = config.n_head
+    n_embd = config.n_embd
+    
+    # Calculate theoretical FLOPs for transformer
+    # This is an approximation based on common transformer FLOP calculations
+    
+    # Embedding lookup: negligible
+    # Attention: 4 * batch_size * seq_len * n_embd^2 * n_layer (QKV + output projection)
+    # + 2 * batch_size * n_head * seq_len^2 * (n_embd // n_head) * n_layer (attention computation)
+    attention_flops = (4 * batch_size * seq_len * n_embd * n_embd * n_layer + 
+                      2 * batch_size * n_head * seq_len * seq_len * (n_embd // n_head) * n_layer)
+    
+    # MLP: 2 * batch_size * seq_len * n_embd * (4 * n_embd) * n_layer
+    mlp_flops = 2 * batch_size * seq_len * n_embd * 4 * n_embd * n_layer
+    
+    # Output projection: batch_size * seq_len * n_embd * vocab_size
+    output_flops = batch_size * seq_len * n_embd * vocab_size
+    
+    total_theoretical = attention_flops + mlp_flops + output_flops
+    
+    return {
+        'attention_flops': attention_flops,
+        'mlp_flops': mlp_flops,
+        'output_flops': output_flops,
+        'total_theoretical': total_theoretical
+    }
 
 
 class CausalSelfAttention(nn.Module):
@@ -243,7 +352,7 @@ class DataLoaderLite:
         shards = [s for s in shards if s.endswith('.npy')]
         shards = sorted(shards)
         total_shards = len(shards)
-        split_idx = int(total_shards * 0.9)  # 90% for training
+        split_idx = int(total_shards * 0.95)  # 95% for training
         
         if split == 'train':
             shards = shards[:split_idx]
@@ -298,6 +407,12 @@ if __name__ == "__main__":
                         help='Directory to save model checkpoints')
     parser.add_argument('--checkpoint_interval', type=int, default=1000,
                         help='Save a checkpoint every N steps')
+    parser.add_argument('--enable_flop_counting', action='store_true', default=True,
+                        help='Enable FLOP counting and analysis (may add overhead)')
+    parser.add_argument('--log_dir', type=str, default="logs",
+                        help='Directory for TensorBoard logs')
+    parser.add_argument('--disable_tensorboard', action='store_true', 
+                        help='Disable TensorBoard logging to prevent file system issues')
     args = parser.parse_args()
     
     import torch.distributed as dist
@@ -354,7 +469,7 @@ if __name__ == "__main__":
 
     train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split='train', data_path=args.data_path) # max batch size depends on your GPU memory (should be power of 2)
     val_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size, split="val", data_path=args.data_path)
-
+    print(f"vocab size: {sp.get_piece_size()}")
     model = GPT(GPTConfig(vocab_size=sp.get_piece_size()))  # Use SentencePiece vocab size
     model.to(device)
     model = torch.compile(model)
@@ -362,10 +477,43 @@ if __name__ == "__main__":
         model = DDP(model, device_ids=[ddp_local_rank])
     raw_model = model.module if ddp else model # unwrapped model
 
+    # Calculate FLOPs for the model
+    if master_process and args.enable_flop_counting:
+        try:
+            # Use the raw model for FLOP counting to avoid DDP wrapper issues
+            sample_input_shape = (B, T)  # batch_size, sequence_length
+            forward_flops = get_flops(raw_model, sample_input_shape, with_backward=False)
+            backward_flops = get_flops(raw_model, sample_input_shape, with_backward=True)
+            
+            print(f"Model FLOP analysis:")
+            print(f"  Forward pass FLOPs: {format_flops(forward_flops)}")
+            print(f"  Forward + Backward pass FLOPs: {format_flops(backward_flops)}")
+            print(f"  Backward pass FLOPs (estimated): {format_flops(backward_flops - forward_flops)}")
+            print(f"  Model parameters: {sum(p.numel() for p in raw_model.parameters()):,}")
+            
+            # Calculate FLOPs per token
+            total_tokens = B * T
+            forward_flops_per_token = forward_flops / total_tokens
+            backward_flops_per_token = (backward_flops - forward_flops) / total_tokens
+            print(f"  Forward FLOPs per token: {format_flops(forward_flops_per_token)}")
+            print(f"  Backward FLOPs per token: {format_flops(backward_flops_per_token)}")
+            
+            # Theoretical FLOP analysis
+            theoretical_analysis = analyze_model_flops(raw_model, B, T, sp.get_piece_size())
+            print(f"\nTheoretical FLOP breakdown:")
+            print(f"  Attention FLOPs: {format_flops(theoretical_analysis['attention_flops'])}")
+            print(f"  MLP FLOPs: {format_flops(theoretical_analysis['mlp_flops'])}")
+            print(f"  Output projection FLOPs: {format_flops(theoretical_analysis['output_flops'])}")
+            print(f"  Total theoretical: {format_flops(theoretical_analysis['total_theoretical'])}")
+            print(f"  Measured vs Theoretical ratio: {forward_flops / theoretical_analysis['total_theoretical']:.2f}")
+            
+        except Exception as e:
+            print(f"Warning: Could not calculate FLOPs: {e}")
+
     max_lr = 6e-4
     min_lr = max_lr * 0.1
     warmup_steps = 1024  # scaled values according to gpt-2 paper (we use other dataset)
-    max_steps = 32_768 # scaled values according to gpt-2 paper (we use other dataset)
+    max_steps = 32_768 * 2 # scaled values according to gpt-2 paper (we use other dataset)
 
     def get_lr(it):
         if it < warmup_steps:
@@ -387,11 +535,66 @@ if __name__ == "__main__":
         os.makedirs(checkpoint_dir, exist_ok=True)
         print(f"Created checkpoint directory: {checkpoint_dir}")
 
+    # Initialize TensorBoard writer
+    writer = None
+    if master_process and not args.disable_tensorboard:
+        try:
+            log_dir = os.path.join(args.log_dir, f"run_{int(time.time())}")
+            os.makedirs(log_dir, exist_ok=True)
+            # Add a small delay to ensure directory is created properly on distributed file systems
+            time.sleep(1)
+            # Verify the directory exists before creating the writer
+            if os.path.exists(log_dir):
+                writer = SummaryWriter(log_dir)
+                print(f"TensorBoard logs will be saved to: {log_dir}")
+                print(f"To view logs, run: tensorboard --logdir={args.log_dir}")
+            else:
+                print(f"Warning: Could not create TensorBoard log directory {log_dir}. Training will continue without TensorBoard logging.")
+        except Exception as e:
+            print(f"Warning: Failed to initialize TensorBoard logging: {e}. Training will continue without TensorBoard logging.")
+            writer = None
+
     # Define checkpoint frequency
     checkpoint_interval = args.checkpoint_interval
 
     if master_process:
         print("training...")
+        
+        # Log hyperparameters and model configuration to TensorBoard
+        if writer is not None:
+            try:
+                # Log training hyperparameters
+                hparams = {
+                    'batch_size': total_batch_size,
+                    'micro_batch': B,
+                    'seq_len': T,
+                    'vocab_size': sp.get_piece_size(),
+                    'n_layer': raw_model.config.n_layer,
+                    'n_head': raw_model.config.n_head,
+                    'n_embd': raw_model.config.n_embd,
+                    'max_lr': max_lr,
+                    'min_lr': min_lr,
+                    'warmup_steps': warmup_steps,
+                    'max_steps': max_steps,
+                    'weight_decay': 0.1,
+                    'grad_acum_steps': grad_acum_steps,
+                    'world_size': ddp_world_size
+                }
+                
+                # Log model parameters count
+                total_params = sum(p.numel() for p in raw_model.parameters())
+                trainable_params = sum(p.numel() for p in raw_model.parameters() if p.requires_grad)
+                
+                writer.add_scalar('Model/Total_Parameters', total_params, 0)
+                writer.add_scalar('Model/Trainable_Parameters', trainable_params, 0)
+                
+                # Log hyperparameters
+                for key, value in hparams.items():
+                    writer.add_scalar(f'Hyperparameters/{key}', value, 0)
+            except Exception as e:
+                print(f"Warning: Failed to log hyperparameters to TensorBoard: {e}")
+                writer = None
+                
     for step in range(max_steps):
         t0 = time.time()
         # validation
@@ -412,6 +615,12 @@ if __name__ == "__main__":
                 dist.all_reduce(val_loss_accum, op=dist.ReduceOp.AVG)
             if master_process:
                 print(f"step {step+1}/{max_steps}; val loss {val_loss_accum:.4f}")
+                # Log validation loss to TensorBoard
+                if writer is not None:
+                    try:
+                        writer.add_scalar('Loss/Validation', val_loss_accum.item(), step)
+                    except Exception as e:
+                        print(f"Warning: Failed to log validation loss to TensorBoard: {e}")
             model.train()
         
         # Save checkpoint
@@ -490,6 +699,16 @@ if __name__ == "__main__":
                 tokens = xgen[i, :max_length].tolist()
                 decoded = sp.decode(tokens)  # Use SentencePiece to decode
                 print(f"rank {ddp_rank}, sample {i}, prompt type: {prompt_type}: {decoded}")
+                
+                # Log generated samples to TensorBoard (only from master process)
+                if master_process and writer is not None and ddp_rank == 0:
+                    try:
+                        writer.add_text(f'Generated_Samples/{prompt_type}', 
+                                       f"Sample {i}: {decoded}", step)
+                    except Exception as e:
+                        print(f"Warning: Failed to log generated samples to TensorBoard: {e}")
+            
+            model.train()
                     
         optimizer.zero_grad()
         loss_accum = 0.0
@@ -517,12 +736,49 @@ if __name__ == "__main__":
         tokens_processed = B * T * grad_acum_steps * ddp_world_size
         tokens_per_second = tokens_processed / dt
         if master_process:
+            # Calculate FLOP-based metrics if available
+            flop_info = ""
+            if args.enable_flop_counting and 'forward_flops' in locals() and 'backward_flops' in locals():
+                # Total FLOPs for this step (forward + backward for all gradient accumulation steps)
+                step_forward_flops = forward_flops * grad_acum_steps * ddp_world_size
+                step_backward_flops = (backward_flops - forward_flops) * grad_acum_steps * ddp_world_size
+                step_total_flops = step_forward_flops + step_backward_flops
+                
+                # FLOP efficiency metrics
+                flops_per_second = step_total_flops / dt
+                flop_info = f"; TFLOPs/sec {flops_per_second/1e12:.2f}"
+            
             print(f"step {step+1}/{max_steps}; loss {loss_accum.item():.4f}; norm {norm:.2f}; lr {lr:.6f}; "
-                f"tokens/sec {tokens_per_second:.2f}; dt {dt:.2f}ms")
+                f"tokens/sec {tokens_per_second:.2f}; dt {dt:.2f}ms{flop_info}")
+            
+            # Log metrics to TensorBoard
+            if writer is not None:
+                try:
+                    writer.add_scalar('Loss/Training', loss_accum.item(), step)
+                    writer.add_scalar('Learning_Rate', lr, step)
+                    writer.add_scalar('Gradient_Norm', norm, step)
+                    writer.add_scalar('Throughput/Tokens_per_Second', tokens_per_second, step)
+                    writer.add_scalar('Throughput/Step_Time_ms', dt * 1000, step)
+                    
+                    # Log FLOP metrics if available
+                    if args.enable_flop_counting and 'forward_flops' in locals() and 'backward_flops' in locals():
+                        step_forward_flops = forward_flops * grad_acum_steps * ddp_world_size
+                        step_backward_flops = (backward_flops - forward_flops) * grad_acum_steps * ddp_world_size
+                        step_total_flops = step_forward_flops + step_backward_flops
+                        flops_per_second = step_total_flops / dt
+                        
+                        writer.add_scalar('FLOP_Efficiency/TFLOPs_per_Second', flops_per_second / 1e12, step)
+                        writer.add_scalar('FLOP_Efficiency/Forward_TFLOPs', step_forward_flops / 1e12, step)
+                        writer.add_scalar('FLOP_Efficiency/Backward_TFLOPs', step_backward_flops / 1e12, step)
+                        writer.add_scalar('FLOP_Efficiency/Total_TFLOPs', step_total_flops / 1e12, step)
+                except Exception as e:
+                    print(f"Warning: Failed to log metrics to TensorBoard: {e}")
+                    # Disable writer for future steps to prevent repeated errors
+                    writer = None
 
     # Save the final model after training completes
     if master_process:
-        final_model_path = f"gpt2_fineweb2_model_steps_{max_steps}.pt"
+        final_model_path = f"gpt2_vocab_{sp.get_piece_size()}_model_steps_{max_steps}.pt"
         model_to_save = raw_model
         if hasattr(model_to_save, 'module'):
             model_to_save = model_to_save.module
@@ -536,6 +792,11 @@ if __name__ == "__main__":
         }, final_model_path)
 
         print(f"Final model saved to {final_model_path}")
+
+    # Close TensorBoard writer
+    if master_process and writer is not None:
+        writer.close()
+        print("TensorBoard logging completed.")
 
     if ddp:
         destroy_process_group()

@@ -1,12 +1,12 @@
 #!/bin/bash
 
 #SBATCH --job-name=multinode-gpt2
-#SBATCH --nodes=16  
-#SBATCH --ntasks=16
+#SBATCH --nodes=4
+#SBATCH --ntasks=4
 #SBATCH --cpus-per-task=4
-#SBATCH --time=96:00:00
+#SBATCH --time=48:00:00
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:a100:1
+#SBATCH --gres=gpu:a100:4
 #SBATCH --mem=64GB
 #SBATCH --account=hpc-prf-merlin
 
@@ -22,9 +22,9 @@ export LOGLEVEL=INFO
 source ~/miniconda3/bin/activate icebreaker
 
 srun torchrun \
---nnodes 16 \
---nproc_per_node 1 \
+--nnodes 4 \
+--nproc_per_node 4 \
 --rdzv_id $RANDOM \
 --rdzv_backend c10d \
 --rdzv_endpoint $head_node_ip:29500 \
-src/model/gpt_2_multi_gpu.py --data_path tokenizer/shards/ --micro_batch 16
+src/model/gpt_2_multi_gpu.py --data_path tokenizer/shards_131072/ --micro_batch 8 --tokenizer_path tokenizer/sp_model_131072.model

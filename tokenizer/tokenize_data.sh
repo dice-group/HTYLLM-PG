@@ -3,8 +3,8 @@
 #SBATCH --job-name=tokenize-data
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=64
-#SBATCH --time=02:00:00
+#SBATCH --cpus-per-task=128
+#SBATCH --time=03:00:00
 #SBATCH --partition=normal
 #SBATCH -q express
 #SBATCH --mem=64GB

@@ -5,9 +5,9 @@ from multiprocessing import Pool, cpu_count
 import numpy as np
 
 # --- CONFIG ---
-MODEL_PATH       = "tokenizer/sp_model.model"
+MODEL_PATH       = "tokenizer/sp_model_131072.model"
 INPUT_PATH       = "../data/corpus.txt"
-OUT_DIR          = "tokenizer/shards"
+OUT_DIR          = "tokenizer/shards_131072"
 TOKENS_PER_SHARD = 100_000_000
 N_WORKERS        = min(cpu_count(), 32)  # match your SBATCH cpus-per-task
 

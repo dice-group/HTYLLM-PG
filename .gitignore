@@ -80,4 +80,7 @@ tokenized_data/
 data/
 checkpoints/
 tokenizer/shards/
+tokenizer/shards_131072/
+tokenizer/sp_model_131072.model
+tokenizer/sp_model_131072.vocab
 **/temp_untracked_moe/
