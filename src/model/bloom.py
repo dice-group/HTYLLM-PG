@@ -123,15 +123,19 @@ trainer = Trainer(
 )
 
 #torch inbuilt profiler
+profile_dir="profile_results"
+os.makedirs(profile_dir, exist_ok=True)
+
 print("Starting profiling...")
 with torch.profiler.profile(
     activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+    on_trace_ready=torch.profiler.tensorboard_trace_handler(profile_dir),
     with_flops=True) as prof:
-    model(input_ids=torch.randint(0, tokenizer.vocab_size, (1, 256)).to(model.device))
+    #model(input_ids=torch.randint(0, tokenizer.vocab_size, (1, 256)).to(model.device))
+    trainer.train()
 print("Profiling complete.")
-
-prof.export_chrome_trace("profile_results/profiler_trace.json")
-#print(prof.key_averages().table(sort_by="flops", row_limit=10))
+#prof.export_chrome_trace("profile_results/profiler_trace.json")
+print(prof.key_averages().table(sort_by="flops", row_limit=10))
 
 #trainer.train()
 model.save_pretrained(model_location)
