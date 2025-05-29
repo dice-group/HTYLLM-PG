@@ -19,7 +19,7 @@ def find_all_linear_names(model):
                 lora_module_names.add(name)
     return list(lora_module_names)
 
-model_name = "bigscience/bloom-560m"
+model_name = "mistralai/Mistral-7B-v0.3"
 
 # Load quantized model
 bnb_config = BitsAndBytesConfig(
