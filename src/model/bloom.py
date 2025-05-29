@@ -29,6 +29,7 @@ def is_main_process():
     return int(os.environ.get("RANK", 0)) == 0
 
 #Profiler Implementation from "https://alessiodevoto.github.io/Compute-Flops-with-Pytorch-built-in-flops-counter/"
+"""
 def get_flops(model, inp, with_backward=False):
     istrain = model.training
     model.eval()
@@ -43,6 +44,7 @@ def get_flops(model, inp, with_backward=False):
     if istrain:
         model.train()
     return total_flops
+"""
 
 def split_binary_file(bin_file: str, split_ratio: float = 0.9):
     data = np.memmap(bin_file, dtype=np.uint16, mode='r')
@@ -125,12 +127,13 @@ print("Starting profiling...")
 with torch.profiler.profile(
     activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
     with_flops=True) as prof:
-    model = AutoModelForCausalLM.from_pretrained(model_name)
-    
-print(prof.key_averages().table(sort_by="cuda_memory_usage", row_limit=10))
+    model(input_ids=torch.randint(0, tokenizer.vocab_size, (1, 256)).to(model.device))
+print("Profiling complete.")
 
-trainer.train()
+prof.export_chrome_trace("profile_results/profiler_trace.json")
+#print(prof.key_averages().table(sort_by="flops", row_limit=10))
 
+#trainer.train()
 model.save_pretrained(model_location)
 
 if is_main_process():
