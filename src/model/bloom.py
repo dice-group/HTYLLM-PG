@@ -5,7 +5,7 @@ from transformers import TrainingArguments, Trainer, AutoModelForCausalLM, AutoT
 import numpy as np
 import torch
 import torch.distributed as dist
-import torch.profiler
+from torch.profiler import profile, record_function, ProfilerActivity
 from torch.utils.data import Dataset
 import warnings
 from torch.utils.flop_counter import FlopCounterMode
@@ -121,11 +121,14 @@ trainer = Trainer(
 )
 
 #torch inbuilt profiler
-'''
-with torch.profiler.profile() as prof:
-    trainer.train()
+print("Starting profiling...")
+with torch.profiler.profile(
+    activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+    with_flops=True) as prof:
+    model = AutoModelForCausalLM.from_pretrained(model_name)
+    
 print(prof.key_averages().table(sort_by="cuda_memory_usage", row_limit=10))
-'''
+
 trainer.train()
 
 model.save_pretrained(model_location)
