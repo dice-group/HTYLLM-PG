@@ -32,7 +32,7 @@ def evaluate_checkpoint(checkpoint_path, output_dir):
             "use_cache": True
         },
         tasks=[
-            "hellaswag"  # add any further eval_tasks here
+            "hellaswag,xnli,belebele,arc_multilingual,global_mmlu,include_base_44,truthfulqa,mgsm_direct,mgsm_cot_native,mlqa,xcopa,xwinograd,xstorycloze,xnli,pawsx,flores,wmt16,lambada_multilingual,xquad"  # add any further eval_tasks here
         ],
         batch_size=48,
         device="cuda" if torch.cuda.is_available() else "cpu"
