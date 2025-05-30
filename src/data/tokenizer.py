@@ -8,7 +8,7 @@ from transformers import AutoTokenizer
 import gzip
 import json
 
-model_name = "bigscience/bloom-560m"
+model_name = "google/gemma-3-4b-pt"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 num_proc = 48
