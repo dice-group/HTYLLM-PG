@@ -24,6 +24,43 @@ from lm_eval import evaluator, tasks
 from lm_eval.models.huggingface import HFLM
 
 
+class SafeHFLM(HFLM):
+    """HFLM wrapper that handles empty continuation strings gracefully."""
+    
+    def _loglikelihood_tokens(self, requests, disable_tqdm=False):
+        """Override to handle empty continuation tokens."""
+        # Patch requests to handle empty continuations
+        safe_requests = []
+        for req in requests:
+            context_enc, continuation_enc = req.args
+            
+            # If continuation is empty, substitute with space token
+            if len(continuation_enc) == 0:
+                # Use space token as fallback
+                space_enc = self.tokenizer.encode(" ", add_special_tokens=False)
+                if len(space_enc) > 0:
+                    continuation_enc = space_enc[:1]  # Use just the first token
+                else:
+                    # Fallback to UNK token if space also fails
+                    continuation_enc = [self.tokenizer.unk_token_id]
+                
+                # Create new request with safe continuation
+                from lm_eval.api.instance import Instance
+                safe_req = Instance(
+                    request_type=req.request_type,
+                    doc=req.doc,
+                    arguments=(context_enc, continuation_enc),
+                    idx=req.idx,
+                    metadata=req.metadata
+                )
+                safe_requests.append(safe_req)
+            else:
+                safe_requests.append(req)
+        
+        # Call parent with safe requests
+        return super()._loglikelihood_tokens(safe_requests, disable_tqdm=disable_tqdm)
+
+
 def setup_args():
     """Setup command line arguments."""
     parser = argparse.ArgumentParser(description="Evaluate checkpoint on hellaswag and belebele")
@@ -113,16 +150,16 @@ def run_evaluation(checkpoint_path, tokenizer, tasks_list, batch_size, limit, fe
     """Run lm-eval harness evaluation."""
     print(f"Setting up evaluation for tasks: {tasks_list}")
     
-    # Try simpler setup first - no parallelism
-    lm = HFLM(
+    # Use both GPUs with model parallelism + safe empty continuation handling
+    lm = SafeHFLM(
         pretrained=checkpoint_path,  # Pass path as string
         tokenizer=checkpoint_path,   # Use tokenizer from checkpoint, not separate dir
         device=device,
-        batch_size=8,  # Smaller batch size for debugging
+        batch_size=batch_size,  # Use original batch size
         dtype="auto",  # Let HFLM choose the best dtype
         trust_remote_code=False,
-        # parallelize=True,  # Disable parallelism for debugging
-        # device_map="auto",  # Disable device_map for debugging
+        parallelize=True,  # Enable model parallelism across GPUs
+        device_map="auto",  # Automatically distribute model across GPUs
         add_bos_token=False,  # Don't add BOS token automatically
         truncation=True,  # Enable truncation for safety
     )
