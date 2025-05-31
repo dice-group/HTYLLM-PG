@@ -28,45 +28,44 @@ class SafeHFLM(HFLM):
     """HFLM wrapper that handles empty continuation strings gracefully."""
     
     def _loglikelihood_tokens(self, requests, disable_tqdm=False):
-        """Override to handle empty continuation tokens."""
-        # Debug: check the structure of requests
-        if len(requests) > 0:
-            print(f"Request structure debug:")
-            print(f"  Type: {type(requests[0])}")
-            print(f"  Length: {len(requests[0]) if hasattr(requests[0], '__len__') else 'N/A'}")
-            print(f"  Content: {requests[0]}")
-        
-        # Patch requests to handle empty continuations
+        """Override to handle empty continuation tokens by cleaning leading spaces."""
+        # Patch requests to handle problematic continuations
         safe_requests = []
+        fixed_count = 0
+        
         for req in requests:
             # Handle different request structures
             if hasattr(req, 'args'):
                 # If it's an object with args attribute
                 context_enc, continuation_enc = req.args
+                continuation_string = "unknown"  # Can't easily get original string
             else:
                 # Request structure: (strings_tuple, context_tokens, continuation_tokens)
                 strings_tuple = req[0]  # (context_string, continuation_string)
                 context_enc = req[1]    # context token IDs
                 continuation_enc = req[2]  # continuation token IDs
+                continuation_string = strings_tuple[1]
             
-            # If continuation is empty, substitute with space token
+            # If continuation is empty, try cleaning the leading space
             if len(continuation_enc) == 0:
-                # Show what the problematic continuation string was
-                continuation_string = strings_tuple[1] if not hasattr(req, 'args') else "unknown"
-                print(f"Found empty continuation!")
-                print(f"  Continuation string: {repr(continuation_string)}")
-                print(f"  Length of string: {len(continuation_string)}")
-                print(f"  Substituting with space token [828]")
+                if continuation_string.startswith(" "):
+                    # Remove leading space and re-tokenize
+                    cleaned_string = continuation_string.lstrip(" ")
+                    if cleaned_string:  # Make sure we didn't remove everything
+                        new_continuation_enc = self.tokenizer.encode(cleaned_string, add_special_tokens=False)
+                        if len(new_continuation_enc) > 0:
+                            continuation_enc = new_continuation_enc
+                            fixed_count += 1
+                            if fixed_count <= 3:  # Show first few fixes
+                                print(f"Fixed empty continuation: {repr(continuation_string)} -> {repr(cleaned_string)} = {new_continuation_enc}")
                 
-                # Use space token as fallback
-                space_enc = self.tokenizer.encode(" ", add_special_tokens=False)
-                if len(space_enc) > 0:
-                    continuation_enc = space_enc[:1]  # Use just the first token
-                else:
-                    # Fallback to UNK token if space also fails
+                # If still empty after cleaning, use UNK token
+                if len(continuation_enc) == 0:
                     continuation_enc = [self.tokenizer.unk_token_id]
+                    if fixed_count <= 3:
+                        print(f"Using UNK for: {repr(continuation_string)}")
                 
-                # Create new request with safe continuation
+                # Create new request with fixed continuation
                 if hasattr(req, 'args'):
                     # Reconstruct object
                     from lm_eval.api.instance import Instance
@@ -84,6 +83,9 @@ class SafeHFLM(HFLM):
                 safe_requests.append(safe_req)
             else:
                 safe_requests.append(req)
+        
+        if fixed_count > 3:
+            print(f"... (fixed {fixed_count} total empty continuations by removing leading spaces)")
         
         # Call parent with safe requests
         return super()._loglikelihood_tokens(safe_requests, disable_tqdm=disable_tqdm)
