@@ -106,6 +106,7 @@ def run_evaluation(checkpoint_path, tokenizer, tasks_list, batch_size, limit, fe
     print(f"Setting up evaluation for tasks: {tasks_list}")
     
     # Let HFLM handle model loading - more efficient and uses HFLM optimizations
+    # Use both GPUs with model parallelism
     lm = HFLM(
         pretrained=checkpoint_path,  # Pass path as string
         tokenizer=tokenizer,
@@ -113,6 +114,8 @@ def run_evaluation(checkpoint_path, tokenizer, tasks_list, batch_size, limit, fe
         batch_size=batch_size,
         dtype="auto",  # Let HFLM choose the best dtype
         trust_remote_code=False,
+        parallelize=True,  # Enable model parallelism across GPUs
+        device_map="auto",  # Automatically distribute model across GPUs
     )
     
     print("Starting evaluation...")
