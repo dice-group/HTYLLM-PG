@@ -32,10 +32,19 @@ class SafeHFLM(HFLM):
         # Patch requests to handle empty continuations
         safe_requests = []
         for req in requests:
-            context_enc, continuation_enc = req.args
+            # Handle different request structures
+            if hasattr(req, 'args'):
+                # If it's an object with args attribute
+                context_enc, continuation_enc = req.args
+                request_obj = req
+            else:
+                # If it's a tuple directly
+                context_enc, continuation_enc = req
+                request_obj = req
             
             # If continuation is empty, substitute with space token
             if len(continuation_enc) == 0:
+                print(f"Found empty continuation, substituting with space token")
                 # Use space token as fallback
                 space_enc = self.tokenizer.encode(" ", add_special_tokens=False)
                 if len(space_enc) > 0:
@@ -45,14 +54,20 @@ class SafeHFLM(HFLM):
                     continuation_enc = [self.tokenizer.unk_token_id]
                 
                 # Create new request with safe continuation
-                from lm_eval.api.instance import Instance
-                safe_req = Instance(
-                    request_type=req.request_type,
-                    doc=req.doc,
-                    arguments=(context_enc, continuation_enc),
-                    idx=req.idx,
-                    metadata=req.metadata
-                )
+                if hasattr(req, 'args'):
+                    # Reconstruct object
+                    from lm_eval.api.instance import Instance
+                    safe_req = Instance(
+                        request_type=req.request_type,
+                        doc=req.doc,
+                        arguments=(context_enc, continuation_enc),
+                        idx=req.idx,
+                        metadata=req.metadata
+                    )
+                else:
+                    # It's a tuple, create new tuple
+                    safe_req = (context_enc, continuation_enc)
+                
                 safe_requests.append(safe_req)
             else:
                 safe_requests.append(req)
