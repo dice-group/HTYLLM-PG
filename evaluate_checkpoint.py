@@ -44,15 +44,20 @@ class SafeHFLM(HFLM):
                 # If it's an object with args attribute
                 context_enc, continuation_enc = req.args
             else:
-                # If it's a tuple, get the first two elements (context, continuation)
-                context_enc = req[0]
-                continuation_enc = req[1]
-                # Keep the rest of the tuple as-is for reconstruction
-                rest_of_req = req[2:] if len(req) > 2 else ()
+                # Request structure: (strings_tuple, context_tokens, continuation_tokens)
+                strings_tuple = req[0]  # (context_string, continuation_string)
+                context_enc = req[1]    # context token IDs
+                continuation_enc = req[2]  # continuation token IDs
             
             # If continuation is empty, substitute with space token
             if len(continuation_enc) == 0:
-                print(f"Found empty continuation, substituting with space token")
+                # Show what the problematic continuation string was
+                continuation_string = strings_tuple[1] if not hasattr(req, 'args') else "unknown"
+                print(f"Found empty continuation!")
+                print(f"  Continuation string: {repr(continuation_string)}")
+                print(f"  Length of string: {len(continuation_string)}")
+                print(f"  Substituting with space token [828]")
+                
                 # Use space token as fallback
                 space_enc = self.tokenizer.encode(" ", add_special_tokens=False)
                 if len(space_enc) > 0:
@@ -73,8 +78,8 @@ class SafeHFLM(HFLM):
                         metadata=req.metadata
                     )
                 else:
-                    # It's a tuple, reconstruct with original length
-                    safe_req = (context_enc, continuation_enc) + rest_of_req
+                    # It's a tuple, reconstruct: (strings_tuple, context_tokens, continuation_tokens)
+                    safe_req = (strings_tuple, context_enc, continuation_enc)
                 
                 safe_requests.append(safe_req)
             else:
