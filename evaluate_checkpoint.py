@@ -113,23 +113,28 @@ def run_evaluation(checkpoint_path, tokenizer, tasks_list, batch_size, limit, fe
     """Run lm-eval harness evaluation."""
     print(f"Setting up evaluation for tasks: {tasks_list}")
     
-    # Let HFLM handle model loading - more efficient and uses HFLM optimizations
-    # Use both GPUs with model parallelism
+    # Try simpler setup first - no parallelism
     lm = HFLM(
         pretrained=checkpoint_path,  # Pass path as string
-        tokenizer=tokenizer,  # Pass the configured tokenizer
+        tokenizer=checkpoint_path,   # Use tokenizer from checkpoint, not separate dir
         device=device,
-        batch_size=batch_size,
+        batch_size=8,  # Smaller batch size for debugging
         dtype="auto",  # Let HFLM choose the best dtype
         trust_remote_code=False,
-        parallelize=True,  # Enable model parallelism across GPUs
-        device_map="auto",  # Automatically distribute model across GPUs
+        # parallelize=True,  # Disable parallelism for debugging
+        # device_map="auto",  # Disable device_map for debugging
         add_bos_token=False,  # Don't add BOS token automatically
         truncation=True,  # Enable truncation for safety
     )
     
     print("Starting evaluation...")
     print(f"Model tokenizer vocab size: {lm.tokenizer.vocab_size}")
+    print(f"Model tokenizer type: {type(lm.tokenizer)}")
+    print(f"Model tokenizer special tokens:")
+    print(f"  BOS: {lm.tokenizer.bos_token}")
+    print(f"  EOS: {lm.tokenizer.eos_token}")  
+    print(f"  PAD: {lm.tokenizer.pad_token}")
+    print(f"  UNK: {lm.tokenizer.unk_token}")
     
     # Run evaluation (note: fewshot is handled by task configuration in 0.4.x)
     results = evaluator.evaluate(
