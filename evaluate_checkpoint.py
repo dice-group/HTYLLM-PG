@@ -29,6 +29,13 @@ class SafeHFLM(HFLM):
     
     def _loglikelihood_tokens(self, requests, disable_tqdm=False):
         """Override to handle empty continuation tokens."""
+        # Debug: check the structure of requests
+        if len(requests) > 0:
+            print(f"Request structure debug:")
+            print(f"  Type: {type(requests[0])}")
+            print(f"  Length: {len(requests[0]) if hasattr(requests[0], '__len__') else 'N/A'}")
+            print(f"  Content: {requests[0]}")
+        
         # Patch requests to handle empty continuations
         safe_requests = []
         for req in requests:
@@ -36,11 +43,12 @@ class SafeHFLM(HFLM):
             if hasattr(req, 'args'):
                 # If it's an object with args attribute
                 context_enc, continuation_enc = req.args
-                request_obj = req
             else:
-                # If it's a tuple directly
-                context_enc, continuation_enc = req
-                request_obj = req
+                # If it's a tuple, get the first two elements (context, continuation)
+                context_enc = req[0]
+                continuation_enc = req[1]
+                # Keep the rest of the tuple as-is for reconstruction
+                rest_of_req = req[2:] if len(req) > 2 else ()
             
             # If continuation is empty, substitute with space token
             if len(continuation_enc) == 0:
@@ -65,8 +73,8 @@ class SafeHFLM(HFLM):
                         metadata=req.metadata
                     )
                 else:
-                    # It's a tuple, create new tuple
-                    safe_req = (context_enc, continuation_enc)
+                    # It's a tuple, reconstruct with original length
+                    safe_req = (context_enc, continuation_enc) + rest_of_req
                 
                 safe_requests.append(safe_req)
             else:
