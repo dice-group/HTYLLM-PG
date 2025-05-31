@@ -111,7 +111,7 @@ def run_evaluation(checkpoint_path, tokenizer, tasks_list, batch_size, limit, fe
         tokenizer=tokenizer,
         device=device,
         batch_size=batch_size,
-        torch_dtype="bfloat16" if device == "cuda" else "float32",
+        dtype="auto",  # Let HFLM choose the best dtype
         trust_remote_code=False,
     )
     
