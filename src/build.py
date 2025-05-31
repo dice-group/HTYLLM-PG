@@ -1,4 +1,4 @@
-"""Helpers to create a downsized (7×17 M) Mixtral MoE model."""
+
 
 from __future__ import annotations
 from pathlib import Path

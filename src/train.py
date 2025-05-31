@@ -79,6 +79,7 @@ def main():
         tokenizer=tok,
         task_list=("hellaswag", "mmlu", "belebele"),
         fewshot=0,
+        limit=5,  
         batch_size=16,
         prefix="harness",
     )]

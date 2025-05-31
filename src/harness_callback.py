@@ -19,8 +19,8 @@ class LMEvalCallback(TrainerCallback):
 
     def __init__(
         self,
-        model,                      # the HF model instance
-        tokenizer,                  # the HF tokenizer instance
+        model,                      
+        tokenizer,                  
         task_list: Sequence[str] = ("hellaswag", "mmlu", "belebele"), 
         fewshot: int = 0,
         limit: int | None = None,
