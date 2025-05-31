@@ -283,7 +283,7 @@ def main():
         
         # Save results
         if args.output_path is None:
-            checkpoint_name = checkpoint_path.name
+            checkpoint_name = Path(checkpoint_path).name
             output_path = f"results_{checkpoint_name}.json"
         else:
             output_path = args.output_path
