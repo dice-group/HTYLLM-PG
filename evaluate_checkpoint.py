@@ -93,11 +93,19 @@ def load_model_and_tokenizer(checkpoint_path: str, tokenizer_path: str, device: 
     print(f"Loading tokenizer from: {tokenizer_path}")
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
     
+    # Don't override tokenizer settings - it already has proper special tokens
+    print(f"Tokenizer special tokens:")
+    print(f"  BOS: {tokenizer.bos_token}")
+    print(f"  EOS: {tokenizer.eos_token}")
+    print(f"  PAD: {tokenizer.pad_token}")
+    print(f"  UNK: {tokenizer.unk_token}")
+    
     # Determine device
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
     
     print(f"Will load model from: {checkpoint_path} on device: {device}")
+    print(f"Tokenizer vocab size: {tokenizer.vocab_size}")
     return checkpoint_path, tokenizer, device
 
 
@@ -109,16 +117,19 @@ def run_evaluation(checkpoint_path, tokenizer, tasks_list, batch_size, limit, fe
     # Use both GPUs with model parallelism
     lm = HFLM(
         pretrained=checkpoint_path,  # Pass path as string
-        tokenizer=tokenizer,
+        tokenizer=tokenizer,  # Pass the configured tokenizer
         device=device,
         batch_size=batch_size,
         dtype="auto",  # Let HFLM choose the best dtype
         trust_remote_code=False,
         parallelize=True,  # Enable model parallelism across GPUs
         device_map="auto",  # Automatically distribute model across GPUs
+        add_bos_token=False,  # Don't add BOS token automatically
+        truncation=True,  # Enable truncation for safety
     )
     
     print("Starting evaluation...")
+    print(f"Model tokenizer vocab size: {lm.tokenizer.vocab_size}")
     
     # Run evaluation (note: fewshot is handled by task configuration in 0.4.x)
     results = evaluator.evaluate(
