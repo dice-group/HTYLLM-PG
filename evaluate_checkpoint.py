@@ -19,7 +19,7 @@ os.environ["DATASETS_CACHE"] = str(cache_dir)
 os.environ["HF_HOME"] = str(cache_dir.parent)
 
 import torch
-from transformers import AutoTokenizer, MixtralForCausalLM
+from transformers import AutoTokenizer
 from lm_eval import evaluator, tasks
 from lm_eval.models.huggingface import HFLM
 
@@ -89,48 +89,39 @@ def setup_args():
 
 
 def load_model_and_tokenizer(checkpoint_path: str, tokenizer_path: str, device: str):
-    """Load model and tokenizer from the specified paths."""
+    """Load tokenizer from the specified path."""
     print(f"Loading tokenizer from: {tokenizer_path}")
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
-    
-    print(f"Loading model from: {checkpoint_path}")
     
     # Determine device
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
     
-    # Load model with appropriate settings
-    model = MixtralForCausalLM.from_pretrained(
-        checkpoint_path,
-        torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
-        low_cpu_mem_usage=True,
-        device_map="auto" if device == "cuda" else None
-    )
-    
-    print(f"Model loaded on device: {device}")
-    return model, tokenizer, device
+    print(f"Will load model from: {checkpoint_path} on device: {device}")
+    return checkpoint_path, tokenizer, device
 
 
-def run_evaluation(model, tokenizer, tasks_list, batch_size, limit, fewshot, device):
+def run_evaluation(checkpoint_path, tokenizer, tasks_list, batch_size, limit, fewshot, device):
     """Run lm-eval harness evaluation."""
     print(f"Setting up evaluation for tasks: {tasks_list}")
     
-    # Create HFLM wrapper
+    # Let HFLM handle model loading - more efficient and uses HFLM optimizations
     lm = HFLM(
-        pretrained=model,
+        pretrained=checkpoint_path,  # Pass path as string
         tokenizer=tokenizer,
         device=device,
         batch_size=batch_size,
+        torch_dtype="bfloat16" if device == "cuda" else "float32",
+        trust_remote_code=False,
     )
     
     print("Starting evaluation...")
     
-    # Run evaluation
+    # Run evaluation (note: fewshot is handled by task configuration in 0.4.x)
     results = evaluator.evaluate(
         lm,
         task_dict=tasks.get_task_dict(tasks_list),
         limit=limit,
-        num_fewshot=fewshot,
     )
     
     return results
@@ -184,7 +175,7 @@ def main():
     
     try:
         # Load model and tokenizer
-        model, tokenizer, device = load_model_and_tokenizer(
+        checkpoint_path, tokenizer, device = load_model_and_tokenizer(
             str(checkpoint_path), 
             str(tokenizer_path), 
             args.device
@@ -192,7 +183,7 @@ def main():
         
         # Run evaluation
         results = run_evaluation(
-            model, 
+            checkpoint_path, 
             tokenizer, 
             args.tasks, 
             args.batch_size, 
