@@ -95,27 +95,79 @@ def analyze_model_flops(model, batch_size, seq_len, vocab_size):
     n_embd = config.n_embd
     
     # Calculate theoretical FLOPs for transformer
-    # This is an approximation based on common transformer FLOP calculations
+    # This is a more complete approximation based on all major operations
     
-    # Embedding lookup: negligible
-    # Attention: 4 * batch_size * seq_len * n_embd^2 * n_layer (QKV + output projection)
-    # + 2 * batch_size * n_head * seq_len^2 * (n_embd // n_head) * n_layer (attention computation)
-    attention_flops = (4 * batch_size * seq_len * n_embd * n_embd * n_layer + 
-                      2 * batch_size * n_head * seq_len * seq_len * (n_embd // n_head) * n_layer)
+    # 1. Token and Position Embeddings (negligible for FLOP count)
+    embedding_flops = 0  # Embedding lookups are not matrix multiplications
     
-    # MLP: 2 * batch_size * seq_len * n_embd * (4 * n_embd) * n_layer
-    mlp_flops = 2 * batch_size * seq_len * n_embd * 4 * n_embd * n_layer
+    # 2. Per-layer operations
+    layer_flops = 0
     
-    # Output projection: batch_size * seq_len * n_embd * vocab_size
+    for _ in range(n_layer):
+        # Layer Norm 1: 2 * batch_size * seq_len * n_embd (mean + var computation)
+        ln1_flops = 2 * batch_size * seq_len * n_embd
+        
+        # Attention block:
+        # - QKV projection: batch_size * seq_len * n_embd * (3 * n_embd)
+        qkv_flops = batch_size * seq_len * n_embd * (3 * n_embd)
+        
+        # - Attention computation: batch_size * n_head * seq_len * seq_len * (n_embd // n_head)
+        # This includes Q@K^T and softmax@V operations
+        attention_compute_flops = 2 * batch_size * n_head * seq_len * seq_len * (n_embd // n_head)
+        
+        # - Output projection: batch_size * seq_len * n_embd * n_embd
+        attn_out_flops = batch_size * seq_len * n_embd * n_embd
+        
+        # Layer Norm 2: 2 * batch_size * seq_len * n_embd
+        ln2_flops = 2 * batch_size * seq_len * n_embd
+        
+        # MLP block:
+        # - First linear layer: batch_size * seq_len * n_embd * (4 * n_embd)
+        mlp_fc_flops = batch_size * seq_len * n_embd * (4 * n_embd)
+        
+        # - GELU activation: ~4 * batch_size * seq_len * (4 * n_embd) (approximate)
+        gelu_flops = 4 * batch_size * seq_len * (4 * n_embd)
+        
+        # - Second linear layer: batch_size * seq_len * (4 * n_embd) * n_embd
+        mlp_proj_flops = batch_size * seq_len * (4 * n_embd) * n_embd
+        
+        # Sum all operations for this layer
+        layer_flops += (ln1_flops + qkv_flops + attention_compute_flops + attn_out_flops + 
+                       ln2_flops + mlp_fc_flops + gelu_flops + mlp_proj_flops)
+    
+    # 3. Final Layer Norm: 2 * batch_size * seq_len * n_embd
+    final_ln_flops = 2 * batch_size * seq_len * n_embd
+    
+    # 4. Output projection (language modeling head): batch_size * seq_len * n_embd * vocab_size
     output_flops = batch_size * seq_len * n_embd * vocab_size
     
-    total_theoretical = attention_flops + mlp_flops + output_flops
+    # Total theoretical FLOPs
+    total_theoretical = embedding_flops + layer_flops + final_ln_flops + output_flops
+    
+    # Break down by component type for analysis
+    attention_flops = n_layer * (qkv_flops + attention_compute_flops + attn_out_flops)
+    mlp_flops = n_layer * (mlp_fc_flops + mlp_proj_flops)
+    layernorm_flops = n_layer * (ln1_flops + ln2_flops) + final_ln_flops
+    activation_flops = n_layer * gelu_flops
     
     return {
         'attention_flops': attention_flops,
         'mlp_flops': mlp_flops,
         'output_flops': output_flops,
-        'total_theoretical': total_theoretical
+        'layernorm_flops': layernorm_flops,
+        'activation_flops': activation_flops,
+        'embedding_flops': embedding_flops,
+        'total_theoretical': total_theoretical,
+        'layer_breakdown': {
+            'per_layer_ln1': ln1_flops,
+            'per_layer_qkv': qkv_flops,
+            'per_layer_attn_compute': attention_compute_flops,
+            'per_layer_attn_out': attn_out_flops,
+            'per_layer_ln2': ln2_flops,
+            'per_layer_mlp_fc': mlp_fc_flops,
+            'per_layer_gelu': gelu_flops,
+            'per_layer_mlp_proj': mlp_proj_flops
+        }
     }
 
 
@@ -503,9 +555,70 @@ if __name__ == "__main__":
             print(f"\nTheoretical FLOP breakdown:")
             print(f"  Attention FLOPs: {format_flops(theoretical_analysis['attention_flops'])}")
             print(f"  MLP FLOPs: {format_flops(theoretical_analysis['mlp_flops'])}")
+            print(f"  LayerNorm FLOPs: {format_flops(theoretical_analysis['layernorm_flops'])}")
+            print(f"  Activation FLOPs: {format_flops(theoretical_analysis['activation_flops'])}")
             print(f"  Output projection FLOPs: {format_flops(theoretical_analysis['output_flops'])}")
             print(f"  Total theoretical: {format_flops(theoretical_analysis['total_theoretical'])}")
             print(f"  Measured vs Theoretical ratio: {forward_flops / theoretical_analysis['total_theoretical']:.2f}")
+            
+            # Additional analysis
+            print(f"\nModel Configuration:")
+            print(f"  Layers: {raw_model.config.n_layer}")
+            print(f"  Heads: {raw_model.config.n_head}")
+            print(f"  Embedding dimension: {raw_model.config.n_embd}")
+            print(f"  Vocabulary size: {sp.get_piece_size()}")
+            print(f"  Batch size: {B}")
+            print(f"  Sequence length: {T}")
+            
+            # Verify parameter count calculation
+            def count_parameters_by_component(model):
+                """Count parameters by component for verification."""
+                total_params = 0
+                component_params = {}
+                
+                # Embeddings
+                wte_params = model.transformer.wte.weight.numel()
+                wpe_params = model.transformer.wpe.weight.numel()
+                component_params['embeddings'] = wte_params + wpe_params
+                total_params += wte_params + wpe_params
+                
+                # Transformer blocks
+                layer_params = 0
+                for block in model.transformer.h:
+                    # LayerNorms
+                    ln1_params = sum(p.numel() for p in block.ln_1.parameters())
+                    ln2_params = sum(p.numel() for p in block.ln_2.parameters())
+                    
+                    # Attention
+                    attn_params = sum(p.numel() for p in block.attn.parameters() if p.requires_grad)
+                    
+                    # MLP
+                    mlp_params = sum(p.numel() for p in block.mlp.parameters())
+                    
+                    layer_params += ln1_params + ln2_params + attn_params + mlp_params
+                
+                component_params['transformer_blocks'] = layer_params
+                total_params += layer_params
+                
+                # Final LayerNorm
+                final_ln_params = sum(p.numel() for p in model.transformer.ln_f.parameters())
+                component_params['final_layernorm'] = final_ln_params
+                total_params += final_ln_params
+                
+                # Language model head (note: weights are shared with embeddings)
+                # So we don't double count, but we note the sharing
+                component_params['lm_head_shared'] = 0  # Shared with embeddings
+                
+                component_params['total'] = total_params
+                return component_params
+            
+            param_breakdown = count_parameters_by_component(raw_model)
+            print(f"\nParameter breakdown:")
+            print(f"  Embeddings: {param_breakdown['embeddings']:,}")
+            print(f"  Transformer blocks: {param_breakdown['transformer_blocks']:,}")
+            print(f"  Final LayerNorm: {param_breakdown['final_layernorm']:,}")
+            print(f"  LM head: shared with embeddings")
+            print(f"  Total: {param_breakdown['total']:,}")
             
         except Exception as e:
             print(f"Warning: Could not calculate FLOPs: {e}")
@@ -514,6 +627,19 @@ if __name__ == "__main__":
     min_lr = max_lr * 0.1
     warmup_steps = 1024  # scaled values according to gpt-2 paper (we use other dataset)
     max_steps = 32_768 * 2 # scaled values according to gpt-2 paper (we use other dataset)
+    
+    # Calculate and print total training FLOPs now that all variables are defined
+    if master_process and args.enable_flop_counting and 'backward_flops' in locals():
+        try:
+            total_training_flops = backward_flops * grad_acum_steps * ddp_world_size * max_steps
+            print(f"\nTotal Training Run FLOPs:")
+            print(f"  Total FLOPs for entire training: {format_flops(total_training_flops)}")
+            print(f"  Training steps: {max_steps:,}")
+            print(f"  Gradient accumulation steps: {grad_acum_steps}")
+            print(f"  World size (GPUs): {ddp_world_size}")
+            print(f"  FLOPs per training step: {format_flops(backward_flops * grad_acum_steps * ddp_world_size)}")
+        except Exception as e:
+            print(f"Warning: Could not calculate total training FLOPs: {e}")
 
     def get_lr(it):
         if it < warmup_steps:

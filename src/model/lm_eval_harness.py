@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-LM Evaluation Harness script for custom GPT-2 model.
+LM Evaluation Harness script for a custom GPT-2 model.
 
-This script integrates our custom GPT-2 model with the LM Evaluation Harness library
+This script integrates a custom GPT-2 model with the LM Evaluation Harness library
 to evaluate the model on various benchmarks and tasks.
 
 Usage:
@@ -12,24 +12,24 @@ Usage:
 import os
 import sys
 import argparse
+import logging
+
 import torch
 import torch.nn.functional as F
 import sentencepiece as spm
-import numpy as np
-from typing import List, Dict, Any, Optional, Union
-import logging
 
-# Add the parent directory to the path to import our model
+# Ensure parent directory is on the path to import our GPT code
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from typing import List, Tuple, Union, Any
 
 from gpt_2_multi_gpu import GPT, GPTConfig
 
-# Try to import lm_eval - if not available, provide installation instructions
+# Try to import lm_eval; exit with instructions if missing
 try:
     import lm_eval
     from lm_eval.api.model import LM
     from lm_eval.api.registry import register_model
-    from lm_eval.models.utils import Collator
     from lm_eval import evaluator
 except ImportError:
     print("ERROR: lm_eval library not found!")
@@ -37,16 +37,16 @@ except ImportError:
     print("Or: pip install git+https://github.com/EleutherAI/lm-evaluation-harness.git")
     sys.exit(1)
 
-# Set up logging
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class CustomGPT2LM(LM):
     """
-    Custom LM wrapper for our GPT-2 model to work with LM Evaluation Harness.
+    Custom LM wrapper for a GPT-2 model to work with the LM Evaluation Harness.
     """
-    
+
     def __init__(
         self,
         model_path: str,
@@ -57,414 +57,409 @@ class CustomGPT2LM(LM):
         **kwargs
     ):
         super().__init__()
-        
-        # Set device
+
+        # Determine device
         if device == "auto":
             self._device = "cuda" if torch.cuda.is_available() else "cpu"
         else:
             self._device = device
-            
         logger.info(f"Using device: {self._device}")
-        
-        # Load tokenizer
+
+        # Load SentencePiece tokenizer
         self.tokenizer = spm.SentencePieceProcessor()
-        self.tokenizer.load(tokenizer_path)
-        logger.info(f"Loaded tokenizer from {tokenizer_path}")
-        logger.info(f"Vocabulary size: {self.tokenizer.get_piece_size()}")
-        
-        # Load model
-        self._load_model(model_path)
-        
-        # Set parameters
+        try:
+            self.tokenizer.load(tokenizer_path)
+        except Exception as e:
+            logger.error(f"Failed to load tokenizer from {tokenizer_path}: {e}")
+            sys.exit(1)
+        vocab_size = self.tokenizer.get_piece_size()
+        logger.info(f"Loaded tokenizer (vocab size = {vocab_size}) from {tokenizer_path}")
+
+        # Store batch size and max sequence length
         self._batch_size = batch_size
         self._max_length = max_length
-        
-        # Required attributes for LM Evaluation Harness
-        self.vocab_size = self.tokenizer.get_piece_size()
-        self.eot_token_id = self.tokenizer.eos_id() if hasattr(self.tokenizer, 'eos_id') else None
-        
-        # Additional required attributes
-        self._max_length = max_length
-        self._batch_size = batch_size
-        
-    def _load_model(self, model_path: str):
-        """Load the GPT-2 model from checkpoint."""
-        logger.info(f"Loading model from {model_path}")
-        
-        # Load checkpoint
-        checkpoint = torch.load(model_path, map_location=self._device)
-        
-        # Create model config - adjust these based on your model
-        config = GPTConfig(
-            vocab_size=self.tokenizer.get_piece_size(),
-            block_size=1024,
-            n_layer=24,  # Adjust based on your model
-            n_head=16,   # Adjust based on your model  
-            n_embd=1024, # Adjust based on your model
+
+        # Load the GPT-2 model
+        self._load_model(model_path, vocab_size)
+
+        # Attributes required by LM Evaluation Harness
+        self.vocab_size = vocab_size
+        self.eot_token_id = (
+            self.tokenizer.eos_id() if hasattr(self.tokenizer, "eos_id") else None
         )
-        
-        # Initialize model
+
+    def _load_model(self, model_path: str, vocab_size: int) -> None:
+        """Load the GPT-2 model from checkpoint."""
+        if not os.path.exists(model_path):
+            logger.error(f"Model path does not exist: {model_path}")
+            sys.exit(1)
+        logger.info(f"Loading model from {model_path}")
+
+        # Load checkpoint
+        try:
+            checkpoint = torch.load(model_path, map_location=self._device)
+        except Exception as e:
+            logger.error(f"Error loading checkpoint: {e}")
+            sys.exit(1)
+
+        # Build GPTConfig; adjust layers, heads, and embedding dims if needed
+        config = GPTConfig(
+            vocab_size=vocab_size,
+            block_size=self._max_length,
+            n_layer=24,
+            n_head=16,
+            n_embd=1024,
+        )
+
+        # Initialize model and load weights
         self.model = GPT(config)
-        self.model.load_state_dict(checkpoint["model_state_dict"])
+        try:
+            state_dict = checkpoint["model_state_dict"]
+            
+            # Remove _orig_mod. prefix if present (from torch.compile or similar wrappers)
+            if any(key.startswith("_orig_mod.") for key in state_dict.keys()):
+                logger.info("Removing _orig_mod. prefix from state dict keys")
+                state_dict = {key.replace("_orig_mod.", ""): value for key, value in state_dict.items()}
+            
+            self.model.load_state_dict(state_dict)
+        except KeyError:
+            logger.error("Checkpoint does not contain 'model_state_dict'")
+            sys.exit(1)
         self.model.to(self._device)
         self.model.eval()
-        
-        logger.info("Model loaded successfully")
-        
+        logger.info("Model loaded and set to eval mode")
+
     def tok_encode(self, string: str, **kwargs) -> List[int]:
-        """Encode a string into tokens."""
+        """Encode a string into a list of token IDs."""
         return self.tokenizer.encode(string)
-    
+
     def tok_decode(self, tokens: List[int], **kwargs) -> str:
-        """Decode tokens into a string."""
+        """Decode a list of token IDs back into a string."""
         return self.tokenizer.decode(tokens)
-    
-    def loglikelihood(self, requests: List[tuple]) -> List[tuple]:
+
+    def loglikelihood(
+        self, requests: List[Union[Tuple[str, str], Any]]
+    ) -> List[Tuple[float, bool]]:
         """
-        Compute log-likelihood for a list of (context, continuation) pairs.
-        
+        Compute (log_likelihood, is_greedy) for each (context, continuation) pair.
+
         Args:
-            requests: List of Instance objects or (context, continuation) tuples
-            
+            requests: A list of 2-tuples (context, continuation), or objects with an 'args' attribute.
         Returns:
-            List of (log_likelihood, is_greedy) tuples
+            A list of tuples: (total_log_likelihood, is_greedy_match).
         """
-        results = []
-        
-        for request in requests:
-            # Handle both Instance objects and tuples
-            if hasattr(request, 'args'):
-                # This is an Instance object from lm_eval
-                context = request.args[0]
-                continuation = request.args[1]
+        results: List[Tuple[float, bool]] = []
+
+        for req in requests:
+            # Unpack either an object with .args or a simple (context, continuation) tuple
+            if hasattr(req, "args"):
+                context, continuation = req.args[0], req.args[1]
             else:
-                # This is a tuple (for backward compatibility)
-                context, continuation = request
-            
-            # Encode context and continuation
+                context, continuation = req  # type: ignore
+
+            # Tokenize
             context_tokens = self.tok_encode(context)
             continuation_tokens = self.tok_encode(continuation)
-            
-            # Combine context and continuation
+
+            # Combine context + continuation for a single forward pass
             full_tokens = context_tokens + continuation_tokens
-            
             if len(full_tokens) > self._max_length:
-                # Truncate from the left if too long
-                full_tokens = full_tokens[-self._max_length:]
+                # Truncate from the left
+                full_tokens = full_tokens[-self._max_length :]
                 context_len = max(0, len(full_tokens) - len(continuation_tokens))
             else:
                 context_len = len(context_tokens)
-            
-            # Convert to tensor
+
             input_ids = torch.tensor([full_tokens], dtype=torch.long, device=self._device)
-            
+
             with torch.no_grad():
-                logits, _ = self.model(input_ids)
-                
-            # Get logits for continuation tokens
-            continuation_logits = logits[0, context_len-1:context_len-1+len(continuation_tokens)]
-            continuation_targets = torch.tensor(continuation_tokens, device=self._device)
-            
-            # Compute log probabilities
-            log_probs = F.log_softmax(continuation_logits, dim=-1)
-            
-            # Get log likelihood for each token in continuation
-            token_log_likelihoods = log_probs.gather(1, continuation_targets.unsqueeze(1)).squeeze(1)
-            
-            # Sum log likelihoods
-            total_log_likelihood = token_log_likelihoods.sum().item()
-            
-            # Check if this is the greedy choice
-            greedy_tokens = continuation_logits.argmax(dim=-1)
-            is_greedy = torch.equal(greedy_tokens, continuation_targets)
-            
-            results.append((total_log_likelihood, is_greedy))
-            
-        return results
-    
-    def loglikelihood_rolling(self, requests: List[str]) -> List[float]:
-        """
-        Compute rolling log-likelihood for a list of strings.
-        
-        Args:
-            requests: List of Instance objects or strings
-            
-        Returns:
-            List of log-likelihoods
-        """
-        results = []
-        
-        for request in requests:
-            # Handle both Instance objects and strings
-            if hasattr(request, 'args'):
-                # This is an Instance object from lm_eval
-                string = request.args[0]
+                logits, _ = self.model(input_ids)  # (1, seq_len, vocab_size)
+
+            # Extract logits for the continuation tokens
+            if context_len == 0:
+                cont_logits = logits[0, : len(continuation_tokens), :]
             else:
-                # This is a string (for backward compatibility)
-                string = request
-            
-            tokens = self.tok_encode(string)
-            
+                start_idx = context_len - 1
+                end_idx = start_idx + len(continuation_tokens)
+                cont_logits = logits[0, start_idx:end_idx, :]
+
+            target_ids = torch.tensor(continuation_tokens, device=self._device)
+
+            # Compute log probabilities
+            log_probs = F.log_softmax(cont_logits, dim=-1)  # (L, vocab_size)
+            token_ll = log_probs.gather(1, target_ids.unsqueeze(1)).squeeze(1)  # (L,)
+
+            total_ll = token_ll.sum().item()
+
+            # Check if greedy decoding would match the continuation exactly
+            greedy_ids = cont_logits.argmax(dim=-1)  # (L,)
+            is_greedy = bool(torch.equal(greedy_ids, target_ids))
+
+            results.append((total_ll, is_greedy))
+
+        return results
+
+    def loglikelihood_rolling(
+        self, requests: List[Union[str, Any]]
+    ) -> List[float]:
+        """
+        Compute rolling log-likelihood for each input string.
+
+        Args:
+            requests: A list of strings or objects with an 'args' attribute.
+        Returns:
+            List of log-likelihood values.
+        """
+        results: List[float] = []
+
+        for req in requests:
+            if hasattr(req, "args"):
+                text = req.args[0]
+            else:
+                text = req  # type: ignore
+
+            tokens = self.tok_encode(text)
+
+            # If there's only one token (or none), rolling LL is zero
             if len(tokens) <= 1:
                 results.append(0.0)
                 continue
-                
+
+            # Truncate if too long
             if len(tokens) > self._max_length:
-                tokens = tokens[-self._max_length:]
-            
+                tokens = tokens[-self._max_length :]
+
             input_ids = torch.tensor([tokens], dtype=torch.long, device=self._device)
-            
             with torch.no_grad():
-                logits, _ = self.model(input_ids)
-                
-            # Compute log probabilities for all positions
-            log_probs = F.log_softmax(logits[0], dim=-1)
-            
-            # Get log likelihood for each token (except the first)
-            target_tokens = torch.tensor(tokens[1:], device=self._device)
-            token_log_likelihoods = log_probs[:-1].gather(1, target_tokens.unsqueeze(1)).squeeze(1)
-            
-            # Sum all log likelihoods
-            total_log_likelihood = token_log_likelihoods.sum().item()
-            results.append(total_log_likelihood)
-            
+                logits, _ = self.model(input_ids)  # (1, seq_len, vocab_size)
+
+            log_probs = F.log_softmax(logits[0], dim=-1)  # (seq_len, vocab_size)
+            target_ids = torch.tensor(tokens[1:], device=self._device)  # (seq_len - 1,)
+
+            token_ll = log_probs[:-1].gather(1, target_ids.unsqueeze(1)).squeeze(1)
+            total_ll = token_ll.sum().item()
+            results.append(total_ll)
+
         return results
-    
-    def generate_until(self, requests: List[tuple]) -> List[str]:
+
+    def generate_until(
+        self, requests: List[Union[Tuple[str, dict], Any]]
+    ) -> List[str]:
         """
-        Generate text until stopping criteria are met.
-        
+        Generate text until specified stopping criteria are met.
+
         Args:
-            requests: List of Instance objects or (context, generation_kwargs) tuples
-            
+            requests: List of (context, generation_kwargs) pairs or objects with an 'args' attribute.
         Returns:
-            List of generated strings
+            List of generated strings.
         """
-        results = []
-        
-        for request in requests:
-            # Handle both Instance objects and tuples
-            if hasattr(request, 'args'):
-                # This is an Instance object from lm_eval
-                context = request.args[0]
-                gen_kwargs = request.args[1] if len(request.args) > 1 else {}
+        results: List[str] = []
+
+        for req in requests:
+            if hasattr(req, "args"):
+                context = req.args[0]
+                gen_kwargs = req.args[1] if len(req.args) > 1 else {}
             else:
-                # This is a tuple (for backward compatibility)
-                context, gen_kwargs = request
-            
-            # Parse generation parameters
+                context, gen_kwargs = req  # type: ignore
+
             max_gen_toks = gen_kwargs.get("max_gen_toks", 50)
-            until = gen_kwargs.get("until", [])
+            stop_seqs = gen_kwargs.get("until", [])
             temperature = gen_kwargs.get("temperature", 1.0)
             top_k = gen_kwargs.get("top_k", 50)
-            
-            # Encode context
+
             context_tokens = self.tok_encode(context)
-            
             if len(context_tokens) > self._max_length - max_gen_toks:
-                context_tokens = context_tokens[-(self._max_length - max_gen_toks):]
-            
+                context_tokens = context_tokens[-(self._max_length - max_gen_toks) :]
+
             input_ids = torch.tensor([context_tokens], dtype=torch.long, device=self._device)
-            
-            # Generate
-            generated_tokens = []
-            
+            generated_tokens: List[int] = []
+
             with torch.no_grad():
                 for _ in range(max_gen_toks):
-                    logits, _ = self.model(input_ids)
-                    next_token_logits = logits[0, -1, :] / temperature
-                    
-                    # Apply top-k filtering
+                    logits, _ = self.model(input_ids)  # (1, seq_len, vocab)
+                    next_logits = logits[0, -1, :] / temperature  # (vocab,)
+
                     if top_k > 0:
-                        top_k_logits, top_k_indices = torch.topk(next_token_logits, top_k)
-                        probs = F.softmax(top_k_logits, dim=-1)
-                        next_token_idx = torch.multinomial(probs, 1)
-                        next_token = top_k_indices[next_token_idx].item()
+                        topk_vals, topk_idx = torch.topk(next_logits, top_k)
+                        probs = F.softmax(topk_vals, dim=-1)
+                        choice = torch.multinomial(probs, num_samples=1).item()
+                        next_token = topk_idx[choice].item()
                     else:
-                        probs = F.softmax(next_token_logits, dim=-1)
-                        next_token = torch.multinomial(probs, 1).item()
-                    
+                        probs = F.softmax(next_logits, dim=-1)
+                        next_token = torch.multinomial(probs, num_samples=1).item()
+
                     generated_tokens.append(next_token)
-                    
-                    # Check stopping criteria
-                    generated_text = self.tok_decode(generated_tokens)
-                    if any(stop_seq in generated_text for stop_seq in until):
+
+                    # Check if any stop sequence has been generated
+                    partial = self.tok_decode(generated_tokens)
+                    if any(stop in partial for stop in stop_seqs):
+                        # Truncate output before the stop sequence
+                        for stop in stop_seqs:
+                            if stop in partial:
+                                partial = partial.split(stop)[0]
+                                break
+                        generated = partial
                         break
-                    
-                    # Update input for next iteration
-                    input_ids = torch.cat([input_ids, torch.tensor([[next_token]], device=self._device)], dim=1)
-                    
-                    # Truncate if too long
+
+                    next_id = torch.tensor([[next_token]], device=self._device)
+                    input_ids = torch.cat([input_ids, next_id], dim=1)
+
                     if input_ids.size(1) > self._max_length:
                         input_ids = input_ids[:, 1:]
-            
-            # Decode generated tokens
-            generated_text = self.tok_decode(generated_tokens)
-            
-            # Remove stopping sequences
-            for stop_seq in until:
-                if stop_seq in generated_text:
-                    generated_text = generated_text.split(stop_seq)[0]
-                    break
-                    
-            results.append(generated_text)
-            
+
+                else:
+                    # If loop completes without hitting a stop sequence
+                    generated = self.tok_decode(generated_tokens)
+
+            results.append(generated)
+
         return results
 
     @property
-    def max_length(self):
-        """Maximum sequence length the model can handle."""
+    def max_length(self) -> int:
         return self._max_length
-    
+
     @property
-    def max_gen_toks(self):
-        """Maximum number of tokens to generate."""
-        return 256  # Default value
-    
+    def max_gen_toks(self) -> int:
+        return 256
+
     @property
-    def batch_size(self):
-        """Batch size for evaluation."""
+    def batch_size(self) -> int:
         return self._batch_size
-    
+
     @property
-    def device(self):
-        """Device the model is running on."""
+    def device(self) -> str:
         return self._device
 
 
-# Register our model with lm_eval
+# Register our model with lm_eval under the name "custom_gpt2"
 @register_model("custom_gpt2")
 class CustomGPT2LMEval(CustomGPT2LM):
-    """Registered version of our custom GPT-2 model for lm_eval."""
+    """Registered variant of CustomGPT2LM for lm_eval."""
     pass
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate custom GPT-2 model using LM Evaluation Harness")
-    
-    parser.add_argument(
-        "--model_path", 
-        type=str, 
-        required=True,
-        help="Path to the model checkpoint (.pt file)"
+    parser = argparse.ArgumentParser(
+        description="Evaluate a custom GPT-2 model using LM Evaluation Harness"
     )
-    
+
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        required=True,
+        help="Path to the model checkpoint (.pt file)",
+    )
     parser.add_argument(
         "--tokenizer_path",
         type=str,
         default="tokenizer/sp_model.model",
-        help="Path to the SentencePiece tokenizer model"
+        help="Path to the SentencePiece tokenizer model",
     )
-    
     parser.add_argument(
         "--tasks",
         type=str,
         default="hellaswag,arc_easy,arc_challenge,piqa,winogrande",
-        help="Comma-separated list of tasks to evaluate on"
+        help="Comma-separated list of tasks to evaluate on",
     )
-    
     parser.add_argument(
         "--device",
         type=str,
         default="auto",
-        help="Device to run evaluation on (auto, cuda, cpu)"
+        choices=["auto", "cuda", "cpu"],
+        help="Device to run evaluation on (auto, cuda, cpu)",
     )
-    
     parser.add_argument(
         "--batch_size",
         type=int,
         default=1,
-        help="Batch size for evaluation"
+        help="Batch size for evaluation",
     )
-    
     parser.add_argument(
         "--limit",
         type=int,
         default=None,
-        help="Limit number of examples per task (for testing)"
+        help="Limit number of examples per task (for debugging)",
     )
-    
     parser.add_argument(
         "--output_path",
         type=str,
         default="evaluation_results.json",
-        help="Path to save evaluation results"
+        help="Path to save evaluation results",
     )
-    
     parser.add_argument(
         "--num_fewshot",
         type=int,
         default=0,
-        help="Number of few-shot examples"
+        help="Number of few-shot examples per prompt",
     )
-    
     parser.add_argument(
         "--log_samples",
         action="store_true",
-        help="Log individual sample results"
+        help="Log individual sample results to stdout",
     )
-    
+
     args = parser.parse_args()
-    
-    # Validate paths
-    if not os.path.exists(args.model_path):
-        logger.error(f"Model path does not exist: {args.model_path}")
+
+    # Parse task list
+    tasks = [t.strip() for t in args.tasks.split(",") if t.strip()]
+    if not tasks:
+        logger.error("No tasks specified for evaluation.")
         sys.exit(1)
-        
-    if not os.path.exists(args.tokenizer_path):
-        logger.error(f"Tokenizer path does not exist: {args.tokenizer_path}")
-        sys.exit(1)
-    
-    # Parse tasks
-    tasks = [task.strip() for task in args.tasks.split(",")]
     logger.info(f"Evaluating on tasks: {tasks}")
-    
+
     # Initialize model
-    logger.info("Initializing model...")
+    logger.info("Initializing CustomGPT2LM...")
     model = CustomGPT2LM(
         model_path=args.model_path,
         tokenizer_path=args.tokenizer_path,
         device=args.device,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        max_length=1024,
     )
-    
+
     # Run evaluation
     logger.info("Starting evaluation...")
-    
-    results = evaluator.simple_evaluate(
-        model=model,
-        tasks=tasks,
-        num_fewshot=args.num_fewshot,
-        batch_size=args.batch_size,
-        limit=args.limit,
-        log_samples=args.log_samples,
-    )
-    
-    # Save results
-    logger.info(f"Saving results to {args.output_path}")
-    
+    try:
+        results = evaluator.simple_evaluate(
+            model=model,
+            tasks=tasks,
+            num_fewshot=args.num_fewshot,
+            batch_size=args.batch_size,
+            limit=args.limit,
+            log_samples=args.log_samples,
+        )
+    except Exception as e:
+        logger.error(f"Evaluation failed: {e}")
+        sys.exit(1)
+
+    # Save results to JSON
     import json
-    with open(args.output_path, 'w') as f:
-        json.dump(results, f, indent=2)
-    
-    # Print summary
-    logger.info("Evaluation completed!")
-    logger.info("Results summary:")
-    
-    for task_name, task_results in results["results"].items():
-        logger.info(f"\n{task_name}:")
-        for metric_name, metric_value in task_results.items():
-            if isinstance(metric_value, (int, float)):
-                logger.info(f"  {metric_name}: {metric_value:.4f}")
-    
-    # Print overall statistics if available
+
+    try:
+        with open(args.output_path, "w") as f:
+            json.dump(results, f, indent=2)
+        logger.info(f"Saved evaluation results to {args.output_path}")
+    except Exception as e:
+        logger.error(f"Failed to write results to {args.output_path}: {e}")
+        sys.exit(1)
+
+    # Print summary to console
+    logger.info("Evaluation completed. Summary:")
+    if "results" in results:
+        for task_name, metrics in results["results"].items():
+            logger.info(f"\nTask: {task_name}")
+            for metric_name, value in metrics.items():
+                if isinstance(value, (int, float)):
+                    logger.info(f"  {metric_name}: {value:.4f}")
+
     if "groups" in results:
-        logger.info("\nGroup averages:")
-        for group_name, group_results in results["groups"].items():
-            for metric_name, metric_value in group_results.items():
-                if isinstance(metric_value, (int, float)):
-                    logger.info(f"  {group_name} {metric_name}: {metric_value:.4f}")
+        logger.info("\nGroup-level averages:")
+        for grp, grp_metrics in results["groups"].items():
+            for metric_name, value in grp_metrics.items():
+                if isinstance(value, (int, float)):
+                    logger.info(f"  {grp} {metric_name}: {value:.4f}")
 
 
 if __name__ == "__main__":
-    main() 
+    main()

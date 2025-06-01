@@ -1,14 +1,29 @@
 #!/bin/bash
 
+#SBATCH --job-name=gpt2-eval
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --time=8:00:00
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:a100:1
+#SBATCH --mem=32GB
+#SBATCH --account=hpc-prf-merlin
+
 # LM Evaluation Harness runner script for custom GPT-2 model
-# Usage: ./run_evaluation.sh [model_path] [tasks] [additional_args]
+# Usage: sbatch run_evaluation.sh [model_path] [tasks] [additional_args]
 
 set -e
 
+# Activate environment
+source ~/miniconda3/bin/activate icebreaker
+
+module load system/CUDA/12.1.1
+
 # Default values
-MODEL_PATH="${1:-gpt2_fineweb2_model_steps_32768.pt}"
-TASKS="${2:-hellaswag,arc_easy,arc_challenge,piqa,winogrande}"
-TOKENIZER_PATH="tokenizer/sp_model.model"
+MODEL_PATH="${1:-gpt2_model_step_49000.pt}"
+TASKS="${2:-arc_multilingual,truthfulqa,mgsm_direct,mgsm_cot_native,hellaswag,pawsx}"
+TOKENIZER_PATH="tokenizer/sp_model_131072.model"
 OUTPUT_DIR="evaluation_results"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
@@ -18,6 +33,8 @@ mkdir -p "$OUTPUT_DIR"
 echo "=========================================="
 echo "LM Evaluation Harness - Custom GPT-2"
 echo "=========================================="
+echo "SLURM Job ID: $SLURM_JOB_ID"
+echo "Node: $SLURM_NODELIST"
 echo "Model: $MODEL_PATH"
 echo "Tasks: $TASKS"
 echo "Tokenizer: $TOKENIZER_PATH"

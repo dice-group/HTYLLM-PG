@@ -19,7 +19,7 @@ torch.backends.cudnn.benchmark     = False
 
 # ─── tokenizer ──────────────────────────────────────────────────
 sp = spm.SentencePieceProcessor()
-sp.load("tokenizer/sp_model.model")  # path to your .model file
+sp.load("tokenizer/sp_model_131072.model")  # path to your .model file
 
 # ─── model setup ─────────────────────────────────────────────────
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -35,8 +35,22 @@ config = GPTConfig(
 model = GPT(config).to(device)
 
 # load checkpoint
-ckpt = torch.load("gpt2_fineweb2_model_steps_32768.pt", map_location=device)
-model.load_state_dict(ckpt["model_state_dict"])
+ckpt = torch.load("gpt2_model_step_49000.pt", map_location=device)
+
+# Handle _orig_mod. prefix in state dict keys (from torch.compile or distributed training)
+state_dict = ckpt["model_state_dict"]
+if any(key.startswith("_orig_mod.") for key in state_dict.keys()):
+    # Strip _orig_mod. prefix from all keys
+    new_state_dict = {}
+    for key, value in state_dict.items():
+        if key.startswith("_orig_mod."):
+            new_key = key[len("_orig_mod."):]
+            new_state_dict[new_key] = value
+        else:
+            new_state_dict[key] = value
+    state_dict = new_state_dict
+
+model.load_state_dict(state_dict)
 model.eval()
 
 # ─── answer-generation fn ────────────────────────────────────────
