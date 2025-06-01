@@ -10,6 +10,8 @@ import json
 from pathlib import Path
 import os
 import sys
+from datetime import datetime
+import numpy as np
 
 # Set datasets cache to local directory to avoid permission issues
 cache_dir = Path("./cache/huggingface_datasets").absolute()
@@ -214,9 +216,24 @@ def run_evaluation(checkpoint_path, tokenizer, tasks_list, batch_size, limit, fe
 
 
 def save_results(results, output_path):
-    """Save evaluation results to JSON file."""
+    """Save evaluation results to JSON file with proper datetime handling."""
+    
+    def json_serializer(obj):
+        """JSON serializer for objects not serializable by default json code"""
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif hasattr(obj, '__dict__'):
+            return str(obj)  # Convert other complex objects to string
+        raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+    
     with open(output_path, 'w') as f:
-        json.dump(results, f, indent=2)
+        json.dump(results, f, indent=2, default=json_serializer)
     print(f"Results saved to: {output_path}")
 
 
