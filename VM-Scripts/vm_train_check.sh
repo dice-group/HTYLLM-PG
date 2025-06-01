@@ -12,7 +12,7 @@ export NCCL_DEBUG=INFO
 torchrun \
   --nproc_per_node=2 \
   src/train.py \
-  --model_path checkpoints/pretrain_run_vm/checkpoint-16000 \
+  --model_path checkpoints/pretrain_run_vm/checkpoint-56000 \
   --tokenizer_path tokenizer \
   --dataset_dir data/processed \
   --output_dir checkpoints/pretrain_run_vm \
