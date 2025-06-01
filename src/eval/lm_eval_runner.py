@@ -5,6 +5,7 @@ from pathlib import Path
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from lm_eval import evaluator
+import torch._dynamo
 
 
 def get_checkpoints(checkpoint_dir):
@@ -16,7 +17,7 @@ def get_checkpoints(checkpoint_dir):
 
 def evaluate_checkpoint(checkpoint_path, output_dir):
     print(f"Evaluating checkpoint: {checkpoint_path}")
-
+    torch._dynamo.disable()
     checkpoint_name = Path(checkpoint_path).name
     results_dir = os.path.join(output_dir, "lm_eval", checkpoint_name)
     tb_logdir = os.path.join(output_dir, "runs", "lm_eval", checkpoint_name)
@@ -27,15 +28,15 @@ def evaluate_checkpoint(checkpoint_path, output_dir):
         model="hf",
         model_args={
             "pretrained": checkpoint_path,
-            "tokenizer": "bigscience/bloom-560m",
-            "revision": "main",
-            "use_cache": True
+            "tokenizer": "google/gemma-3-4b-pt",
+            "revision": "main"
         },
         tasks=[
-            "hellaswag,xnli,belebele,arc_multilingual,global_mmlu,include_base_44,truthfulqa,mgsm_direct,mgsm_cot_native,mlqa,xcopa,xwinograd,xstorycloze,xnli,pawsx,flores,wmt16,lambada_multilingual,xquad"  # add any further eval_tasks here
+            "hellaswag", "xnli", "belebele", "arc_multilingual", "truthfulqa", "mgsm_direct", "mgsm_cot_native", "xcopa", "xwinograd", "xstorycloze", "xnli", "pawsx", "flores", "wmt16", "lambada_multilingual", "xquad"  # add any further eval_tasks here
         ],
-        batch_size=48,
-        device="cuda" if torch.cuda.is_available() else "cpu"
+        batch_size=128,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        limit=100
     )
 
     # Manually save results to JSON
@@ -80,3 +81,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

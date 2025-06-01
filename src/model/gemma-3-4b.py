@@ -55,7 +55,7 @@ if torch.cuda.is_available():
 training_args = TrainingArguments(
     output_dir=model_location + '/checkpoints',
     save_strategy="steps",
-    save_steps=499,
+    save_steps=4000,
     logging_dir=model_location + '/logs',
     logging_steps=20,
     learning_rate=2e-5,
