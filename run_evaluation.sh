@@ -22,8 +22,8 @@ module load system/CUDA/12.1.1
 
 # Default values
 MODEL_PATH="${1:-gpt2_model_step_49000.pt}"
-TASKS="${2:-arc_multilingual,truthfulqa,mgsm_direct,mgsm_cot_native,hellaswag,pawsx}"
-TOKENIZER_PATH="tokenizer/sp_model_131072.model"
+TASKS="${2:-belebele}"
+TOKENIZER_PATH="tokenizer/sp_model_131072/sp_model_131072.model"
 OUTPUT_DIR="evaluation_results"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
