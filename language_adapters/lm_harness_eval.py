@@ -1,9 +1,10 @@
 import glob
 import wandb
 
-from transformers import TrainerCallback
+from transformers import TrainerCallback, TrainingControl
 import subprocess, json, os
 from pathlib import Path
+from torch.utils.tensorboard import SummaryWriter
 
 class LMEvalCallback(TrainerCallback):
     def __init__(self, tokenizer_name, eval_interval=500, eval_tasks=None, output_dir="./lm_eval_results", tb_logdir=None):
@@ -12,6 +13,7 @@ class LMEvalCallback(TrainerCallback):
         self.tokenizer_name = tokenizer_name
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.tb_writer = SummaryWriter(log_dir=tb_logdir) if tb_logdir else None
 
     def on_step_end(self, args, state, control, **kwargs):
         if state.global_step % self.eval_interval != 0 or state.global_step == 0:
@@ -28,10 +30,10 @@ class LMEvalCallback(TrainerCallback):
             #"--model_args", f"pretrained={model_path},tokenizer={self.tokenizer_name}",
             "--model_args", f"pretrained={self.tokenizer_name},peft={model_path},tokenizer={self.tokenizer_name}",  #TODO: voab size is currently changing, which starts resizing model embedding layer an thus a dekay, fix this
             "--tasks", ",".join(self.eval_tasks),
-            "--batch_size", "2",
-            "--limit", "10",
+            "--batch_size", "6",
+            "--limit", "50",
             "--output_path", str(step_dir),
-            "--wandb_args", f"project=your_project_name,group=eval,job_type=step_{state.global_step}",
+            "--wandb_args", f"project={self.output_dir.name},group=eval,job_type=step_{state.global_step}",
             "--log_samples"
         ], check=True)
 
@@ -48,6 +50,8 @@ class LMEvalCallback(TrainerCallback):
                 if isinstance(v, (int, float)):
                     tag = f"{task}/{k.replace(',', '_')}"
                     log_data[tag] = v
+                    if self.tb_writer:
+                        self.tb_writer.add_scalar(tag, v, global_step=state.global_step)
         wandb.log(log_data, step=state.global_step)
 
     def get_latest_checkpoint(self, output_dir):
@@ -57,4 +61,69 @@ class LMEvalCallback(TrainerCallback):
         return max(checkpoints, key=lambda x: int(x.split("-")[-1]))
 
     def on_train_end(self, *args, **kwargs):
-        self.tb_writer.close()
+        if self.tb_writer:
+            self.tb_writer.close()
+
+
+class LMHarnessEarlyStoppingCallback(TrainerCallback):
+    def __init__(self, eval_dir, metric_names, patience=3):
+        self.eval_dir = eval_dir
+        self.metric_names = metric_names  # e.g., ["arc_zh", "belebele", "belebele_acm_Arab"] here select only those on which we want to improve, not all e.g only specific languages
+        self.patience = patience
+        self.best_score = None
+        self.bad_evals = 0
+
+    def on_evaluate(self, args, state, control: TrainingControl, **kwargs):
+        combined_score = self._read_and_sum_metrics()
+        print(f"[LMHarnessEarlyStopping] Combined eval score: {combined_score:.4f}")
+
+        if self.best_score is None or combined_score > self.best_score:
+            print("[LMHarnessEarlyStopping] Improvement detected.")
+            self.best_score = combined_score
+            self.bad_evals = 0
+        else:
+            self.bad_evals += 1
+            print(f"[LMHarnessEarlyStopping] No improvement. Patience: {self.bad_evals}/{self.patience}")
+
+        if self.bad_evals >= self.patience:
+            print("[LMHarnessEarlyStopping] Early stopping triggered.")
+            control.should_training_stop = True
+
+        return control
+
+    def _read_and_sum_metrics(self):
+        try:
+            ## get latest step dir
+            step_dirs = sorted(glob.glob(os.path.join(self.eval_dir, "step_*")), key=os.path.getmtime)
+            latest_step_dir = step_dirs[-1]
+            subdirs = [d for d in glob.glob(os.path.join(latest_step_dir, "*")) if os.path.isdir(d)]
+
+            eval_dir = subdirs[0]  # assume one eval per step TODO: maybe make this more reliable
+            result_files = glob.glob(os.path.join(eval_dir, "results_*.json"))
+            if not result_files:
+                print(f"[LMHarnessEarlyStopping] No results found in {eval_dir}")
+                return 0.0
+
+            latest_result_file = sorted(result_files)[-1]   #only one should exist per step file
+            with open(latest_result_file, "r") as f:
+                results = json.load(f)
+
+            result_data = results.get("results", {})
+            total_score = 0.0
+            for task in self.metric_names:
+                task_data = result_data.get(task, {})
+                acc = task_data.get("acc,none", 0.0)
+                total_score += acc
+                
+            ## write combined scores and individual scores in log file
+            with open(os.path.join(self.eval_dir, "combined_scores.txt"), "a") as f:
+                f.write(f"{latest_result_file}\n")
+                for task in self.metric_names:
+                    acc = result_data.get(task, {}).get("acc,none", 0.0)
+                    f.write(f"  {task}: {acc:.4f}\n")
+                f.write(f"  Total Combined Score: {total_score:.4f}\n\n")
+
+            return total_score
+        except Exception as e:
+            print(f"[LMHarnessEarlyStopping] Error reading metrics: {e}")
+            return 0.0
