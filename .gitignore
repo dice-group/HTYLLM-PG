@@ -7,5 +7,6 @@ logs
 launch.json
 language_adapters/xlora/venv-jupyterhub
 language_adapters/xlora/adapter_*
+language_adapters/xlora/check*
 wandb/
 *output.log*
