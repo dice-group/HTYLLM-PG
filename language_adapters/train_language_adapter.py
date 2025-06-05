@@ -1,54 +1,62 @@
 import os
 import torch
-
+import argparse
 from datasets import load_from_disk
 from transformers import (
     AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments,
-    DataCollatorForLanguageModeling, BitsAndBytesConfig
+    DataCollatorForLanguageModeling, BitsAndBytesConfig, EarlyStoppingCallback
 )
 from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_training
 from lm_harness_eval import LMEvalCallback
 
-def train_model(tokenized_data_dir, model_name, output_dir, logging_dir):
-    dataset = load_from_disk(tokenized_data_dir,  keep_in_memory=True)
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+def train_model(args):
+    dataset = load_from_disk(args.tokenized_dir, keep_in_memory=True)
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
     tokenizer.pad_token = tokenizer.eos_token
 
     bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True, 
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.float16
+        load_in_4bit=args.load_in_4bit, 
+        bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant,
+        bnb_4bit_quant_type=args.bnb_4bit_quant_type,
+        bnb_4bit_compute_dtype=getattr(torch, args.bnb_4bit_compute_dtype)
     )
 
-    model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=bnb_config, device_map="auto")
+    model = AutoModelForCausalLM.from_pretrained(args.model_name, quantization_config=bnb_config, device_map="auto")
     model = prepare_model_for_kbit_training(model)
 
     lora_config = LoraConfig(
-        r=8, lora_alpha=16, lora_dropout=0.1,
-        bias="none", task_type=TaskType.CAUSAL_LM,
-        target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"]
+        r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        bias=args.lora_bias,
+        task_type=TaskType.CAUSAL_LM,
+        target_modules=args.lora_target_modules.split(",")
     )
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
     model.config.pad_token_id = tokenizer.eos_token_id
 
     training_args = TrainingArguments(
-        output_dir=output_dir,
-        per_device_train_batch_size=32,
-        gradient_accumulation_steps=1,
-        num_train_epochs=1,
-        learning_rate=2e-4,
-        lr_scheduler_type="cosine",
-        logging_dir=logging_dir,
-        logging_steps=20,
-        save_strategy="steps",
-        save_steps=5,
-        bf16=True,
-        save_total_limit=200,
-        report_to=["wandb"],
-        run_name="weights_an_biases_test",
-        dataloader_num_workers=28
+        output_dir=args.output_dir,
+        per_device_train_batch_size=args.train_batch_size,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        num_train_epochs=args.num_train_epochs,
+        learning_rate=args.learning_rate,
+        lr_scheduler_type=args.lr_scheduler_type,
+        logging_dir=args.logging_dir,
+        logging_steps=args.logging_steps,
+        save_strategy=args.save_strategy,
+        save_steps=args.save_steps,
+        bf16=args.bf16,
+        save_total_limit=args.save_total_limit,
+        report_to=args.report_to.split(","),
+        run_name=args.run_name,
+        dataloader_num_workers=args.dataloader_num_workers,
+        evaluation_strategy=args.evaluation_strategy,
+        eval_steps=args.eval_steps,
+        load_best_model_at_end=args.load_best_model_at_end,
+        metric_for_best_model=args.metric_for_best_model,
+        greater_is_better=args.greater_is_better
     )
 
     trainer = Trainer(
@@ -59,27 +67,69 @@ def train_model(tokenized_data_dir, model_name, output_dir, logging_dir):
         data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
         callbacks=[
             LMEvalCallback(
-                tokenizer_name=model_name,
-                eval_interval=5,
-                eval_tasks=["hellaswag", "mmlu", "belebele"],
-                output_dir=os.path.join(output_dir, "lm_eval"),
-                tb_logdir=logging_dir
-            )
+                tokenizer_name=args.model_name,
+                eval_interval=args.eval_interval,
+                eval_tasks=args.eval_tasks.split(","),
+                output_dir=os.path.join(args.output_dir, "lm_eval"),
+                tb_logdir=args.logging_dir
+            ),
+            EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience)
         ]
     )
-    trainer.train()
-    #trainer.train(resume_from_checkpoint=True)
-    model.save_pretrained(os.path.join(output_dir, "adapter"))
-    tokenizer.save_pretrained(os.path.join(output_dir, "adapter"))
+
+    trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
+    model.save_pretrained(os.path.join(args.output_dir, "adapter"))
+    tokenizer.save_pretrained(os.path.join(args.output_dir, "adapter"))
 
 if __name__ == "__main__":
-    import argparse
     parser = argparse.ArgumentParser()
+
+    # Required arguments
     parser.add_argument("--tokenized_dir", required=True)
+    parser.add_argument("--tokenizer_path", required=True)
     parser.add_argument("--model_name", required=True)
     parser.add_argument("--output_dir", required=True)
     parser.add_argument("--logging_dir", required=True)
-    args = parser.parse_args()
 
+    # Quantization
+    parser.add_argument("--load_in_4bit", type=bool, default=True)
+    parser.add_argument("--bnb_4bit_use_double_quant", type=bool, default=True)
+    parser.add_argument("--bnb_4bit_quant_type", type=str, default="nf4")
+    parser.add_argument("--bnb_4bit_compute_dtype", type=str, default="float16")
+
+    # LoRA
+    parser.add_argument("--lora_r", type=int, default=8)
+    parser.add_argument("--lora_alpha", type=int, default=16)
+    parser.add_argument("--lora_dropout", type=float, default=0.1)
+    parser.add_argument("--lora_bias", type=str, default="none")
+    parser.add_argument("--lora_target_modules", type=str, default="query_key_value,dense,dense_h_to_4h,dense_4h_to_h")
+
+    # Training
+    parser.add_argument("--train_batch_size", type=int, default=52)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
+    parser.add_argument("--num_train_epochs", type=int, default=2)
+    parser.add_argument("--learning_rate", type=float, default=2e-4)
+    parser.add_argument("--lr_scheduler_type", type=str, default="cosine")
+    parser.add_argument("--logging_steps", type=int, default=20)
+    parser.add_argument("--save_strategy", type=str, default="steps")
+    parser.add_argument("--save_steps", type=int, default=1000)
+    parser.add_argument("--bf16", type=bool, default=True)
+    parser.add_argument("--save_total_limit", type=int, default=200)
+    parser.add_argument("--report_to", type=str, default="wandb,tensorboard")
+    parser.add_argument("--run_name", type=str, default="weights_and_biases_test")
+    parser.add_argument("--dataloader_num_workers", type=int, default=28)
+    parser.add_argument("--evaluation_strategy", type=str, default="steps")
+    parser.add_argument("--eval_steps", type=int, default=1000)
+    parser.add_argument("--load_best_model_at_end", type=bool, default=True)
+    parser.add_argument("--metric_for_best_model", type=str, default="eval_accuracy")
+    parser.add_argument("--greater_is_better", type=bool, default=True)
+
+    # Eval and early stopping
+    parser.add_argument("--eval_interval", type=int, default=1001)
+    parser.add_argument("--eval_tasks", type=str, default="turkishmmlu")
+    parser.add_argument("--early_stopping_patience", type=int, default=3)
+    parser.add_argument("--resume_from_checkpoint", type=bool, default=True)
+
+    args = parser.parse_args()
     torch.backends.cuda.matmul.allow_tf32 = True
-    train_model(args.tokenized_dir, args.model_name, args.output_dir, args.logging_dir)
+    train_model(args)
