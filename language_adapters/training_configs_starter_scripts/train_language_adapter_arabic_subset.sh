@@ -5,11 +5,11 @@ export WANDB_MODE=online
 export CUDA_VISIBLE_DEVICES=0
 
 # Configurable parameters
-TOKENIZED_DIR="/path/to/tokenized"
-TOKENIZER_PATH="/path/to/tokenizer"
-MODEL_NAME="model/repo"
-OUTPUT_DIR="./output"
-LOGGING_DIR="./logs"
+TOKENIZED_DIR=" /data/joel/tokenized_adapter_subsets/gemma3-4b-pt/arabic_subset/"
+TOKENIZER_PATH="/data/joel/tokenized_adapter_subsets/gemma_extended_tokenizers/arabic/"
+MODEL_NAME="google/gemma-3-4b-pt"
+OUTPUT_DIR="/data/joel/results_language_adapters/gemma3-4b-pt/arabic"
+LOGGING_DIR="/data/joel/results_language_adapters/gemma3-4b-pt/arabic/logs"
 
 LOAD_IN_4BIT=true
 BNB_4BIT_USE_DOUBLE_QUANT=true
@@ -20,7 +20,7 @@ LORA_R=8
 LORA_ALPHA=16
 LORA_DROPOUT=0.1
 LORA_BIAS="none"
-LORA_TARGET_MODULES="query_key_value,dense,dense_h_to_4h,dense_4h_to_h"
+LORA_TARGET_MODULES="q_proj", "v_proj", "gate_proj", "up_proj"
 
 TRAIN_BATCH_SIZE=52
 GRADIENT_ACCUMULATION_STEPS=1
@@ -42,12 +42,20 @@ METRIC_FOR_BEST_MODEL="eval_accuracy"
 GREATER_IS_BETTER=true
 
 EVAL_INTERVAL=1001
-EVAL_TASKS="turkishmmlu"
+EVAL_TASKS="belebele"
+EVAL_METRICS_EARLYSTOPPING="belebele_apc_Arab,belebele_ary_Arab,belebele_arz_Arab,belebele_ars_Arab,belebele_heb_Hebr"
 EARLY_STOPPING_PATIENCE=3
-RESUME_FROM_CHECKPOINT=true
+RESUME_FROM_CHECKPOINT=false
+
+EVAL_BATCH_SIZE=4
+EVAL_LIMIT=500
+EVAL_CUDA_DEVICES="0,1"
+EVAL_LOG_SAMPLES=true
+EVAL_WANDB_PROJECT="gemma3-4b-pt-arabic-lanauge-adapter"
+
 
 # Run training
-python train.py \
+python ../train_language_adapter.py \
   --tokenized_dir "$TOKENIZED_DIR" \
   --tokenizer_path "$TOKENIZER_PATH" \
   --model_name "$MODEL_NAME" \
@@ -82,5 +90,10 @@ python train.py \
   --greater_is_better "$GREATER_IS_BETTER" \
   --eval_interval "$EVAL_INTERVAL" \
   --eval_tasks "$EVAL_TASKS" \
+  --eval_metric_names "$EVAL_METRICS_EARLYSTOPPING" \
   --early_stopping_patience "$EARLY_STOPPING_PATIENCE" \
-  --resume_from_checkpoint "$RESUME_FROM_CHECKPOINT"
+  --resume_from_checkpoint "$RESUME_FROM_CHECKPOINT" \
+  --eval_batch_size $EVAL_BATCH_SIZE \
+  --eval_limit $EVAL_LIMIT \
+  --eval_cuda_devices "$EVAL_CUDA_DEVICES" \
+  --eval_wandb_project "$EVAL_WANDB_PROJECT"

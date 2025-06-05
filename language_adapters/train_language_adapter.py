@@ -7,7 +7,7 @@ from transformers import (
     DataCollatorForLanguageModeling, BitsAndBytesConfig, EarlyStoppingCallback
 )
 from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_training
-from lm_harness_eval import LMEvalCallback
+from lm_harness_eval import LMEvalCallback, LMHarnessEarlyStoppingCallback
 
 def train_model(args):
     dataset = load_from_disk(args.tokenized_dir, keep_in_memory=True)
@@ -71,9 +71,17 @@ def train_model(args):
                 eval_interval=args.eval_interval,
                 eval_tasks=args.eval_tasks.split(","),
                 output_dir=os.path.join(args.output_dir, "lm_eval"),
-                tb_logdir=args.logging_dir
+                tb_logdir=args.logging_dir,
+                batch_size=args.eval_batch_size,
+                limit=args.eval_limit,
+                cuda_devices=args.eval_cuda_devices,
+                wandb_project=args.eval_wandb_project,
             ),
-            EarlyStoppingCallback(early_stopping_patience=args.early_stopping_patience)
+            LMHarnessEarlyStoppingCallback(
+                eval_dir=os.path.join(args.output_dir, "lm_eval"),
+                metric_names=args.eval_metric_names.split(","),
+                patience=args.early_stopping_patience
+            )
         ]
     )
 
@@ -126,9 +134,17 @@ if __name__ == "__main__":
 
     # Eval and early stopping
     parser.add_argument("--eval_interval", type=int, default=1001)
-    parser.add_argument("--eval_tasks", type=str, default="turkishmmlu")
+    parser.add_argument("--eval_tasks", type=str, default="belebele")
+    parser.add_argument("--eval_metric_names", type=str, default="belebele", help="Comma-separated list of eval tasks used for early stopping scoring")
     parser.add_argument("--early_stopping_patience", type=int, default=3)
     parser.add_argument("--resume_from_checkpoint", type=bool, default=True)
+    
+    parser.add_argument("--eval_batch_size", type=int, default=2, help="Batch size for LM evaluation")
+    parser.add_argument("--eval_limit", type=int, default=100, help="Number of examples per eval task")
+    parser.add_argument("--eval_cuda_devices", type=str, default="0", help="CUDA_VISIBLE_DEVICES for LM evaluation subprocess")
+    parser.add_argument("--eval_log_samples", action="store_true", help="Whether to log eval samples")
+    parser.add_argument("--eval_wandb_project", type=str, default="lm_eval_project", help="WandB project name for eval logs")
+
 
     args = parser.parse_args()
     torch.backends.cuda.matmul.allow_tf32 = True

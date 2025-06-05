@@ -7,13 +7,19 @@ from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
 
 class LMEvalCallback(TrainerCallback):
-    def __init__(self, tokenizer_name, eval_interval=500, eval_tasks=None, output_dir="./lm_eval_results", tb_logdir=None):
+    def __init__(self, tokenizer_name, eval_interval=500, eval_tasks=None, output_dir="./lm_eval_results", tb_logdir=None, batch_size=2, limit=500, cuda_devices="0", wandb_project="lm_eval_project"):
+        
         self.eval_interval = eval_interval
-        self.eval_tasks = eval_tasks or ["hellaswag"]
+        self.eval_tasks = eval_tasks or ["belebele"]
         self.tokenizer_name = tokenizer_name
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.tb_writer = SummaryWriter(log_dir=tb_logdir) if tb_logdir else None
+        
+        self.batch_size = batch_size
+        self.limit = limit
+        self.cuda_devices = cuda_devices
+        self.wandb_project = wandb_project
 
     def on_step_end(self, args, state, control, **kwargs):
         if state.global_step % self.eval_interval != 0 or state.global_step == 0:
@@ -27,15 +33,14 @@ class LMEvalCallback(TrainerCallback):
         subprocess.run([
             "lm_eval",
             "--model", "hf",
-            #"--model_args", f"pretrained={model_path},tokenizer={self.tokenizer_name}",
-            "--model_args", f"pretrained={self.tokenizer_name},peft={model_path},tokenizer={self.tokenizer_name}",  #TODO: voab size is currently changing, which starts resizing model embedding layer an thus a dekay, fix this
+            "--model_args", f"pretrained={self.tokenizer_name},peft={model_path},tokenizer={self.tokenizer_name}",
             "--tasks", ",".join(self.eval_tasks),
-            "--batch_size", "6",
-            "--limit", "50",
+            "--batch_size", str(self.batch_size),
+            "--limit", str(self.limit),
             "--output_path", str(step_dir),
-            "--wandb_args", f"project={self.output_dir.name},group=eval,job_type=step_{state.global_step}",
-            "--log_samples"
-        ], check=True)
+            "--wandb_args", f"project={self.wandb_project},group=eval,job_type=step_{state.global_step}",
+            "--log_samples" if self.log_samples else ""
+        ], check=True, env={**os.environ, "CUDA_VISIBLE_DEVICES": self.cuda_devices})
 
         result_files = list(step_dir.glob("*/results_*.json"))
         if not result_files:
