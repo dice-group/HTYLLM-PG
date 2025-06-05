@@ -1,7 +1,7 @@
 import glob
 import wandb
 
-from transformers import TrainerCallback, TrainingControl
+from transformers import TrainerCallback
 import subprocess, json, os
 from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
@@ -39,7 +39,7 @@ class LMEvalCallback(TrainerCallback):
             "--limit", str(self.limit),
             "--output_path", str(step_dir),
             "--wandb_args", f"project={self.wandb_project},group=eval,job_type=step_{state.global_step}",
-            "--log_samples" if self.log_samples else ""
+            "--log_samples"
         ], check=True, env={**os.environ, "CUDA_VISIBLE_DEVICES": self.cuda_devices})
 
         result_files = list(step_dir.glob("*/results_*.json"))
@@ -78,7 +78,7 @@ class LMHarnessEarlyStoppingCallback(TrainerCallback):
         self.best_score = None
         self.bad_evals = 0
 
-    def on_evaluate(self, args, state, control: TrainingControl, **kwargs):
+    def on_evaluate(self, args, state, control, **kwargs):
         combined_score = self._read_and_sum_metrics()
         print(f"[LMHarnessEarlyStopping] Combined eval score: {combined_score:.4f}")
 

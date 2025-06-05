@@ -5,7 +5,7 @@ export WANDB_MODE=online
 export CUDA_VISIBLE_DEVICES=0
 
 # Configurable parameters
-TOKENIZED_DIR=" /data/joel/tokenized_adapter_subsets/gemma3-4b-pt/arabic_subset/"
+TOKENIZED_DIR="/data/joel/tokenized_adapter_subsets/gemma3-4b-pt/arabic_subset/"
 TOKENIZER_PATH="/data/joel/tokenized_adapter_subsets/gemma_extended_tokenizers/arabic/"
 MODEL_NAME="google/gemma-3-4b-pt"
 OUTPUT_DIR="/data/joel/results_language_adapters/gemma3-4b-pt/arabic"
@@ -20,7 +20,7 @@ LORA_R=8
 LORA_ALPHA=16
 LORA_DROPOUT=0.1
 LORA_BIAS="none"
-LORA_TARGET_MODULES="q_proj", "v_proj", "gate_proj", "up_proj"
+LORA_TARGET_MODULES="q_proj,v_proj,gate_proj,up_proj"
 
 TRAIN_BATCH_SIZE=52
 GRADIENT_ACCUMULATION_STEPS=1

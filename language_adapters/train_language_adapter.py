@@ -8,6 +8,7 @@ from transformers import (
 )
 from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_training
 from lm_harness_eval import LMEvalCallback, LMHarnessEarlyStoppingCallback
+from flops_profiler import FlopsProfilerCallback
 
 def train_model(args):
     dataset = load_from_disk(args.tokenized_dir, keep_in_memory=True)
@@ -81,7 +82,8 @@ def train_model(args):
                 eval_dir=os.path.join(args.output_dir, "lm_eval"),
                 metric_names=args.eval_metric_names.split(","),
                 patience=args.early_stopping_patience
-            )
+            ),
+            FlopsProfilerCallback()
         ]
     )
 
