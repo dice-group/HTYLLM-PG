@@ -2,14 +2,14 @@
 
 # Environment setup
 export WANDB_MODE=online
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=2
 
 # Configurable parameters
-TOKENIZED_DIR="/upb/users/j/joeldag/profiles/unix/cs/tokenized_data_subsets/gemma3-4b-pt/arabic_subset"
-TOKENIZER_PATH="/upb/users/j/joeldag/profiles/unix/cs/tokenized_data_subsets/gemma_extended_tokenizers/arabic/"
+TOKENIZED_DIR="/upb/users/j/joeldag/profiles/unix/cs/tokenized_data_subsets/gemma3-4b-pt/south_asian"
+TOKENIZER_PATH="/upb/users/j/joeldag/profiles/unix/cs/tokenized_data_subsets/gemma_extended_tokenizers/south_asian/"
 MODEL_NAME="google/gemma-3-4b-pt"
-OUTPUT_DIR="/upb/users/j/joeldag/profiles/unix/cs/results_language_adapters/gemma3-4b-pt/arabic"
-LOGGING_DIR="/upb/users/j/joeldag/profiles/unix/cs/results_language_adapters/gemma3-4b-pt/arabic/logs"
+OUTPUT_DIR="/upb/users/j/joeldag/profiles/unix/cs/results_language_adapters/gemma3-4b-pt/south_asian"
+LOGGING_DIR="/upb/users/j/joeldag/profiles/unix/cs/results_language_adapters/gemma3-4b-pt/south_asian/logs"
 
 LOAD_IN_4BIT=true
 BNB_4BIT_USE_DOUBLE_QUANT=true
@@ -33,25 +33,25 @@ SAVE_STEPS=1000
 BF16=true
 SAVE_TOTAL_LIMIT=200
 REPORT_TO="wandb,tensorboard"
-RUN_NAME="gemma3-4b-pt-arabic-adapter"
+RUN_NAME="gemma3-4b-pt-south-asian-adapter"
 DATALOADER_NUM_WORKERS=1
 EVALUATION_STRATEGY="steps"
-EVAL_STEPS=1001 #glaube das ist überflüssig wegen meinem lmharnes eval oderist das für EarlyStopping wichtig?
+EVAL_STEPS=1001 #glaube das ist überflüssig wegen meinem lmharnes eval
 LOAD_BEST_MODEL_AT_END=true
 METRIC_FOR_BEST_MODEL="eval_accuracy"
 GREATER_IS_BETTER=true
 
 EVAL_INTERVAL=1001
-EVAL_TASKS="belebele_apc_Arab,belebele_ary_Arab,belebele_arz_Arab,belebele_ars_Arab,belebele_heb_Hebr"
-EVAL_METRICS_EARLYSTOPPING="belebele_apc_Arab,belebele_ary_Arab,belebele_arz_Arab,belebele_ars_Arab,belebele_heb_Hebr"
+EVAL_TASKS="include_base_44_vietnamese,belebele_vie_Latn,belebele_tha_Thai,belebele_jav_Latn,belebele_sun_Latn,belebele_khm_Khmr"
+EVAL_METRICS_EARLYSTOPPING="include_base_44_vietnamese,belebele_vie_Latn,belebele_tha_Thai,belebele_jav_Latn,belebele_sun_Latn,belebele_khm_Khmr"
 EARLY_STOPPING_PATIENCE=3
 RESUME_FROM_CHECKPOINT=False
 
 EVAL_BATCH_SIZE=10
 EVAL_LIMIT=200
-EVAL_CUDA_DEVICES="0"
+EVAL_CUDA_DEVICES="2"
 EVAL_LOG_SAMPLES=true
-EVAL_WANDB_PROJECT="gemma3-4b-pt-arabic-lanauge-adapter"
+EVAL_WANDB_PROJECT="gemma3-4b-pt-niger-congo-lanauge-adapter"
 
 
 # Run training
