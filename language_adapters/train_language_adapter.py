@@ -4,7 +4,7 @@ import argparse
 from datasets import load_from_disk
 from transformers import (
     AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments,
-    DataCollatorForLanguageModeling, BitsAndBytesConfig, EarlyStoppingCallback
+    DataCollatorForLanguageModeling, BitsAndBytesConfig
 )
 from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_training
 from lm_harness_eval import LMEvalCallback, LMHarnessEarlyStoppingCallback
@@ -23,6 +23,7 @@ def train_model(args):
     )
 
     model = AutoModelForCausalLM.from_pretrained(args.model_name, quantization_config=bnb_config, device_map="auto")
+    model.resize_token_embeddings(len(tokenizer))
     model = prepare_model_for_kbit_training(model)
 
     lora_config = LoraConfig(
@@ -52,19 +53,20 @@ def train_model(args):
         save_total_limit=args.save_total_limit,
         report_to=args.report_to.split(","),
         run_name=args.run_name,
-        dataloader_num_workers=args.dataloader_num_workers,
-        evaluation_strategy=args.evaluation_strategy,
+        eval_strategy=args.evaluation_strategy,
         eval_steps=args.eval_steps,
-        load_best_model_at_end=args.load_best_model_at_end,
-        metric_for_best_model=args.metric_for_best_model,
-        greater_is_better=args.greater_is_better
+        dataloader_num_workers=args.dataloader_num_workers,        
     )
 
+    # Just dummy dataset which enables activation of LMHarnessEarlyStoppingCallback
+    eval_dataset = dataset.select(range(10)) 
+    
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=dataset,
         tokenizer=tokenizer,
+        eval_dataset=eval_dataset,  
         data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
         callbacks=[
             LMEvalCallback(
@@ -87,7 +89,8 @@ def train_model(args):
         ]
     )
 
-    trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
+    resume = args.resume_from_checkpoint == "True"
+    trainer.train(resume_from_checkpoint=resume)
     model.save_pretrained(os.path.join(args.output_dir, "adapter"))
     tokenizer.save_pretrained(os.path.join(args.output_dir, "adapter"))
 
@@ -139,7 +142,7 @@ if __name__ == "__main__":
     parser.add_argument("--eval_tasks", type=str, default="belebele")
     parser.add_argument("--eval_metric_names", type=str, default="belebele", help="Comma-separated list of eval tasks used for early stopping scoring")
     parser.add_argument("--early_stopping_patience", type=int, default=3)
-    parser.add_argument("--resume_from_checkpoint", type=bool, default=True)
+    parser.add_argument("--resume_from_checkpoint", choices=["True", "False"], default="False")
     
     parser.add_argument("--eval_batch_size", type=int, default=2, help="Batch size for LM evaluation")
     parser.add_argument("--eval_limit", type=int, default=100, help="Number of examples per eval task")
