@@ -7,6 +7,19 @@ from pathlib import Path
 import wandb
 from torch.utils.tensorboard import SummaryWriter
 
+import random
+import numpy as np
+import torch
+
+
+seed = 42
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
 # ======= parser =======
 parser = argparse.ArgumentParser()
 parser.add_argument("--base_dir", required=True)
@@ -46,7 +59,7 @@ for ckpt_path in checkpoints:
         "--model_args", f"pretrained={args.model_name},peft={ckpt_path},tokenizer={args.tokenizer_name}",
         "--tasks", args.eval_tasks,
         "--batch_size", args.batch_size,
-        "--limit", args.limit,
+        #"--limit", args.limit,
         "--output_path", step_dir,
         "--wandb_args", f"project={args.wandb_project},group={args.wandb_group},job_type=step_{step}",
         "--log_samples"

@@ -2,14 +2,14 @@
 
 # Environment setup
 export WANDB_MODE=online
-export CUDA_VISIBLE_DEVICES=3
 
 # Configurable parameters
-TOKENIZED_DIR="/upb/users/j/joeldag/profiles/unix/cs/tokenized_data_subsets/gemma3-4b-pt/indo_aryan"
-TOKENIZER_PATH="/upb/users/j/joeldag/profiles/unix/cs/tokenized_data_subsets/gemma_extended_tokenizers/indo_aryan/"
+TOKENIZED_DIR="/upb/users/j/joeldag/profiles/unix/cs/tokenized_data_subsets/gemma3-4b-pt/tam_Tul/"
+TOKENIZER_PATH="google/gemma-3-4b-pt"
 MODEL_NAME="google/gemma-3-4b-pt"
-OUTPUT_DIR="/upb/users/j/joeldag/profiles/unix/cs/results_language_adapters/gemma3-4b-pt/indo_aryan"
-LOGGING_DIR="/upb/users/j/joeldag/profiles/unix/cs/results_language_adapters/gemma3-4b-pt/indo_aryan/logs"
+OUTPUT_DIR="/upb/users/j/joeldag/profiles/unix/cs/results_language_adapters/gemma3-4b-pt/tam_Tul"
+LOGGING_DIR="/upb/users/j/joeldag/profiles/unix/cs/results_language_adapters/gemma3-4b-pt/tam_Tul/logs"
+mkdir -p "$LOGGING_DIR"
 
 LOAD_IN_4BIT=true
 BNB_4BIT_USE_DOUBLE_QUANT=true
@@ -22,40 +22,41 @@ LORA_DROPOUT=0.1
 LORA_BIAS="none"
 LORA_TARGET_MODULES="q_proj,v_proj,gate_proj,up_proj"
 
-TRAIN_BATCH_SIZE=20
+TRAIN_BATCH_SIZE=22
 GRADIENT_ACCUMULATION_STEPS=1
-NUM_TRAIN_EPOCHS=2
+NUM_TRAIN_EPOCHS=1
 LEARNING_RATE=2e-4
 LR_SCHEDULER_TYPE="cosine"
 LOGGING_STEPS=20
 SAVE_STRATEGY="steps"
-SAVE_STEPS=1000
+SAVE_STEPS=500
 BF16=true
 SAVE_TOTAL_LIMIT=200
 REPORT_TO="wandb,tensorboard"
-RUN_NAME="gemma3-4b-pt-niger-congo-adapter"
+RUN_NAME="gemma3-4b-pt-tam_Tul-adapter"
 DATALOADER_NUM_WORKERS=1
 EVALUATION_STRATEGY="steps"
-EVAL_STEPS=1001 #glaube das ist überflüssig wegen meinem lmharnes eval
+EVAL_STEPS=501 #glaube das ist überflüssig wegen meinem lmharnes eval
 LOAD_BEST_MODEL_AT_END=true
 METRIC_FOR_BEST_MODEL="eval_accuracy"
 GREATER_IS_BETTER=true
 
-EVAL_INTERVAL=1001
-EVAL_TASKS="include_base_44_hindi,belebele_hin_Deva,belebele_urd_Arab,include_base_44_urdu,belebele_mar_Deva,include_base_44_bengali,belebele_ben_Beng,belebele_pan_Guru"
-EVAL_METRICS_EARLYSTOPPING="include_base_44_hindi,belebele_hin_Deva,belebele_urd_Arab,include_base_44_urdu,belebele_mar_Deva,include_base_44_bengali,belebele_ben_Beng,belebele_pan_Guru"
-EARLY_STOPPING_PATIENCE=3
-RESUME_FROM_CHECKPOINT=False
+EVAL_INTERVAL=501
+EVAL_TASKS="belebele_tam_Taml"
+EVAL_METRICS_EARLYSTOPPING="belebele_tam_Taml"
+EARLY_STOPPING_PATIENCE=4
+RESUME_FROM_CHECKPOINT=True
 
 EVAL_BATCH_SIZE=10
-EVAL_LIMIT=200
-EVAL_CUDA_DEVICES="3"
+EVAL_LIMIT=900
+EVAL_CUDA_DEVICES="1"
+export CUDA_VISIBLE_DEVICES="$EVAL_CUDA_DEVICES"
 EVAL_LOG_SAMPLES=true
-EVAL_WANDB_PROJECT="gemma3-4b-pt-niger-congo-lanauge-adapter"
-
+EVAL_WANDB_PROJECT="gemma3-4b-pt-tam_Tul-language-adapter"
+LOG_FILE="$OUTPUT_DIR/training.log"
 
 # Run training
-python ../train_language_adapter.py \
+nohup python ../train_language_adapter.py \
   --tokenized_dir "$TOKENIZED_DIR" \
   --tokenizer_path "$TOKENIZER_PATH" \
   --model_name "$MODEL_NAME" \
@@ -96,4 +97,9 @@ python ../train_language_adapter.py \
   --eval_batch_size $EVAL_BATCH_SIZE \
   --eval_limit $EVAL_LIMIT \
   --eval_cuda_devices "$EVAL_CUDA_DEVICES" \
-  --eval_wandb_project "$EVAL_WANDB_PROJECT"
+  --eval_wandb_project "$EVAL_WANDB_PROJECT" > "$LOG_FILE" 2>&1 &
+
+sleep 2
+echo "Training started with PID $!"
+echo "Logging to: $LOG_FILE"
+tail -f "$LOG_FILE"

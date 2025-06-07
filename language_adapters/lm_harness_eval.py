@@ -1,17 +1,31 @@
 import glob
 import wandb
+import random
+import numpy as np
+import torch
 
 from transformers import TrainerCallback
 import subprocess, json, os
 from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
+from transformers import set_seed
+
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+torch.cuda.manual_seed_all(42)
+set_seed(42)
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 class LMEvalCallback(TrainerCallback):
-    def __init__(self, tokenizer_name, eval_interval=500, eval_tasks=None, output_dir="./lm_eval_results", tb_logdir=None, batch_size=2, limit=500, cuda_devices="0", wandb_project="lm_eval_project"):
-        
+    def __init__(self, tokenizer_name, eval_interval=500, eval_tasks=None, output_dir="./lm_eval_results", tb_logdir=None, batch_size=2, limit=500, cuda_devices="0", wandb_project="lm_eval_project", wandb_run_id=None):
+
         self.eval_interval = eval_interval
         self.eval_tasks = eval_tasks or ["belebele"]
         self.tokenizer_name = tokenizer_name
+        self.wandb_run_id = wandb_run_id
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.tb_writer = SummaryWriter(log_dir=tb_logdir) if tb_logdir else None
@@ -31,6 +45,12 @@ class LMEvalCallback(TrainerCallback):
 
             # start eval subprocess based on latest checkpoint
             model_path = self.get_latest_checkpoint(args.output_dir)
+            
+            run_env = os.environ.copy()
+            run_env["CUDA_VISIBLE_DEVICES"] = self.cuda_devices
+            run_env["WANDB_PROJECT"] = self.wandb_project
+            run_env["WANDB_RUN_ID"] = self.wandb_run_id or ""
+            run_env["WANDB_RESUME"] = "allow"
             subprocess.run([
                 "lm_eval",
                 "--model", "hf",
@@ -39,7 +59,7 @@ class LMEvalCallback(TrainerCallback):
                 "--batch_size", str(self.batch_size),
                 "--limit", str(self.limit),
                 "--output_path", str(step_dir),
-                "--wandb_args", f"project={self.wandb_project},group=eval,job_type=step_{state.global_step}",
+                #"--wandb_args", f"project={self.wandb_project},group=eval,job_type=step_{state.global_step}",
                 "--log_samples"
             ], check=True, env={**os.environ, "CUDA_VISIBLE_DEVICES": self.cuda_devices})
 

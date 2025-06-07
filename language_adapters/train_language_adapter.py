@@ -1,6 +1,8 @@
 import os
 import torch
 import argparse
+import wandb
+
 from datasets import load_from_disk
 from transformers import (
     AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments,
@@ -11,6 +13,12 @@ from lm_harness_eval import LMEvalCallback, LMHarnessEarlyStoppingCallback
 from flops_profiler import FlopsProfilerCallback
 
 def train_model(args):
+    wandb.init(
+        project=args.eval_wandb_project,
+        name=args.run_name,
+        resume="allow"
+    )
+    
     dataset = load_from_disk(args.tokenized_dir, keep_in_memory=True)
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
     tokenizer.pad_token = tokenizer.eos_token
@@ -79,13 +87,14 @@ def train_model(args):
                 limit=args.eval_limit,
                 cuda_devices=args.eval_cuda_devices,
                 wandb_project=args.eval_wandb_project,
+                wandb_run_id=wandb.run.id,
             ),
             LMHarnessEarlyStoppingCallback(
                 eval_dir=os.path.join(args.output_dir, "lm_eval"),
                 metric_names=args.eval_metric_names.split(","),
                 patience=args.early_stopping_patience
             ),
-            FlopsProfilerCallback()
+            #FlopsProfilerCallback()
         ]
     )
 
