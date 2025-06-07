@@ -11,7 +11,7 @@ import random
 import numpy as np
 import torch
 
-
+# ======= seed for reproducibility =======
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -30,6 +30,9 @@ parser.add_argument("--batch_size", default="32")
 parser.add_argument("--limit", default="50")
 parser.add_argument("--wandb_project", default="eval_project")
 parser.add_argument("--wandb_group", default="eval_group")
+parser.add_argument("--run_name", default="eval_run")
+parser.add_argument("--cuda_devices", default="0")
+parser.add_argument("--wandb_run_id", default="")
 args = parser.parse_args()
 
 # ======= setup =======
@@ -39,8 +42,16 @@ Path(logdir).mkdir(parents=True, exist_ok=True)
 Path(eval_output_base).mkdir(parents=True, exist_ok=True)
 
 tb_writer = SummaryWriter(log_dir=logdir)
-wandb.init(project=args.wandb_project, group=args.wandb_group, job_type="evaluation")
 
+# ======= wandb init (single run) =======
+run = wandb.init(
+    project=args.wandb_project,
+    name=args.run_name,
+    resume="allow"
+)
+run_id = wandb.run.id
+
+# ======= checkpoint loop =======
 checkpoints = sorted(
     glob.glob(os.path.join(args.base_dir, "checkpoint-*")),
     key=lambda x: int(x.split("-")[-1])
@@ -53,17 +64,23 @@ for ckpt_path in checkpoints:
 
     print(f"Evaluating checkpoint at step {step}...")
 
+    run_env = os.environ.copy()
+    run_env["CUDA_VISIBLE_DEVICES"] = args.cuda_devices
+    run_env["WANDB_PROJECT"] = args.wandb_project
+    run_env["WANDB_RUN_ID"] = run_id
+    run_env["WANDB_RESUME"] = "allow"
+
     subprocess.run([
         "lm_eval",
         "--model", "hf",
         "--model_args", f"pretrained={args.model_name},peft={ckpt_path},tokenizer={args.tokenizer_name}",
         "--tasks", args.eval_tasks,
         "--batch_size", args.batch_size,
-        #"--limit", args.limit,
+        # "--limit", args.limit,  # Uncomment if needed
         "--output_path", step_dir,
-        "--wandb_args", f"project={args.wandb_project},group={args.wandb_group},job_type=step_{step}",
+        #"--wandb_args", f"project={args.wandb_project},group={args.wandb_group},job_type=step_{step}",
         "--log_samples"
-    ], check=True)
+    ], env=run_env, check=True)
 
     result_files = list(Path(step_dir).glob("*/results_*.json"))
     if not result_files:
@@ -83,6 +100,7 @@ for ckpt_path in checkpoints:
 
     wandb.log(log_data, step=step)
 
+# ======= finish =======
 tb_writer.close()
 wandb.finish()
 print("Eval completed for all checkpoints.")
