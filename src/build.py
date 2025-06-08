@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -9,15 +7,15 @@ from transformers import MixtralConfig, MixtralForCausalLM
 
 def tiny_mixtral_config(
     vocab_size: int = 131_072,
-    d_model: int = 384,
-    d_ff: int = 1_536,
+    d_model: int = 512,
+    d_ff: int = 960,
     n_layers: int = 12,
-    n_heads: int = 6,
+    n_heads: int = 8,
     n_kv: int = 2,
-    n_experts: int = 7,
+    n_experts: int = 12,
     top_k: int = 2,
     max_pos: int = 8_192,
-    router_aux_coef: float = 1e-3,
+    router_aux_coef: float = 1e-2,
 ):
     return MixtralConfig(
         vocab_size=vocab_size,
@@ -31,6 +29,7 @@ def tiny_mixtral_config(
         router_aux_loss_coef=router_aux_coef,
         router_jitter_noise=0.1,
         max_position_embeddings=max_pos,
+        moe_capacity_factor=1.25,
     )
 
 
