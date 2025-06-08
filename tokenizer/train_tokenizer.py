@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Iterable
 
 from tokenizers import SentencePieceBPETokenizer, pre_tokenizers, normalizers
-from tokenizers.trainers import BpeTrainer
 from tokenizers.decoders import ByteFallback
 from transformers import PreTrainedTokenizerFast
 
@@ -44,16 +43,13 @@ def chunk(seq, size):
     for i in range(0, len(seq), size):
         yield seq[i : i + size]
 
-# ---------------------------------------------------------------------------
-# Helper: build a trainer with byte-fallback already enabled
-def _build_trainer(vocab_size, min_frequency, special_tokens,
-                   byte_fallback: bool = True):
-    return BpeTrainer(
-        vocab_size=vocab_size,
-        min_frequency=min_frequency,
-        special_tokens=list(special_tokens),
-        byte_fallback=byte_fallback,   # ← 256 <0x??> tokens
-    )
+def _enable_byte_fallback(tok, flag: bool):
+    """
+    SentencePieceBPETokenizer exposes its Rust `BPE` model via
+    `tok._tokenizer.model`; set the flag directly.
+    """
+    if flag:
+        tok._tokenizer.model.byte_fallback = True
 
 # ---------------------------------------------------------------------------
 def train_tokenizer(
@@ -83,21 +79,27 @@ def train_tokenizer(
     # ② keep "Ġ"-style space marker so interior spaces survive
     tok.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=True)
 
-    # ③ trainer with byte-fallback
-    trainer = _build_trainer(
-        vocab_size, min_frequency, special_tokens, byte_fallback
-    )
+    # ③ turn byte-fallback ON at the model level
+    _enable_byte_fallback(tok, byte_fallback)
 
     # -----------------------------------------------------------------------
     # 2. Train (plain text vs JSONL streaming)
     if all(Path(p).suffix.lower() in TXT_EXTS for p in paths):
-        tok.train(files=paths, trainer=trainer)
+        tok.train(
+            files=paths,
+            vocab_size=vocab_size,
+            min_frequency=min_frequency,
+            special_tokens=list(special_tokens),
+            show_progress=True,
+        )
     elif all(Path(p).name.lower().endswith(
              ('.jsonl.gz', '.jsonl', '.json.gz', '.json')) for p in paths):
         for shard in chunk(paths, chunk_size):
             tok.train_from_iterator(
                 (doc for doc in stream_jsonl(shard, json_field)),
-                trainer=trainer,
+                vocab_size=vocab_size,
+                min_frequency=min_frequency,
+                special_tokens=list(special_tokens),
                 length=100_000_000,
                 show_progress=True,
             )
