@@ -17,8 +17,9 @@ import argparse, gzip, json, itertools, os
 from pathlib import Path
 from typing import Iterable
 
-from tokenizers import SentencePieceBPETokenizer
+from tokenizers import SentencePieceBPETokenizer, pre_tokenizers, normalizers
 from tokenizers.trainers import BpeTrainer
+from tokenizers.decoders import ByteFallback
 from transformers import PreTrainedTokenizerFast
 
 TXT_EXTS = {".txt", ".text"}
@@ -43,6 +44,18 @@ def chunk(seq, size):
     for i in range(0, len(seq), size):
         yield seq[i : i + size]
 
+# ---------------------------------------------------------------------------
+# Helper: build a trainer with byte-fallback already enabled
+def _build_trainer(vocab_size, min_frequency, special_tokens,
+                   byte_fallback: bool = True):
+    return BpeTrainer(
+        vocab_size=vocab_size,
+        min_frequency=min_frequency,
+        special_tokens=list(special_tokens),
+        byte_fallback=byte_fallback,   # ← 256 <0x??> tokens
+    )
+
+# ---------------------------------------------------------------------------
 def train_tokenizer(
     files_glob: str,
     vocab_size: int = 131_072,
@@ -50,69 +63,54 @@ def train_tokenizer(
     min_frequency: int = 2,
     json_field: str = "text",
     special_tokens: tuple[str, str, str, str] = ("<s>", "</s>", "<unk>", "<pad>"),
-    chunk_size: int = 20,              # NEW parameter to accept CLI flag
+    chunk_size: int = 20,
+    byte_fallback: bool = True,       # ← expose as parameter / CLI flag
 ) -> None:
     import glob, os
-    if os.path.isabs(files_glob):
-        # absolute path → use glob (supports **)
-        paths = sorted(glob.glob(files_glob, recursive=True))
-    else:
-        # relative path → pathlib is fine (keeps old behaviour)
-        paths = sorted(str(p) for p in Path().glob(files_glob))
-    
-    # Debug information
-    print(f"Found {len(paths)} paths matching pattern {files_glob}")
-    for p in paths[:10]:  # Print first 10 paths
-        print(f"Path: {p}, Suffix: {Path(p).suffix.lower()}")
-    
-    # Decide training mode
+    paths = (sorted(glob.glob(files_glob, recursive=True))
+             if os.path.isabs(files_glob)
+             else sorted(str(p) for p in Path().glob(files_glob)))
+
+    # -----------------------------------------------------------------------
+    # 1. Create tokenizer + hygiene rules
+    tok = SentencePieceBPETokenizer(add_prefix_space=True, dropout=0.1)
+
+    # ① trim only the *outer* blanks, leave inside-text spaces as-is
+    tok.normalizer = normalizers.Sequence([
+        normalizers.NFC(),                       # unicode cleanup
+        normalizers.Strip(left=True, right=True) # kill stray edges
+    ])
+    # ② keep "Ġ"-style space marker so interior spaces survive
+    tok.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=True)
+
+    # ③ trainer with byte-fallback
+    trainer = _build_trainer(
+        vocab_size, min_frequency, special_tokens, byte_fallback
+    )
+
+    # -----------------------------------------------------------------------
+    # 2. Train (plain text vs JSONL streaming)
     if all(Path(p).suffix.lower() in TXT_EXTS for p in paths):
-        # ---------- plain‑text path training ----------
-        print("Using plain-text training mode")
-        tokenizer = SentencePieceBPETokenizer(add_prefix_space=True, dropout=0.1)
-        tokenizer.train(
-            files=paths,
-            vocab_size=vocab_size,
-            min_frequency=min_frequency,
-            special_tokens=list(special_tokens),
-        )
-    elif all(Path(p).name.lower().endswith(('.jsonl.gz', '.jsonl', '.json.gz', '.json')) for p in paths):
-        # ---------- JSONL / JSONL.GZ training (streamed) ----------
-        print("Using JSON streaming mode to keep RAM low")
-        
-        # Create tokenizer
-        tokenizer = SentencePieceBPETokenizer(add_prefix_space=True, dropout=0.1)
-        
-        # Loop over file shards
+        tok.train(files=paths, trainer=trainer)
+    elif all(Path(p).name.lower().endswith(
+             ('.jsonl.gz', '.jsonl', '.json.gz', '.json')) for p in paths):
         for shard in chunk(paths, chunk_size):
-            print(f" → Training on {len(shard)} shards "
-                f"({Path(shard[0]).name} … {Path(shard[-1]).name})")
-
-            # Lazy line generator for just this shard
-            def lines():
-                for doc in stream_jsonl(shard, json_field):
-                    yield doc
-
-            # We *must* pass `length=` so the Rust core does not
-            # buffer everything first. A loose upper bound is fine.
-            tokenizer.train_from_iterator(
-                lines(),
-                vocab_size=vocab_size,
-                min_frequency=min_frequency,
-                special_tokens=list(special_tokens),
-                length=100_000_000,        # adjust to your corpora
+            tok.train_from_iterator(
+                (doc for doc in stream_jsonl(shard, json_field)),
+                trainer=trainer,
+                length=100_000_000,
                 show_progress=True,
             )
     else:
-        print("Extension check failed. Printing all paths and their extensions:")
-        for p in paths:
-            print(f"Path: {p}, Suffix: {Path(p).suffix.lower()}, Name: {Path(p).name}")
         raise ValueError("Mixed or unrecognised extensions in corpus.")
 
-    # 5️⃣  Save once at the end
-    out = Path(output_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    tokenizer.save(str(out / "tokenizer.json"))
+    # optional: loss-less decoder round-trip for byte pieces
+    tok.decoder = ByteFallback()
+
+    # -----------------------------------------------------------------------
+    # 3. Save HF-compatible artefacts
+    out = Path(output_dir); out.mkdir(parents=True, exist_ok=True)
+    tok.save(str(out / "tokenizer.json"))
 
     hf_tok = PreTrainedTokenizerFast(
         tokenizer_file=str(out / "tokenizer.json"),
@@ -134,6 +132,12 @@ if __name__ == "__main__":
     ap.add_argument("--json_field", default="text", help="Field name containing text inside JSON lines")
     ap.add_argument("--chunk_size", type=int, default=20,
                 help="Number of files to train on at once")
+    ap.add_argument(
+        "--byte_fallback",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable or disable byte-fallback tokenization.",
+    )
     args = ap.parse_args()
     print("Starting tokenizer training!") 
     # Keep the Rust core single-process to save RAM
