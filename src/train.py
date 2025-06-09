@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Fine‑tune / pre‑train from an *already tokenised* dataset.
+Fine-tune / pre-train from an *already tokenised* dataset.
 """
 
 from __future__ import annotations
@@ -8,15 +8,15 @@ from dataclasses import dataclass
 from pathlib import Path
 import os
 
-# Set datasets cache to local directory to avoid permission issues
+# ── local HF cache so shared filesystems don't complain ────────────────────
 cache_dir = Path("./cache/huggingface_datasets").absolute()
 cache_dir.mkdir(parents=True, exist_ok=True)
 os.environ["HF_DATASETS_CACHE"] = str(cache_dir)
 os.environ["DATASETS_CACHE"] = str(cache_dir)
 os.environ["HF_HOME"] = str(cache_dir.parent)
 
+# ── libraries ──────────────────────────────────────────────────────────────
 import torch
-import torch.distributed as dist
 from datasets import load_from_disk
 from transformers import (
     AutoTokenizer,
@@ -25,17 +25,15 @@ from transformers import (
     Trainer,
     TrainingArguments,
     MixtralForCausalLM,
-    TrainerCallback,
 )
-from flops_profiler import get_model_profile
-from harness_callback import LMEvalCallback
+from harness_callback import LMEvalCallback   # your eval harness
 
-
+# ────────────────────────────────────────────────────────────────────────────
 @dataclass
 class ScriptArgs:
-    dataset_dir: str            # <-- NEW: path produced by preprocess.py
+    dataset_dir: str            # path produced by preprocess.py
     model_path: str = "checkpoints/init"
-    tokenizer_path: str = "tokenizer"  # <-- Added tokenizer path parameter
+    tokenizer_path: str = "tokenizer"
     output_dir: str = "checkpoints/pretrain-run"
 
     batch_size: int = 32
@@ -44,23 +42,26 @@ class ScriptArgs:
     epochs: int = 1
     max_steps: int = -1
     logging_steps: int = 50
-    deepspeed_config: str | None = None
+    deepspeed_config: str | None = None        # JSON with ZeRO, profiler, …
 
-
-def main():
+# ────────────────────────────────────────────────────────────────────────────
+def main() -> None:
     args, = HfArgumentParser(ScriptArgs).parse_args_into_dataclasses()
-    
-    tok = AutoTokenizer.from_pretrained(args.tokenizer_path)  # <-- Use the tokenizer path directly
 
-    # ── Load the arrow dataset (zero‑copy memory‑mapped) ────────────────────
-    ds = load_from_disk(args.dataset_dir)
-    # (optional) shuffle each epoch via Trainer's dataloader, or:
-    # ds = ds.shuffle(seed=42)
+    # tokenizer & dataset
+    tok = AutoTokenizer.from_pretrained(args.tokenizer_path)
+    ds  = load_from_disk(args.dataset_dir)
     collator = DataCollatorForLanguageModeling(tok, mlm=False)
-    model = MixtralForCausalLM.from_pretrained(args.model_path, torch_dtype=torch.bfloat16, low_cpu_mem_usage=True)
-    model.gradient_checkpointing_enable()
-    #model.enable_flash_attention_2d()
 
+    # model
+    model = MixtralForCausalLM.from_pretrained(
+        args.model_path,
+        torch_dtype=torch.bfloat16,
+        low_cpu_mem_usage=True,
+    )
+    model.gradient_checkpointing_enable()
+
+    # training args (HF hands the JSON path to deepspeed.initialize())
     targs = TrainingArguments(
         output_dir=args.output_dir,
         per_device_train_batch_size=args.batch_size,
@@ -77,6 +78,7 @@ def main():
         ddp_find_unused_parameters=False,
     )
 
+    # callbacks (only the evaluation harness now)
     callbacks = [LMEvalCallback(
         model=model,
         tokenizer=tok,
@@ -87,68 +89,6 @@ def main():
         prefix="harness",
     )]
 
-    # ────────────────────── FLOPs odometer callback ───────────────────────
-    class FlopsOdometer(TrainerCallback):
-        """
-        • Measures FLOPs for *one* real training batch (fwd+back+opt).
-        • Displays cumulative FLOPs & token count at every log step.
-        """
-
-        def __init__(self, tokenizer, seq_len: int = 2048):
-            self.tok = tokenizer
-            self.seq_len = seq_len
-            self.per_step_flops = None          # lazily filled
-            self.per_step_tokens = None
-
-        # ── run once, on first forward/backward step ───────────────────────
-        def on_step_end(self, args, state, control, **kwargs):
-            if self.per_step_flops is not None:
-                return
-
-            model = kwargs["model"].module if hasattr(kwargs["model"], "module") else kwargs["model"]
-            batch = kwargs["inputs"]["input_ids"]            # real batch, already on device
-
-            # Run a *single* profiling pass (no grads so we capture only fwd)
-            flops_fwd, macs, _ = get_model_profile(
-                model=model,
-                input_shape=batch.shape,
-                print_profile=False,
-                detailed=False,
-            )
-            # crude but typical multiplier: bwd ≈ 2× fwd, opt ≈ 1× fwd
-            self.per_step_flops = flops_fwd * 3
-            self.per_step_tokens = batch.numel()
-
-            if state.is_local_process_zero:
-                gf = self.per_step_flops / 1e9
-                print(f"[FLOPs-Profiler] 1 training step ≈ {gf:.2f} GFLOPs "
-                      f"for {batch.size(0)}×{batch.size(1)} tokens")
-
-        # ── emit rolling totals every logging interval ─────────────────────
-        def on_log(self, args, state, control, **kwargs):
-            if self.per_step_flops is None:
-                return
-            steps = state.global_step
-            total_flops = self.per_step_flops * steps
-            total_tokens = self.per_step_tokens * steps
-            if state.is_local_process_zero:
-                print(f"[FLOPs-Profiler] so far: "
-                      f"{total_flops/1e15:.3f} PFLOPs over {total_tokens/1e9:.2f} B tokens")
-
-        # ── final summary ──────────────────────────────────────────────────
-        def on_train_end(self, args, state, control, **kwargs):
-            if self.per_step_flops is None:
-                return
-            steps = state.global_step
-            total_flops = self.per_step_flops * steps
-            if state.is_local_process_zero:
-                print(f"\n=== Training complete ===")
-                print(f"Total training steps : {steps}")
-                print(f"Total tokens seen    : {self.per_step_tokens*steps:,}")
-                print(f"Total compute used   : {total_flops/1e15:.3f} PFLOPs\n")
-
-    callbacks.append(FlopsOdometer(tok))
-
     Trainer(
         model=model,
         args=targs,
@@ -158,6 +98,6 @@ def main():
         tokenizer=tok,
     ).train(resume_from_checkpoint=args.model_path)
 
-
+# ────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     main()
