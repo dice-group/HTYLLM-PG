@@ -15,7 +15,7 @@ torchrun \
   --model_path checkpoints/init \
   --tokenizer_path tokenizer \
   --dataset_dir data/processed \
-  --output_dir checkpoints/pretrain_run_vm \
+  --output_dir checkpoints/train_run2_vm \
   --deepspeed_config src/configs/deepspeed/ds_zero3_moe.json \
   --batch_size 32 \
   --grad_accum 4
