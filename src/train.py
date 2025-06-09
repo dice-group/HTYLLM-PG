@@ -31,7 +31,7 @@ from harness_callback import LMEvalCallback   # your eval harness
 # ────────────────────────────────────────────────────────────────────────────
 @dataclass
 class ScriptArgs:
-    dataset_dir: str            # path produced by preprocess.py
+    dataset_dir: str
     model_path: str = "checkpoints/init"
     tokenizer_path: str = "tokenizer"
     output_dir: str = "checkpoints/pretrain-run"
@@ -42,18 +42,19 @@ class ScriptArgs:
     epochs: int = 1
     max_steps: int = -1
     logging_steps: int = 50
-    deepspeed_config: str | None = None        # JSON with ZeRO, profiler, …
+    deepspeed_config: str | None = None      # ZeRO, profiler, …
+    resume_from_checkpoint: str | None = None  # ← explicit CLI flag
 
 # ────────────────────────────────────────────────────────────────────────────
 def main() -> None:
     args, = HfArgumentParser(ScriptArgs).parse_args_into_dataclasses()
 
-    # tokenizer & dataset
+    # tokenizer & dataset ----------------------------------------------------
     tok = AutoTokenizer.from_pretrained(args.tokenizer_path)
     ds  = load_from_disk(args.dataset_dir)
     collator = DataCollatorForLanguageModeling(tok, mlm=False)
 
-    # model
+    # model ------------------------------------------------------------------
     model = MixtralForCausalLM.from_pretrained(
         args.model_path,
         torch_dtype=torch.bfloat16,
@@ -61,7 +62,7 @@ def main() -> None:
     )
     model.gradient_checkpointing_enable()
 
-    # training args (HF hands the JSON path to deepspeed.initialize())
+    # training args ----------------------------------------------------------
     targs = TrainingArguments(
         output_dir=args.output_dir,
         per_device_train_batch_size=args.batch_size,
@@ -78,7 +79,7 @@ def main() -> None:
         ddp_find_unused_parameters=False,
     )
 
-    # callbacks (only the evaluation harness now)
+    # callbacks --------------------------------------------------------------
     callbacks = [LMEvalCallback(
         model=model,
         tokenizer=tok,
@@ -89,14 +90,17 @@ def main() -> None:
         prefix="harness",
     )]
 
-    Trainer(
+    trainer = Trainer(
         model=model,
         args=targs,
         train_dataset=ds,
         data_collator=collator,
         callbacks=callbacks,
         tokenizer=tok,
-    ).train(resume_from_checkpoint=args.model_path)
+    )
+
+    # train ------------------------------------------------------------------
+    trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
 
 # ────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
