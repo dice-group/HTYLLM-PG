@@ -12,8 +12,8 @@ export NCCL_DEBUG=INFO
 torchrun \
   --nproc_per_node=2 \
   src/train.py \
-  --model_path checkpoints/train_run2_vm/checkpoint-62000 \
-  --resume_from_checkpoint checkpoints/train_run2_vm/checkpoint-62000 \
+  --model_path checkpoints/train_run2_vm/checkpoint-61000 \
+  --resume_from_checkpoint checkpoints/train_run2_vm/checkpoint-61000 \
   --tokenizer_path tokenizer \
   --dataset_dir data/processed \
   --output_dir checkpoints/train_run2_vm \
