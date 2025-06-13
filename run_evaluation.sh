@@ -18,7 +18,7 @@ set -e
 # Activate environment
 source ~/miniconda3/bin/activate icebreaker
 
-module load system/CUDA/12.1.1
+module load system/CUDA/12.6.0
 
 # Default values
 MODEL_PATH="${1:-gpt2_model_step_49000.pt}"
