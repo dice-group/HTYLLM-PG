@@ -47,7 +47,7 @@ args = parser.parse_args()
 
 # ======= setup =======
 logdir = os.path.join(args.base_dir, "logs")
-eval_output_base = os.path.join(args.base_dir, "lm_eval")
+eval_output_base = Path(os.path.join(args.base_dir, "lm_eval"))
 Path(logdir).mkdir(parents=True, exist_ok=True)
 Path(eval_output_base).mkdir(parents=True, exist_ok=True)
 
@@ -61,48 +61,44 @@ run = wandb.init(
 )
 run_id = wandb.run.id
 
-# ======= checkpoint loop =======
-checkpoints = sorted(
-    glob.glob(os.path.join(args.base_dir, "checkpoint-*")),
-    key=lambda x: int(x.split("-")[-1])
-)
-
-# ======= eval once for all tasks =======
+# ======= tasks =======
 summary_results = {}
+eval_tasks = [task.strip() for task in args.eval_tasks.split(",")]
+step            = 0  # constant so downstream logging code still works
+step_dir = eval_output_base / f"step_{step}"
+step_dir.mkdir(parents=True, exist_ok=True)
+print(f"Evaluating base model '{args.model_name}' …")    
+    
+for task in eval_tasks:
+    task_output_dir = os.path.join(step_dir, task)
+    Path(task_output_dir).mkdir(parents=True, exist_ok=True)
 
-for ckpt_path in checkpoints:
-    step = int(ckpt_path.split("-")[-1])
-    step_dir = os.path.join(eval_output_base, f"step_{step}")
-    Path(step_dir).mkdir(parents=True, exist_ok=True)
-
-    print(f"\n=== Evaluating checkpoint at step {step} on all tasks ===")
-
+    print(f"\n-- Task: {task} --")
     run_env = os.environ.copy()
     run_env["WANDB_PROJECT"] = args.wandb_project
     run_env["WANDB_RUN_ID"] = run_id
     run_env["WANDB_RESUME"] = "allow"
 
-    try: 
+    try:
         subprocess.run([
             "lm_eval",
             "--model", "hf",
-            "--model_args", f"pretrained={args.model_name},peft={ckpt_path},tokenizer={args.tokenizer_name}",
-            "--tasks", args.eval_tasks,
+            "--model_args",
+            f"pretrained={args.model_name},tokenizer={args.tokenizer_name}",
+            "--tasks", task,
             "--batch_size", args.batch_size,
             "--limit", args.limit,
-            "--output_path", step_dir,
-            #"--wandb_args", f"project={args.wandb_project},group={args.wandb_group},job_type=step_{step}",
-            "--log_samples"
+            "--output_path", str(task_output_dir),
+            "--log_samples",
         ], env=run_env, check=True)
     except subprocess.CalledProcessError:
-        print(f"[ERROR] Evaluation failed at step {step}. Skipping...")
+        print(f"[ERROR] Evaluation failed for task '{task}'. Skipping …")
         traceback.print_exc()
         continue
-    
 
-    result_files = list(Path(step_dir).glob("results_*.json"))
+    result_files = list(Path(task_output_dir).glob("results_*.json"))
     if not result_files:
-        print(f"[WARNING] No result file found at step {step}.")
+        print(f"[WARNING] No result file found for task '{task}' at step {step}.")
         continue
 
     try:
@@ -110,17 +106,17 @@ for ckpt_path in checkpoints:
             results = json.load(f)["results"]
 
         log_data = {}
-        for task, metrics in results.items():
+        for tsk, metrics in results.items():
             for k, v in metrics.items():
                 if isinstance(v, (int, float)):
-                    tag = f"{task}/{k.replace(',', '_')}"
+                    tag = f"{tsk}/{k.replace(',', '_')}"
                     log_data[tag] = v
                     tb_writer.add_scalar(tag, v, global_step=step)
                     if k == "acc,none":
-                        summary_results[f"{task}@step{step}"] = v
+                        summary_results[tsk] = v       # only one step
         wandb.log(log_data, step=step)
     except Exception as e:
-        print(f"[ERROR] Failed to process results at step {step}: {e}")
+        print(f"[ERROR] Failed to process results for task '{task}': {e}")
         traceback.print_exc()
         continue
 
@@ -139,3 +135,6 @@ with open(os.path.join(eval_output_base, "summary.json"), "w") as f:
     json.dump(summary_results, f, indent=2)
 
 print("Evaluation complete.")
+
+#TODO: this script works nice in sense of sequentially evlauationg task after task, but the loggin to wandb should be improved
+# TODO: automatically extraction of the results should be added in the end

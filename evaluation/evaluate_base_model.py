@@ -38,6 +38,7 @@ tb_writer = SummaryWriter(log_dir=os.path.join(args.output_dir, "tb"))
 wandb.init(project=args.wandb_project, group=args.wandb_group, job_type="evaluation")
 
 # --- Evaluate each task separately ---
+summary_results = {}
 tasks = args.tasks.split(",")
 
 for task in tasks:
@@ -53,7 +54,6 @@ for task in tasks:
             "--model_args", f"pretrained={args.model_name},tokenizer={args.tokenizer_name}",
             "--tasks", task,
             "--batch_size", args.batch_size,
-            # You can add this back if desired:
             "--limit", args.limit,
             "--output_path", task_output_dir,
             "--log_samples",
@@ -71,6 +71,8 @@ for task in tasks:
                         tag = f"{task_name}/{k}"
                         tb_writer.add_scalar(tag, v, 0)
                         wandb.log({tag: v}, step=0)
+                        if k == "acc,none":
+                            summary_results[task_name] = v
 
     except subprocess.CalledProcessError as e:
         error_msg = f"[ERROR] Failed to evaluate task: {task} — Error: {e}"
@@ -82,4 +84,15 @@ for task in tasks:
 # --- Finish logging ---
 tb_writer.close()
 wandb.finish()
+
+# --- Print summary table ---
+print("\n=== Summary of Accuracies ===")
+df = pd.DataFrame(list(summary_results.items()), columns=["Task", "Accuracy"])
+df = df.sort_values(by="Task")
+print(df.to_markdown(index=False))
+
+# --- Save summary to file ---
+with open(os.path.join(args.output_dir, "summary.json"), "w") as f:
+    json.dump(summary_results, f, indent=2)
+
 print("Evaluation complete.")
