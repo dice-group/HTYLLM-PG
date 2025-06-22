@@ -2,27 +2,17 @@
 
 # Environment setup
 export WANDB_MODE=online
+export CUDA_VISIBLE_DEVICES=1
 
 # Configurable parameters
-TOKENIZED_DIR="/upb/users/j/joeldag/profiles/unix/cs/tokenized_data_subsets/gemma3-4b-pt/tur_Latn/"
-TOKENIZER_PATH="google/gemma-3-4b-pt"
-MODEL_NAME="google/gemma-3-4b-pt"
-OUTPUT_DIR="/upb/users/j/joeldag/profiles/unix/cs/results_language_adapters/gemma3-4b-pt/tur_Latn"
-LOGGING_DIR="/upb/users/j/joeldag/profiles/unix/cs/results_language_adapters/gemma3-4b-pt/tur_Latn/logs"
+TOKENIZED_DIR="/data/joel/tokenized_adapter_subsets/mistral7b/swh_Latn_sna_Latn_nya_Latn_south_asian"
+TOKENIZER="mistralai/Mistral-7B-v0.3"
+MODEL_NAME="mistralai/Mistral-7B-v0.3"
+OUTPUT_DIR="/data/joel/results_language_adapters/xlora/mistral7b/swh_Latn_sna_Latn_nya_Latn_south_asian"
+LOGGING_DIR="$OUTPUT_DIR/logs"
 mkdir -p "$LOGGING_DIR"
 
-LOAD_IN_4BIT=true
-BNB_4BIT_USE_DOUBLE_QUANT=true
-BNB_4BIT_QUANT_TYPE="nf4"
-BNB_4BIT_COMPUTE_DTYPE="float16"
-
-LORA_R=8
-LORA_ALPHA=16
-LORA_DROPOUT=0.1
-LORA_BIAS="none"
-LORA_TARGET_MODULES="q_proj,v_proj,gate_proj,up_proj"
-
-TRAIN_BATCH_SIZE=22
+TRAIN_BATCH_SIZE=10
 GRADIENT_ACCUMULATION_STEPS=1
 NUM_TRAIN_EPOCHS=1
 LEARNING_RATE=2e-4
@@ -33,7 +23,7 @@ SAVE_STEPS=500
 BF16=true
 SAVE_TOTAL_LIMIT=200
 REPORT_TO="wandb,tensorboard"
-RUN_NAME="gemma3-4b-pt-tur_Latn-adapter"
+RUN_NAME="mistral-7b_xlora_asian_swh_sna"
 DATALOADER_NUM_WORKERS=1
 EVALUATION_STRATEGY="steps"
 EVAL_STEPS=501
@@ -43,8 +33,8 @@ GREATER_IS_BETTER=true
 
 EVAL_INTERVAL=501
 #EVAL_TASKS="hellaswag,xnli,belebele,arc_multilingual,mmlu,include_base_44_*,truthfulqa,mgsm_direct,mgsm_cot_native,mlqa*,xcopa,xwinograd,xstorycloze,xnli,pawsx,flores,wmt16,lambada_multilingual,xquad"
-EVAL_TASKS="belebele_tur_Latn,include_base_44_turkish,turkishmmlu"
-EVAL_METRICS_EARLYSTOPPING="belebele_tur_Latn,include_base_44_turkish,turkishmmlu"
+EVAL_TASKS="belebele_swh_Latn,belebele_sna_Latn,belebele_nya_Latn,include_base_44_vietnamese,belebele_vie_Latn,belebele_tha_Thai,belebele_jav_Latn,belebele_sun_Latn,belebele_khm_Khmr"
+EVAL_METRICS_EARLYSTOPPING="belebele_swh_Latn,belebele_sna_Latn,belebele_nya_Latn,include_base_44_vietnamese,belebele_vie_Latn,belebele_tha_Thai,belebele_jav_Latn,belebele_sun_Latn,belebele_khm_Khmr"
 EARLY_STOPPING_PATIENCE=3
 RESUME_FROM_CHECKPOINT=True
 
@@ -53,25 +43,16 @@ EVAL_LIMIT=200
 EVAL_CUDA_DEVICES="2"
 export CUDA_VISIBLE_DEVICES="$EVAL_CUDA_DEVICES"
 EVAL_LOG_SAMPLES=true
-EVAL_WANDB_PROJECT="gemma3-4b-pt-tur_Latn-adapter"
+EVAL_WANDB_PROJECT="mistral-7b_xlora_asian_swh_sna"
 LOG_FILE="$OUTPUT_DIR/training.log"
 
 # Run training
-nohup python ../train_language_adapter.py \
+nohup python train_xlora_adapter_enhanced.py \
   --tokenized_dir "$TOKENIZED_DIR" \
-  --tokenizer_path "$TOKENIZER_PATH" \
+  --tokenizer_path "$TOKENIZER" \
   --model_name "$MODEL_NAME" \
   --output_dir "$OUTPUT_DIR" \
   --logging_dir "$LOGGING_DIR" \
-  --load_in_4bit "$LOAD_IN_4BIT" \
-  --bnb_4bit_use_double_quant "$BNB_4BIT_USE_DOUBLE_QUANT" \
-  --bnb_4bit_quant_type "$BNB_4BIT_QUANT_TYPE" \
-  --bnb_4bit_compute_dtype "$BNB_4BIT_COMPUTE_DTYPE" \
-  --lora_r "$LORA_R" \
-  --lora_alpha "$LORA_ALPHA" \
-  --lora_dropout "$LORA_DROPOUT" \
-  --lora_bias "$LORA_BIAS" \
-  --lora_target_modules "$LORA_TARGET_MODULES" \
   --train_batch_size "$TRAIN_BATCH_SIZE" \
   --gradient_accumulation_steps "$GRADIENT_ACCUMULATION_STEPS" \
   --num_train_epochs "$NUM_TRAIN_EPOCHS" \

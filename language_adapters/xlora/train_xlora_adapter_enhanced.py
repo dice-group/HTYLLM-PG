@@ -1,51 +1,63 @@
+import argparse
 import os
 import torch
-import argparse
 import wandb
+import xlora
 
 from datasets import load_from_disk
 from transformers import (
     AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments,
-    DataCollatorForLanguageModeling, BitsAndBytesConfig
+    DataCollatorForLanguageModeling, BitsAndBytesConfig, AutoConfig
 )
-from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_training
 from lm_harness_eval import LMEvalCallback, LMHarnessEarlyStoppingCallback
-from flops_profiler import FlopsProfilerCallback
 
 def train_model(args):
-    wandb.init(
-        project=args.eval_wandb_project,
-        name=args.run_name,
-        resume="allow"
-    )
-    
+    # init wandb, load data and tokenizer
+    wandb.init(project=args.eval_wandb_project, name=args.run_name, resume="allow")
     dataset = load_from_disk(args.tokenized_dir, keep_in_memory=True)
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
     tokenizer.pad_token = tokenizer.eos_token
-
+    
+    # config for quantizing model
     bnb_config = BitsAndBytesConfig(
-        load_in_4bit=args.load_in_4bit, 
-        bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant,
-        bnb_4bit_quant_type=args.bnb_4bit_quant_type,
-        bnb_4bit_compute_dtype=getattr(torch, args.bnb_4bit_compute_dtype)
+       load_in_4bit=True, 
+       bnb_4bit_use_double_quant=True,
+       bnb_4bit_quant_type="nf4",
+       bnb_4bit_compute_dtype=torch.float16
     )
-
-    model = AutoModelForCausalLM.from_pretrained(args.model_name, quantization_config=bnb_config, device_map="auto")
-    #model.resize_token_embeddings(len(tokenizer))
-    model = prepare_model_for_kbit_training(model)
-
-    lora_config = LoraConfig(
-        r=args.lora_r,
-        lora_alpha=args.lora_alpha,
-        lora_dropout=args.lora_dropout,
-        bias=args.lora_bias,
-        task_type=TaskType.CAUSAL_LM,
-        target_modules=args.lora_target_modules.split(",")
+    
+    # main model config
+    print(bnb_config)
+    print(args.model_name)
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_name,
+        quantization_config=bnb_config,
+        device_map="balanced",
+        torch_dtype=torch.float32,
     )
-    model = get_peft_model(model, lora_config)
+    config = AutoConfig.from_pretrained(args.model_name)
+
+    # xlora config
+    model.config.use_cache = False
+    model = xlora.add_xlora_to_model(
+        model=model,
+        xlora_config=xlora.xLoRAConfig(
+                hidden_size=config.hidden_size,
+                base_model_id=args.model_name,
+                xlora_depth=8,
+                device=torch.device("cuda"),
+                use_trainable_adapters=True,
+                adapters = {
+                    "adapter_1": "./mistral_best_adpater_checkpoints/south_asian_2000_best_checkpoint",
+                    "adapter_2": "./mistral_best_adpater_checkpoints/swh_Latn_sna_Latn_nya_Latn_2500_best_checkpoint",
+                }
+            ),
+            verbose=True
+    )
+    model.set_topk_lora(1)
     model.print_trainable_parameters()
     model.config.pad_token_id = tokenizer.eos_token_id
-
+    
     training_args = TrainingArguments(
         output_dir=args.output_dir,
         per_device_train_batch_size=args.train_batch_size,
@@ -100,8 +112,8 @@ def train_model(args):
 
     resume = args.resume_from_checkpoint == "True"
     trainer.train(resume_from_checkpoint=resume)
-    model.save_pretrained(os.path.join(args.output_dir, "adapter"))
-    tokenizer.save_pretrained(os.path.join(args.output_dir, "adapter"))
+    model.save_pretrained(os.path.join(args.output_dir, "xlora_adapter"))
+    tokenizer.save_pretrained(os.path.join(args.output_dir, "xlora_adapter"))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -112,20 +124,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", required=True)
     parser.add_argument("--output_dir", required=True)
     parser.add_argument("--logging_dir", required=True)
-
-    # Quantization
-    parser.add_argument("--load_in_4bit", type=bool, default=True)
-    parser.add_argument("--bnb_4bit_use_double_quant", type=bool, default=True)
-    parser.add_argument("--bnb_4bit_quant_type", type=str, default="nf4")
-    parser.add_argument("--bnb_4bit_compute_dtype", type=str, default="float16")
-
-    # LoRA
-    parser.add_argument("--lora_r", type=int, default=8)
-    parser.add_argument("--lora_alpha", type=int, default=16)
-    parser.add_argument("--lora_dropout", type=float, default=0.1)
-    parser.add_argument("--lora_bias", type=str, default="none")
-    parser.add_argument("--lora_target_modules", type=str, default="query_key_value,dense,dense_h_to_4h,dense_4h_to_h")
-
+    
     # Training
     parser.add_argument("--train_batch_size", type=int, default=52)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
