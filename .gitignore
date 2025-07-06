@@ -78,7 +78,8 @@ tokenized_data/
 
 
 data/
-checkpoints/
+checkpoints/*
+!checkpoints/*.py
 tokenizer/shards/
 tokenizer/shards_131072/
 tokenizer/sp_model_131072.model

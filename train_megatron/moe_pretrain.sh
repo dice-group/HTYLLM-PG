@@ -6,12 +6,13 @@
 #SBATCH --time=24:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:a100:2
-#SBATCH --mem=32GB
+#SBATCH --mem=128GB
 #SBATCH --account=hpc-prf-merlin
 
 
 module load system/CUDA/12.6.0
 module load compiler/GCCcore/12.3.0  
+
 source ~/miniconda3/bin/activate meg
 
 # Runs the 450M parameter model
@@ -25,7 +26,7 @@ GPUS_PER_NODE=2
 # Change for multinode config
 # MASTER_ADDR=localhost # Removed: torchrun with rdzv_endpoint handles this
 # MASTER_PORT=6000 # Removed: torchrun with rdzv_endpoint handles this
-NUM_NODES=2
+NUM_NODES=4
 # NODE_RANK=0 # Removed: torchrun handles rank assignment
 WORLD_SIZE=$(($GPUS_PER_NODE*$NUM_NODES))
 
@@ -56,9 +57,9 @@ MODEL_ARGS=(
     --seq-length 4096
     --max-position-embeddings 8192
     --num-layers 12
-    --hidden-size 512
-    --ffn-hidden-size 960
-    --num-attention-heads 8
+    --hidden-size 2048
+    --ffn-hidden-size 8192
+    --num-attention-heads 16
     --init-method-std 0.01
     --attention-dropout 0.0
     --hidden-dropout 0.0
@@ -74,7 +75,7 @@ MODEL_ARGS=(
 )
 
 MOE_ARGS=(
-    --num-experts 12
+    --num-experts 8
     --moe-router-topk 2
     --moe-router-load-balancing-type aux_loss
     --moe-aux-loss-coeff 1e-2
@@ -92,11 +93,11 @@ DATA_ARGS=(
 )
 
 TRAINING_ARGS=(
-    --micro-batch-size 6
+    --micro-batch-size 2
     --global-batch-size 288
     --lr 1e-4
-    --train-samples   6841663
-    --lr-decay-samples 6841663
+    --train-iters 2500
+    --lr-decay-iters 2500
     --lr-decay-style cosine
     --min-lr 1.0e-5
     --weight-decay 0.1
@@ -116,8 +117,8 @@ MODEL_PARALLEL_ARGS=(
 
 LOGGING_ARGS=(
     --log-interval 1 \
-    --save-interval 10000 \
-    --eval-interval 1000 \
+    --save-interval 100 \
+    --eval-interval 100 \
     --eval-iters 10 \
     --save $CHECKPOINT_PATH \
     --load $CHECKPOINT_PATH \
