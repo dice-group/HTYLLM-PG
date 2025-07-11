@@ -1,20 +1,20 @@
 #!/bin/bash
 
 export WANDB_MODE=online
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 
 # ======= PARAMETERS =======
-BASE_DIR="/upb/users/j/joeldag/profiles/unix/cs/results_language_adapters/gemma3-4b-pt/bod_Tibt_kac_Latn_shn_Mymr"
-TOKENIZER_NAME="google/gemma-3-4b-pt"
-MODEL_NAME="google/gemma-3-4b-pt"
+BASE_DIR="/data/joel/results_language_adapters/mistral7b/jav_Latn_sun_Latn/"
+TOKENIZER_NAME="mistralai/Mistral-7B-v0.3"
+MODEL_NAME="mistralai/Mistral-7B-v0.3"
 #TASKS="hellaswag,xnli,belebele,arc_multilingual,mmlu,include_base_44_*,truthfulqa,mgsm_direct,mgsm_cot_native,mlqa*,xcopa,xwinograd,xstorycloze,xnli,pawsx,flores,wmt16,lambada_multilingual,xquad"
-TASKS="belebele_kac_Latn,belebele_bod_Tibt,belebele_shn_Mymr"
+TASKS="belebele_sun_Latn,belebele_jav_Latn"
 BATCH_SIZE="16"
 LIMIT="None"
-WANDB_PROJECT="gemma3-4b-pt_bod_Tibt_kac_Latn_shn_Mymr_adapter_evaluation"
-WANDB_GROUP="htyllm_gemma3-4b-pt_eval_pt_bod_Tibt_kac_Latn_shn_Mymr_qlora_gemma3-4b-pt"
+WANDB_PROJECT="mistral7b-jav_Latn_sun_Latn-adapter"
+WANDB_GROUP="mistral7b-jav_Latn_sun_Latn-adapter"
 
-LOG_FILE="$BASE_DIR/lm_harness_nohup_run_eval_bod_Tibt_kac_Latn_shn_Mymr.log"
+LOG_FILE="$BASE_DIR/lm_harness_nohup_run_eval_jav_Latn_sun_Latn.log"
 
 # ======= RUN SCRIPT =======
 nohup python lm_harness_single.py \

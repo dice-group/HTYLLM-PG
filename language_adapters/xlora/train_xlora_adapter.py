@@ -10,18 +10,23 @@ from lm_harness_eval import LMEvalCallback
 
 def train_model(tokenized_data_dir, model_name, output_dir, logging_dir):
     dataset = load_from_disk(tokenized_data_dir)
+    dataset = dataset.shuffle(seed=42)
+    
+    #sample_frac = 0.001
+    #dataset = dataset.select(range(max(1, int(len(dataset) * sample_frac))))
+    
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
-    torch.autograd.set_detect_anomaly(True)
+    #torch.autograd.set_detect_anomaly(True)
 
 
-    bnb_config = BitsAndBytesConfig(
-       load_in_4bit=True, 
-       bnb_4bit_use_double_quant=True,
-       bnb_4bit_quant_type="nf4",
-       bnb_4bit_compute_dtype=torch.float16
-    )
-    #bnb_config=None
+    # bnb_config = BitsAndBytesConfig(
+    #    load_in_4bit=True, 
+    #    bnb_4bit_use_double_quant=True,
+    #    bnb_4bit_quant_type="nf4",
+    #    bnb_4bit_compute_dtype=torch.float16
+    # )
+    bnb_config=None
 
     # load base model with quantization
     print(bnb_config)
@@ -30,8 +35,9 @@ def train_model(tokenized_data_dir, model_name, output_dir, logging_dir):
         model_name,
         quantization_config=bnb_config,
         device_map="balanced",
-        torch_dtype=torch.float32,
+        torch_dtype=torch.bfloat16,
     )
+    print("Model device Map:", model.hf_device_map)
     config = AutoConfig.from_pretrained(model_name)
 
     model.config.use_cache = False
@@ -40,12 +46,12 @@ def train_model(tokenized_data_dir, model_name, output_dir, logging_dir):
     xlora_config=xlora.xLoRAConfig(
             hidden_size=config.hidden_size,
             base_model_id=model_name,
-            xlora_depth=8,
+            xlora_depth=1,
             device=torch.device("cuda"),
-            use_trainable_adapters=True,
+            use_trainable_adapters=False,
             adapters = {
-                "adapter_1": "./mistral_best_adpater_checkpoints/south_asian_2000_best_checkpoint",
-                "adapter_2": "./mistral_best_adpater_checkpoints/swh_Latn_sna_Latn_nya_Latn_2500_best_checkpoint",
+                "adapter_1": "/upb/users/j/joeldag/profiles/unix/cs/HTYLLM-PG/language_adapters/xlora/mistral_best_adpater_checkpoints/jav_Latn_sun_Latn_500_best_checkpoint",
+                "adapter_2": "/upb/users/j/joeldag/profiles/unix/cs/HTYLLM-PG/language_adapters/xlora/mistral_best_adpater_checkpoints/swh_Latn_sna_Latn_nya_Latn_2500_best_checkpoint",
             }
         ),
         verbose=True
@@ -57,7 +63,7 @@ def train_model(tokenized_data_dir, model_name, output_dir, logging_dir):
 
     training_args = TrainingArguments(
         output_dir=output_dir,
-        per_device_train_batch_size=4,
+        per_device_train_batch_size=26,
         gradient_accumulation_steps=1,
         max_grad_norm=1.0,
         num_train_epochs=1,
@@ -66,7 +72,7 @@ def train_model(tokenized_data_dir, model_name, output_dir, logging_dir):
         logging_dir=logging_dir,
         logging_steps=20,
         save_strategy="steps",
-        save_steps=1000,
+        save_steps=500,
         bf16=True,
         save_total_limit=200,
         report_to=["wandb"],

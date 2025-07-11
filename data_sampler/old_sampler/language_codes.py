@@ -1899,8 +1899,8 @@ language_codes = [
     "yas_Latn",
 ]
 
-print("Amount of available languages: ", len(language_codes))
-print(len(language_codes) == len(set(language_codes)))
+#print("Amount of available languages: ", len(language_codes))
+#print(len(language_codes) == len(set(language_codes)))
 
 belebele_languages = [
     "acm_Arab",
@@ -2427,3 +2427,68 @@ common_languages = [
     "zsm_Latn",
     "zul_Latn",
 ]
+
+mistral_worst_langs=[
+    "kat_Geor",
+    "yor_Latn",
+    "lao_Laoo",
+    "xho_Latn",
+    "zul_Latn",
+    "kan_Knda",
+    "pan_Guru",
+    "tso_Latn",
+    "pbt_Arab",
+    "tel_Telu",
+    "tgk_Cyrl",
+    "urd_Latn",
+    "nya_Latn",
+    "sna_Latn",
+    "swh_Latn",
+    "fuv_Latn",
+    "ibo_Latn",
+    "jav_Latn",
+    "sin_Latn",
+    "arb_Latn",
+    "khm_Khmr",
+    "ary_Arab",
+    "bod_Tibt",
+    "hat_Latn",
+    "heb_Hebr",
+    "kac_Latn",
+    "khk_Cyrl",
+    "luo_Latn",
+    "mri_Latn",
+    "plt_Latn",
+    "tsn_Latn",
+    "wol_Latn",
+    "grn_Latn",
+    "guj_Gujr",
+    "nso_Latn",
+    "sin_Sinh",
+    "sun_Latn",
+    "tam_Taml",
+    "hau_Latn",
+    "hin_Deva",
+    "ilo_Latn",
+    "kin_Latn",
+    "ory_Orya",
+    "snd_Arab",
+    "ssw_Latn",
+    "eus_Latn",
+    "shn_Mymr",
+    "amh_Ethi",
+    "gaz_Latn",
+    "hye_Armn",
+    "kaz_Cyrl",
+    "lin_Latn",
+    "sot_Latn",
+    "war_Latn",
+    "ben_Beng",
+    "ben_Latn",
+    "hin_Latn",
+    "mya_Mymr",
+]
+
+matches = set(mistral_worst_langs) & set(language_codes)
+for m in matches:
+    print(m)

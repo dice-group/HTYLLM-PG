@@ -12,3 +12,5 @@ wandb/
 *output.log*
 language_adapters/xlora/mistral_best_adpater_checkpoints/**/adapter_model.safetensors
 language_adapters/xlora/mistral_best_adpater_checkpoints/**/optimizer.pt
+language_adapters/xlora/mistral_best_adpater_checkpoints
+.idea
