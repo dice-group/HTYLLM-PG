@@ -6,15 +6,15 @@ from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 
 codes_raw = """
-kat_Geor yor_Latn lao_Laoo xho_Latn zul_Latn kan_Knda pan_Guru tso_Latn pbt_Arab
-tel_Telu tgk_Cyrl urd_Latn nya_Latn sna_Latn swh_Latn fuv_Latn ibo_Latn jav_Latn
-sin_Latn arb_Latn khm_Khmr ary_Arab bod_Tibt hat_Latn heb_Hebr kac_Latn khk_Cyrl
+kat_Geor lao_Laoo xho_Latn zul_Latn pan_Guru tso_Latn pbt_Arab
+tel_Telu tgk_Cyrl urd_Latn nya_Latn sna_Latn swh_Latn fuv_Latn
+sin_Latn arb_Latn khm_Khmr ary_Arab bod_Tibt hat_Latn heb_Hebr kac_Latn
 luo_Latn mri_Latn plt_Latn tsn_Latn wol_Latn grn_Latn guj_Gujr nso_Latn sin_Sinh
-sun_Latn tam_Taml hau_Latn hin_Deva ilo_Latn kin_Latn ory_Orya snd_Arab ssw_Latn
-eus_Latn shn_Mymr amh_Ethi gaz_Latn hye_Armn kaz_Cyrl lin_Latn sot_Latn war_Latn
-ben_Beng ben_Latn hin_Latn mya_Mymr apc_Arab arz_Arab mal_Mlym som_Latn arb_Arab
-asm_Beng bam_Latn ckb_Arab kea_Latn mlt_Latn pes_Arab ars_Arab isl_Latn urd_Arab
-azj_Latn ell_Grek lvs_Latn tha_Thai tir_Ethi als_Latn kir_Cyrl lug_Latn acm_Arab
+hau_Latn hin_Deva ilo_Latn kin_Latn ory_Orya snd_Arab ssw_Latn
+eus_Latn shn_Mymr gaz_Latn hye_Armn lin_Latn 
+sot_Latn war_Latn ben_Latn hin_Latn mya_Mymr som_Latn bam_Latn 
+ckb_Arab kea_Latn mlt_Latn pes_Arab isl_Latn urd_Arab azj_Latn
+ell_Grek lvs_Latn tha_Thai als_Latn kir_Cyrl lug_Latn
 """.split()
 tags = [c.replace('_', '-') for c in codes_raw]
 
@@ -32,7 +32,7 @@ def ft_vec(tag):
 
 vecs = np.vstack([ft_vec(t) for t in tags])
 
-n_clusters = 1
+n_clusters = 15
 clust = AgglomerativeClustering(
     n_clusters=n_clusters, metric="cosine", linkage="average"
 )
