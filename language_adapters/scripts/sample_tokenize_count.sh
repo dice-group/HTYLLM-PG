@@ -27,10 +27,9 @@
 
 #----- 2. Toknenized subsampled data ----- 
 #DATA_DIR=$SUB_SAMPLE_OUTPUT_DIR
-DATA_DIR="/upb/users/j/joeldag/profiles/unix/cs/language_adapter_subsets/swh_Latn_sna_Latn_nya_Latn"
-TOKENIZED_DATA_DIR="/upb/users/j/joeldag/profiles/unix/cs/tokenized_data_subsets/mistral7b/swh_Latn_sna_Latn_nya_Latn/"
-MODEL_NAME="mistralai/Mistral-7B-v0.3"
-#MODEL_NAME="/upb/users/j/joeldag/profiles/unix/cs/tokenized_data_subsets/gemma_extended_tokenizers/indo_aryan/"
+DATA_DIR="/data/adapter_fineweb2_subset/niger_congo/"
+TOKENIZED_DATA_DIR="/data/joel/tokenized_adapter_subsets/mistral7b/final_model/niger_congo"
+MODEL_NAME="/data/joel/extended_tokenizers/mistral7b/niger_congo/" # path to tokenizer not only model
 CACHE_DIR="/data/upb/users/j/joeldag/profiles/unix/cs/cache_dir"
 NUM_PROC=4
 
