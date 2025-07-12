@@ -4,29 +4,51 @@ import json
 from pathlib import Path
 from transformers import AutoTokenizer
 
-def read_jsonl_gz_texts(data_dir):
+def read_jsonl_gz_texts(data_dir, max_lines=None):
+    count = 0
     for lang_dir in Path(data_dir).iterdir():
         for gz_file in lang_dir.glob("*.jsonl.gz"):
             with gzip.open(gz_file, 'rt', encoding='utf-8') as f:
                 for line in f:
+                    if max_lines and count >= max_lines:
+                        return
                     obj = json.loads(line)
                     if 'text' in obj:
                         yield obj['text']
-                        
+                        count += 1
+
+def extract_new_tokens(corpus_iter, tokenizer, num_tokens):
+    from collections import Counter
+    import re
+
+    token_counts = Counter()
+    for text in corpus_iter:
+        words = re.findall(r'\b\w+\b', text)
+        token_counts.update(words)
+
+    # Filter out tokens already in vocab
+    existing_vocab = set(tokenizer.get_vocab().keys())
+    print("Sample existing tokens:", list(existing_vocab)[:10])
+    new_tokens = [tok for tok, _ in token_counts.most_common() if tok not in existing_vocab]
+    print("Sample new tokens:", new_tokens[:10])
+    return new_tokens[:num_tokens]
+
 def extend_tokenizer(base_tokenizer_path, data_dir, output_dir, added_tokens, max_lines=None):
     print(f"Loading base tokenizer from {base_tokenizer_path}...")
     tokenizer = AutoTokenizer.from_pretrained(base_tokenizer_path)
 
-    print(f"Loading text data from {data_dir}...")
-    corpus_iter = read_jsonl_gz_texts(data_dir)
+    print(f"Reading text corpus from {data_dir}...")
+    corpus_iter = list(read_jsonl_gz_texts(data_dir, max_lines=max_lines))
 
-    print(f"Training new tokenizer with +{added_tokens} tokens...")
-    new_vocab_size = tokenizer.vocab_size + added_tokens
-    new_tokenizer = tokenizer.train_new_from_iterator(corpus_iter, vocab_size=new_vocab_size)
+    print(f"Identifying top {added_tokens} new tokens...")
+    new_tokens = extract_new_tokens(corpus_iter, tokenizer, added_tokens)
 
-    print(f"Saving new tokenizer to {output_dir}...")
-    new_tokenizer.save_pretrained(output_dir)
-    print("Tokenizer extended and saved successfully.")
+    print(f"Adding {len(new_tokens)} new tokens to tokenizer...")
+    tokenizer.add_tokens(new_tokens)
+
+    print(f"Saving updated tokenizer to {output_dir}...")
+    tokenizer.save_pretrained(output_dir)
+    print("Tokenizer extension complete.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
