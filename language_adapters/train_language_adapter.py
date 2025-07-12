@@ -2,6 +2,7 @@ import os
 import torch
 import argparse
 import wandb
+import logging
 
 from datasets import load_from_disk
 from transformers import (
@@ -12,6 +13,11 @@ from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_tr
 from lm_harness_eval import LMEvalCallback, LMHarnessEarlyStoppingCallback
 from flops_profiler import FlopsProfilerCallback
 
+logging.basicConfig(level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - [Method]: %(funcName)s, [Script]: %(filename)s\n[Message]: %(message)s\n")
+
+logger = logging.getLogger(__name__)
+
 def train_model(args):
     wandb.init(
         project=args.eval_wandb_project,
@@ -20,6 +26,11 @@ def train_model(args):
     )
     
     dataset = load_from_disk(args.tokenized_dir, keep_in_memory=True)
+    if args.shuffle_dataset == "True":
+        logger.info("Shuffling dataset")
+        dataset = dataset.shuffle(seed=42)
+
+    logger.info(f"Loaded dataset with {len(dataset)} examples.")
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -31,7 +42,13 @@ def train_model(args):
     )
 
     model = AutoModelForCausalLM.from_pretrained(args.model_name, quantization_config=bnb_config, device_map="auto")
-    #model.resize_token_embeddings(len(tokenizer))
+    assert any("4bit" in str(type(m)).lower() for m in model.modules()), \
+        "Model does not appear to be quantized in 4-bit! Check BitsAndBytes settings and dependencies."
+    
+    if args.resize_token_embeddings == "True":
+        logger.info("Resizing model token embeddings to match tokenizer")
+        model.resize_token_embeddings(len(tokenizer))
+        
     model = prepare_model_for_kbit_training(model)
 
     lora_config = LoraConfig(
@@ -94,21 +111,24 @@ def train_model(args):
                 metric_names=args.eval_metric_names.split(","),
                 patience=args.early_stopping_patience
             ),
-            #FlopsProfilerCallback()
         ]
     )
 
     resume = args.resume_from_checkpoint == "True"
     trainer.train(resume_from_checkpoint=resume)
+    
+    logger.info("Training complete. Saving model and tokenizer.")
     model.save_pretrained(os.path.join(args.output_dir, "adapter"))
     tokenizer.save_pretrained(os.path.join(args.output_dir, "adapter"))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    # Required arguments
+    # Base arguments
     parser.add_argument("--tokenized_dir", required=True)
+    parser.add_argument("--shuffle_dataset", type=str, default="True", choices=["True", "False"], help="Whether to shuffle the dataset")
     parser.add_argument("--tokenizer_path", required=True)
+    parser.add_argument("--resize_token_embeddings", type=str, default="False", choices=["True", "False"], help="Whether to resize token embeddings for custom tokenizer")
     parser.add_argument("--model_name", required=True)
     parser.add_argument("--output_dir", required=True)
     parser.add_argument("--logging_dir", required=True)

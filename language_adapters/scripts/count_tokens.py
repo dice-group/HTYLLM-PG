@@ -11,7 +11,7 @@ def main(args):
     print("example entry for debugging:", dataset[0])
 
     print(f"Count tokens with {args.num_proc} processes")
-    token_counts = dataset.map(count_tokens, num_proc=args.num_proc)
+    token_counts = dataset.map(count_tokens, num_proc=args.num_proc, desc="Counting tokens")
     total_tokens = sum(token_counts["num_tokens"])
     print(f"Total tokens: {total_tokens}")
 

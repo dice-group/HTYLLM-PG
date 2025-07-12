@@ -5,11 +5,13 @@ export WANDB_MODE=online
 export CUDA_VISIBLE_DEVICES=1
 
 # Configurable parameters
-TOKENIZED_DIR="/upb/users/j/joeldag/profiles/unix/cs/tokenized_data_subsets/gemma3-4b-pt/niger_congo"
-TOKENIZER_PATH="/upb/users/j/joeldag/profiles/unix/cs/tokenized_data_subsets/gemma_extended_tokenizers/niger_congo/"
-MODEL_NAME="google/gemma-3-4b-pt"
-OUTPUT_DIR="/upb/users/j/joeldag/profiles/unix/cs/results_language_adapters/gemma3-4b-pt/niger_congo"
-LOGGING_DIR="/upb/users/j/joeldag/profiles/unix/cs/results_language_adapters/gemma3-4b-pt/niger_congo/logs"
+TOKENIZED_DIR="/data/joel/tokenized_adapter_subsets/mistral7b/final_model/niger_congo"
+TOKENIZER_PATH="/data/joel/extended_tokenizers/mistral7b/niger_congo/"
+RESIZE_TOKEN_EMBEDDINGS=True
+SHUFFLE_DATASET=True
+MODEL_NAME="mistralai/Mistral-7B-v0.3"
+OUTPUT_DIR="/data/joel/results_language_adapters/mistral7b/final_model/niger_congo"
+LOGGING_DIR="/data/joel/results_language_adapters/mistral7b/final_model/niger_congo/logs"
 
 LOAD_IN_4BIT=true
 BNB_4BIT_USE_DOUBLE_QUANT=true
@@ -33,10 +35,10 @@ SAVE_STEPS=1000
 BF16=true
 SAVE_TOTAL_LIMIT=200
 REPORT_TO="wandb,tensorboard"
-RUN_NAME="gemma3-4b-pt-niger-congo-adapter"
+RUN_NAME="final_mistral7b_niger_congo_adapter"
 DATALOADER_NUM_WORKERS=1
 EVALUATION_STRATEGY="steps"
-EVAL_STEPS=1001 #glaube das ist überflüssig wegen meinem lmharnes eval
+EVAL_STEPS=1001
 LOAD_BEST_MODEL_AT_END=true
 METRIC_FOR_BEST_MODEL="eval_accuracy"
 GREATER_IS_BETTER=true
@@ -58,6 +60,8 @@ EVAL_WANDB_PROJECT="gemma3-4b-pt-niger-congo-lanauge-adapter"
 python ../train_language_adapter.py \
   --tokenized_dir "$TOKENIZED_DIR" \
   --tokenizer_path "$TOKENIZER_PATH" \
+  --shuffle_dataset "$SHUFFLE_DATASET" \
+  --resize_token_embeddings "$RESIZE_TOKEN_EMBEDDINGS" \
   --model_name "$MODEL_NAME" \
   --output_dir "$OUTPUT_DIR" \
   --logging_dir "$LOGGING_DIR" \
@@ -97,3 +101,4 @@ python ../train_language_adapter.py \
   --eval_limit $EVAL_LIMIT \
   --eval_cuda_devices "$EVAL_CUDA_DEVICES" \
   --eval_wandb_project "$EVAL_WANDB_PROJECT"
+

@@ -10,11 +10,14 @@ def read_gz_folder(folder_path):
         for file in files:
             if file.endswith(".gz"):
                 path = os.path.join(root, file)
-                with gzip.open(path, 'rt', encoding='utf-8', errors='ignore') as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and len(line) > 10:
-                            yield {"text": line}
+                try:
+                    with gzip.open(path, 'rt', encoding='utf-8', errors='ignore') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line and len(line) > 10:
+                                yield {"text": line}
+                except Exception as e:
+                    print(f"Error reading {path}: {e}")
 
 def tokenize_fn(batch, tokenizer):
     tokenized = tokenizer(batch["text"], truncation=True, max_length=512)

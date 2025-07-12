@@ -55,7 +55,7 @@ if __name__ == "__main__":
     parser.add_argument("--base_tokenizer", type=str, required=True)
     parser.add_argument("--data_dir", type=str, required=True)
     parser.add_argument("--output_dir", type=str, required=True)
-    parser.add_argument("--added_tokens", type=int, default=2000)
+    parser.add_argument("--added_tokens", type=int, default=5000)
     parser.add_argument("--max_lines", type=int, default=None)
 
     args = parser.parse_args()
