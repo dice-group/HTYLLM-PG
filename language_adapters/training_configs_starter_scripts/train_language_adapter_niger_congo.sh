@@ -1,17 +1,22 @@
 #!/bin/bash
+set -e
 
 # Environment setup
 export WANDB_MODE=online
-export CUDA_VISIBLE_DEVICES=1
+# export NCCL_P2P_DISABLE=1
+# export NCCL_IB_DISABLE=1
+export CUDA_VISIBLE_DEVICES=0
+
 
 # Configurable parameters
 TOKENIZED_DIR="/data/joel/tokenized_adapter_subsets/mistral7b/final_model/niger_congo"
 TOKENIZER_PATH="/data/joel/extended_tokenizers/mistral7b/niger_congo/"
-RESIZE_TOKEN_EMBEDDINGS=True
+RESIZE_TOKEN_EMBEDDINGS=True #set to true if using 
 SHUFFLE_DATASET=True
 MODEL_NAME="mistralai/Mistral-7B-v0.3"
 OUTPUT_DIR="/data/joel/results_language_adapters/mistral7b/final_model/niger_congo"
 LOGGING_DIR="/data/joel/results_language_adapters/mistral7b/final_model/niger_congo/logs"
+mkdir -p "$LOGGING_DIR"
 
 LOAD_IN_4BIT=true
 BNB_4BIT_USE_DOUBLE_QUANT=true
@@ -24,40 +29,41 @@ LORA_DROPOUT=0.1
 LORA_BIAS="none"
 LORA_TARGET_MODULES="q_proj,v_proj,gate_proj,up_proj"
 
-TRAIN_BATCH_SIZE=20
-GRADIENT_ACCUMULATION_STEPS=1
-NUM_TRAIN_EPOCHS=2
+TRAIN_BATCH_SIZE=10
+GRADIENT_ACCUMULATION_STEPS=4
+NUM_TRAIN_EPOCHS=1
 LEARNING_RATE=2e-4
 LR_SCHEDULER_TYPE="cosine"
 LOGGING_STEPS=20
 SAVE_STRATEGY="steps"
-SAVE_STEPS=1000
+SAVE_STEPS=2000
 BF16=true
 SAVE_TOTAL_LIMIT=200
 REPORT_TO="wandb,tensorboard"
 RUN_NAME="final_mistral7b_niger_congo_adapter"
-DATALOADER_NUM_WORKERS=1
+DATALOADER_NUM_WORKERS=12
 EVALUATION_STRATEGY="steps"
-EVAL_STEPS=1001
+EVAL_STEPS=2001
 LOAD_BEST_MODEL_AT_END=true
 METRIC_FOR_BEST_MODEL="eval_accuracy"
 GREATER_IS_BETTER=true
 
-EVAL_INTERVAL=1001
-EVAL_TASKS="belebele_swh_Latn,belebele_yor_Latn,belebele_ibo_Latn,belebele_wol_Latn,belebele_zul_Latn,afrimgsm_direct_yor,afrimgsm_en_cot_yor,afrimgsm_translate_direct_yor,afrimmlu_direct_yor,afrixnli_en_direct_yor,afrixnli_manual_direct_yor,afrixnli_manual_translate_yor,afrixnli_native_direct_yor,afrixnli_translate_yor,afrimgsm_direct_ibo,afrimgsm_en_cot_ibo,afrimgsm_translate_direct_ibo,afrimmlu_direct_ibo,afrimmlu_translate_ibo,afrixnli_en_direct_ibo,afrixnli_manual_direct_ibo,afrixnli_manual_translate_ibo,afrixnli_translate_ibo,afrixnli_native_direct_ibo,afrimgsm_direct_wol,afrimgsm_en_cot_wol,afrimgsm_translate_direct_wol,afrimmlu_direct_wol,afrimmlu_translate_wol,afrixnli_en_direct_wol,afrixnli_manual_direct_wol,afrixnli_manual_translate_wol,afrixnli_translate_wol,afrixnli_native_direct_wol,afrimgsm_direct_zul,afrimgsm_en_cot_zul,afrimgsm_translate_direct_zul,afrimmlu_direct_zul,afrimmlu_translate_zul,afrixnli_en_direct_zul,afrixnli_manual_direct_zul,afrixnli_manual_translate_zul,afrixnli_translate_zul,afrixnli_native_direct_zul"
-EVAL_METRICS_EARLYSTOPPING="belebele_swh_Latn,belebele_yor_Latn,belebele_ibo_Latn,belebele_wol_Latn,belebele_zul_Latn,afrimgsm_direct_yor,afrimgsm_en_cot_yor,afrimgsm_translate_direct_yor,afrimmlu_direct_yor,afrixnli_en_direct_yor,afrixnli_manual_direct_yor,afrixnli_manual_translate_yor,afrixnli_native_direct_yor,afrixnli_translate_yor,afrimgsm_direct_ibo,afrimgsm_en_cot_ibo,afrimgsm_translate_direct_ibo,afrimmlu_direct_ibo,afrimmlu_translate_ibo,afrixnli_en_direct_ibo,afrixnli_manual_direct_ibo,afrixnli_manual_translate_ibo,afrixnli_translate_ibo,afrixnli_native_direct_ibo,afrimgsm_direct_wol,afrimgsm_en_cot_wol,afrimgsm_translate_direct_wol,afrimmlu_direct_wol,afrimmlu_translate_wol,afrixnli_en_direct_wol,afrixnli_manual_direct_wol,afrixnli_manual_translate_wol,afrixnli_translate_wol,afrixnli_native_direct_wol,afrimgsm_direct_zul,afrimgsm_en_cot_zul,afrimgsm_translate_direct_zul,afrimmlu_direct_zul,afrimmlu_translate_zul,afrixnli_en_direct_zul,afrixnli_manual_direct_zul,afrixnli_manual_translate_zul,afrixnli_translate_zul,afrixnli_native_direct_zul"
+EVAL_INTERVAL=2001
+EVAL_TASKS="belebele_swh_Latn,belebele_zul_Latn,belebele_nso_Latn,belebele_tsn_Latn,belebele_sot_Latn,belebele_yor_Latn,belebele_ibo_Latn"
+EVAL_METRICS_EARLYSTOPPING="belebele_swh_Latn,belebele_zul_Latn,belebele_nso_Latn,belebele_tsn_Latn,belebele_sot_Latn,belebele_yor_Latn,belebele_ibo_Latn"
 EARLY_STOPPING_PATIENCE=3
 RESUME_FROM_CHECKPOINT=False
 
-EVAL_BATCH_SIZE=8
+EVAL_BATCH_SIZE=auto
 EVAL_LIMIT=10
 EVAL_CUDA_DEVICES="1"
 EVAL_LOG_SAMPLES=true
 EVAL_WANDB_PROJECT="gemma3-4b-pt-niger-congo-lanauge-adapter"
-
+LOG_FILE="$OUTPUT_DIR/mistral7b_niger_congo.log"
 
 # Run training
-python ../train_language_adapter.py \
+#nohup accelerate launch --config_file accelerate.yaml ../train_language_adapter.py \
+nohup python ../train_language_adapter.py \
   --tokenized_dir "$TOKENIZED_DIR" \
   --tokenizer_path "$TOKENIZER_PATH" \
   --shuffle_dataset "$SHUFFLE_DATASET" \
@@ -100,5 +106,10 @@ python ../train_language_adapter.py \
   --eval_batch_size $EVAL_BATCH_SIZE \
   --eval_limit $EVAL_LIMIT \
   --eval_cuda_devices "$EVAL_CUDA_DEVICES" \
-  --eval_wandb_project "$EVAL_WANDB_PROJECT"
+  --eval_wandb_project "$EVAL_WANDB_PROJECT" > "$LOG_FILE" 2>&1 &
+
+sleep 2
+echo "Training started with PID $!"
+echo "Logging to: $LOG_FILE"
+tail -f "$LOG_FILE"
 

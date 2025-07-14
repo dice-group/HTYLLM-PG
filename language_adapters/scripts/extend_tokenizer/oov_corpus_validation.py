@@ -36,7 +36,7 @@ def main(model, data_dir, max_lines, max_pieces):
     tok = AutoTokenizer.from_pretrained(model)
     tot, unk, wtot, frag = analyze(tok, iter_texts(data_dir, max_lines), max_pieces)
     print(f"Total tokens: {tot}")
-    print(f"UNK tokens: {unk}  ({unk/tot*100:.2f}%)")
+    print(f"Unknown tokens: {unk}  ({unk/tot*100:.2f}%)")
     print(f"Total words : {wtot}")
     print(f"Words with >{max_pieces} pieces: {frag}  ({frag/wtot*100:.2f}%)")
 
