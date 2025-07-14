@@ -20,11 +20,11 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 class LMEvalCallback(TrainerCallback):
-    def __init__(self, tokenizer_name, eval_interval=500, eval_tasks=None, output_dir="./lm_eval_results", tb_logdir=None, batch_size=2, limit=500, cuda_devices="0", wandb_project="lm_eval_project", wandb_run_id=None):
+    def __init__(self, model_path, eval_interval=500, eval_tasks=None, output_dir="./lm_eval_results", tb_logdir=None, batch_size=2, limit=500, cuda_devices="0", wandb_project="lm_eval_project", wandb_run_id=None):
 
         self.eval_interval = eval_interval
         self.eval_tasks = eval_tasks or ["belebele"]
-        self.tokenizer_name = tokenizer_name
+        self.model_path = model_path
         self.wandb_run_id = wandb_run_id
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -54,7 +54,7 @@ class LMEvalCallback(TrainerCallback):
             subprocess.run([
                 "lm_eval",
                 "--model", "hf",
-                "--model_args", f"pretrained={self.tokenizer_name},peft={model_path},tokenizer={self.tokenizer_name}",
+                "--model_args", f"pretrained={self.model_path},peft={model_path},tokenizer={model_path}",
                 "--tasks", ",".join(self.eval_tasks),
                 "--batch_size", str(self.batch_size),
                 "--limit", str(self.limit),
