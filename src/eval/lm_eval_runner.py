@@ -1,3 +1,4 @@
+import gc
 import os
 import sys
 import json
@@ -34,7 +35,7 @@ def evaluate_checkpoint(checkpoint_path, output_dir):
         tasks=[
             "hellaswag", "xnli", "belebele", "arc_multilingual", "truthfulqa", "mgsm_direct", "mgsm_cot_native", "xcopa", "xwinograd", "xstorycloze", "xnli", "pawsx", "flores", "wmt16", "lambada_multilingual", "xquad"  # add any further eval_tasks here
         ],
-        batch_size=128,
+        batch_size=32,
         device="cuda" if torch.cuda.is_available() else "cpu",
         limit=100
     )
@@ -53,11 +54,18 @@ def evaluate_checkpoint(checkpoint_path, output_dir):
                 writer.add_scalar(f"{task_name}/{metric}", value, 0)
     writer.close()
 
+    # --- Clean up to prevent OOM ---
+    del results
+    torch.cuda.empty_cache()
+    gc.collect()
+
 
 def main():
     if len(sys.argv) != 2:
         print("Usage: python lm_eval_runner.py <path_to_checkpoints_dir>")
         sys.exit(1)
+
+    torch.set_float32_matmul_precision('high')  # for better performance with float 32 matrix multiplication
 
     checkpoint_dir = sys.argv[1]
 
@@ -72,6 +80,7 @@ def main():
         sys.exit(1)
 
     print(f"Found {len(checkpoints)} checkpoints. Starting evaluation...")
+    torch._dynamo.config.cache_size_limit = 512
 
     for ckpt in checkpoints:
         evaluate_checkpoint(ckpt, checkpoint_dir + "/..")
