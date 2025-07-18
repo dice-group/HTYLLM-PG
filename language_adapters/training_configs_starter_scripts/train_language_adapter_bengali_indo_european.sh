@@ -2,16 +2,16 @@
 
 # Environment setup
 export WANDB_MODE=online
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
 # Configurable parameters
-TOKENIZED_DIR="/data/joel/tokenized_adapter_subsets/mistral7b/final_model/ethiopian_semitic"
+TOKENIZED_DIR="/data/joel/tokenized_adapter_subsets/mistral7b/final_model/bengali_indo_european"
 TOKENIZER_PATH="mistralai/Mistral-7B-v0.3"
 RESIZE_TOKEN_EMBEDDINGS=False
 SHUFFLE_DATASET=True
 MODEL_NAME="mistralai/Mistral-7B-v0.3"
-OUTPUT_DIR="/data/joel/results_language_adapters/mistral7b/final_model/ethiopian_semitic_unextended"
-LOGGING_DIR="/data/joel/results_language_adapters/mistral7b/final_model/ethiopian_semitic_unextended/logs"
+OUTPUT_DIR="/data/joel/results_language_adapters/mistral7b/final_model/bengali_indo_european_unextended"
+LOGGING_DIR="/data/joel/results_language_adapters/mistral7b/final_model/bengali_indo_european_unextended/logs"
 mkdir -p "$LOGGING_DIR"
 
 LOAD_IN_4BIT=true
@@ -32,29 +32,29 @@ LEARNING_RATE=2e-4
 LR_SCHEDULER_TYPE="cosine"
 LOGGING_STEPS=20
 SAVE_STRATEGY="steps"
-SAVE_STEPS=10
+SAVE_STEPS=1000
 BF16=true
 SAVE_TOTAL_LIMIT=200
 REPORT_TO="wandb,tensorboard"
-RUN_NAME="final_mistral7b_ethiopian_semitic_unextended_adapter"
+RUN_NAME="final_mistral7b_bengali_indo_european_unextended_adapter"
 DATALOADER_NUM_WORKERS=16
 EVALUATION_STRATEGY="steps"
-EVAL_STEPS=11
+EVAL_STEPS=1001
 LOAD_BEST_MODEL_AT_END=true
 METRIC_FOR_BEST_MODEL="eval_accuracy"
 GREATER_IS_BETTER=true
 
-EVAL_INTERVAL=11
-EVAL_TASKS="belebele_tir_Ethi,belebele_amh_Ethi"
-EVAL_METRICS_EARLYSTOPPING="belebele_tir_Ethi,belebele_amh_Ethi"
+EVAL_INTERVAL=1001
+EVAL_TASKS="belebele_ben_Beng,belebele_asm_Beng"
+EVAL_METRICS_EARLYSTOPPING="belebele_ben_Beng,belebele_asm_Beng"
 EARLY_STOPPING_PATIENCE=4
 RESUME_FROM_CHECKPOINT=False
 
 EVAL_BATCH_SIZE=auto
 EVAL_LIMIT=10
-EVAL_CUDA_DEVICES="0"
+EVAL_CUDA_DEVICES="1"
 EVAL_LOG_SAMPLES=true
-EVAL_WANDB_PROJECT="mistral7b-ethiopian_semitic_unextended-language-adapter"
+EVAL_WANDB_PROJECT="mistral7b-bengali_indo_european_unextended-language-adapter"
 LOG_FILE="$OUTPUT_DIR/training.log"
 
 # Run training
