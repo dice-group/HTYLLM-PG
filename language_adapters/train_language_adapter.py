@@ -7,7 +7,7 @@ import logging
 from datasets import load_from_disk
 from transformers import (
     AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments,
-    DataCollatorForLanguageModeling, BitsAndBytesConfig
+    DataCollatorForLanguageModeling
 )
 from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_training
 from lm_harness_eval import LMEvalCallback, LMHarnessEarlyStoppingCallback
@@ -26,6 +26,7 @@ def train_model(args):
     )
     
     dataset = load_from_disk(args.tokenized_dir, keep_in_memory=True)
+        
     if args.shuffle_dataset == "True":
         logger.info("Shuffling dataset")
         dataset = dataset.shuffle(seed=42)
@@ -34,22 +35,25 @@ def train_model(args):
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
     tokenizer.pad_token = tokenizer.eos_token
 
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=args.load_in_4bit, 
-        bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant,
-        bnb_4bit_quant_type=args.bnb_4bit_quant_type,
-        bnb_4bit_compute_dtype=getattr(torch, args.bnb_4bit_compute_dtype)
-    )
+    # bnb_config = BitsAndBytesConfig(
+    #     load_in_4bit=args.load_in_4bit, 
+    #     bnb_4bit_use_double_quant=args.bnb_4bit_use_double_quant,
+    #     bnb_4bit_quant_type=args.bnb_4bit_quant_type,
+    #     bnb_4bit_compute_dtype=getattr(torch, args.bnb_4bit_compute_dtype)
+    # )
 
-    model = AutoModelForCausalLM.from_pretrained(args.model_name, quantization_config=bnb_config, device_map="auto")
-    assert any("4bit" in str(type(m)).lower() for m in model.modules()), \
-        "Model does not appear to be quantized in 4-bit! Check BitsAndBytes settings and dependencies."
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_name,
+        #quantization_config=bnb_config,
+        device_map="auto")
+    # assert any("4bit" in str(type(m)).lower() for m in model.modules()), \
+    #     "Model does not appear to be quantized in 4-bit! Check BitsAndBytes settings and dependencies."
     
     if args.resize_token_embeddings == "True":
         logger.info("Resizing model token embeddings to match tokenizer")
         model.resize_token_embeddings(len(tokenizer))
         
-    model = prepare_model_for_kbit_training(model)
+    #model = prepare_model_for_kbit_training(model)
 
     lora_config = LoraConfig(
         r=args.lora_r,
@@ -95,7 +99,7 @@ def train_model(args):
         data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
         callbacks=[
             LMEvalCallback(
-                tokenizer_name=args.model_name,
+                model_path=args.model_name,
                 eval_interval=args.eval_interval,
                 eval_tasks=args.eval_tasks.split(","),
                 output_dir=os.path.join(args.output_dir, "lm_eval"),
@@ -173,7 +177,7 @@ if __name__ == "__main__":
     parser.add_argument("--early_stopping_patience", type=int, default=3)
     parser.add_argument("--resume_from_checkpoint", choices=["True", "False"], default="False")
     
-    parser.add_argument("--eval_batch_size", type=int, default=2, help="Batch size for LM evaluation")
+    parser.add_argument("--eval_batch_size", default=2, help="Batch size for LM evaluation")
     parser.add_argument("--eval_limit", type=int, default=100, help="Number of examples per eval task")
     parser.add_argument("--eval_cuda_devices", type=str, default="0", help="CUDA_VISIBLE_DEVICES for LM evaluation subprocess")
     parser.add_argument("--eval_log_samples", action="store_true", help="Whether to log eval samples")
