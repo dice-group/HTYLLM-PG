@@ -73,13 +73,13 @@ class LMEvalCallback(TrainerCallback):
             log_data = {}
             for task, metrics in results.items():
                 print(f"[DEBUG] Task: {task}")
-                for k, v in metrics.items():
-                    print(f"[DEBUG]   Metric: {k} = {v}")
-                    if isinstance(v, (int, float)):
-                        tag = f"{task}/{k.replace(',', '_')}"
-                        log_data[tag] = v
+                for metric, value in metrics.items():
+                    tag = f"{task}/{metric.replace(',', '_')}"
+                    if isinstance(value, (int, float)):
+                        log_data[tag] = value
                         if self.tb_writer:
-                            self.tb_writer.add_scalar(tag, v, global_step=state.global_step)
+                            self.tb_writer.add_scalar(tag, value, global_step=state.global_step)
+                    print(f"[DEBUG] {tag} = {value}")
             wandb.log(log_data, step=state.global_step)
             
         except Exception as e:
