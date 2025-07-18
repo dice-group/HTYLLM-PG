@@ -10,12 +10,12 @@ export CUDA_VISIBLE_DEVICES=0
 
 # Configurable parameters
 TOKENIZED_DIR="/data/joel/tokenized_adapter_subsets/mistral7b/final_model/niger_congo"
-TOKENIZER_PATH="/data/joel/extended_tokenizers/mistral7b/niger_congo/"
-RESIZE_TOKEN_EMBEDDINGS=True #set to true if using 
+TOKENIZER_PATH="mistralai/Mistral-7B-v0.3"
+RESIZE_TOKEN_EMBEDDINGS=False #set to true if using 
 SHUFFLE_DATASET=True
 MODEL_NAME="mistralai/Mistral-7B-v0.3"
-OUTPUT_DIR="/data/joel/results_language_adapters/mistral7b/final_model/niger_congo"
-LOGGING_DIR="/data/joel/results_language_adapters/mistral7b/final_model/niger_congo/logs"
+OUTPUT_DIR="/data/joel/results_language_adapters/mistral7b/final_model_2/niger_congo"
+LOGGING_DIR="/data/joel/results_language_adapters/mistral7b/final_model_2/niger_congo/logs"
 mkdir -p "$LOGGING_DIR"
 
 LOAD_IN_4BIT=true
@@ -29,18 +29,18 @@ LORA_DROPOUT=0.1
 LORA_BIAS="none"
 LORA_TARGET_MODULES="q_proj,v_proj,gate_proj,up_proj"
 
-TRAIN_BATCH_SIZE=10
+TRAIN_BATCH_SIZE=6
 GRADIENT_ACCUMULATION_STEPS=4
 NUM_TRAIN_EPOCHS=1
 LEARNING_RATE=2e-4
 LR_SCHEDULER_TYPE="cosine"
-LOGGING_STEPS=20
+LOGGING_STEPS=50
 SAVE_STRATEGY="steps"
 SAVE_STEPS=2000
 BF16=true
 SAVE_TOTAL_LIMIT=200
 REPORT_TO="wandb,tensorboard"
-RUN_NAME="final_mistral7b_niger_congo_adapter"
+RUN_NAME="final_2_mistral-niger-congo-language-adapter"
 DATALOADER_NUM_WORKERS=12
 EVALUATION_STRATEGY="steps"
 EVAL_STEPS=2001
@@ -55,10 +55,10 @@ EARLY_STOPPING_PATIENCE=3
 RESUME_FROM_CHECKPOINT=False
 
 EVAL_BATCH_SIZE=auto
-EVAL_LIMIT=10
-EVAL_CUDA_DEVICES="1"
+EVAL_LIMIT=200
+EVAL_CUDA_DEVICES="0"
 EVAL_LOG_SAMPLES=true
-EVAL_WANDB_PROJECT="gemma3-4b-pt-niger-congo-lanauge-adapter"
+EVAL_WANDB_PROJECT="final_2_mistral-niger-congo-language-adapter"
 LOG_FILE="$OUTPUT_DIR/mistral7b_niger_congo.log"
 
 # Run training
