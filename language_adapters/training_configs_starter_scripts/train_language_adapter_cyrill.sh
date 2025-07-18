@@ -5,14 +5,15 @@ set -e
 export WANDB_MODE=online
 export CUDA_VISIBLE_DEVICES=1
 
+
 # Configurable parameters
-TOKENIZED_DIR="/data/joel/tokenized_adapter_subsets/mistral7b/final_model/arabic"
+TOKENIZED_DIR="/data/joel/tokenized_adapter_subsets/mistral7b/final_model/cyrill"
 TOKENIZER_PATH="mistralai/Mistral-7B-v0.3"
 RESIZE_TOKEN_EMBEDDINGS=False #set to true if using 
 SHUFFLE_DATASET=True
 MODEL_NAME="mistralai/Mistral-7B-v0.3"
-OUTPUT_DIR="/data/joel/results_language_adapters/mistral7b/final_model_2/arabic"
-LOGGING_DIR="/data/joel/results_language_adapters/mistral7b/final_model_2/arabic/logs"
+OUTPUT_DIR="/data/joel/results_language_adapters/mistral7b/final_model_2/cyrill"
+LOGGING_DIR="/data/joel/results_language_adapters/mistral7b/final_model_2/cyrill/logs"
 mkdir -p "$LOGGING_DIR"
 
 LOAD_IN_4BIT=true
@@ -33,21 +34,21 @@ LEARNING_RATE=2e-4
 LR_SCHEDULER_TYPE="cosine"
 LOGGING_STEPS=50
 SAVE_STRATEGY="steps"
-SAVE_STEPS=2000
+SAVE_STEPS=500
 BF16=true
 SAVE_TOTAL_LIMIT=200
 REPORT_TO="wandb,tensorboard"
-RUN_NAME="final_2_mistral7b_arabic_adapter"
+RUN_NAME="final_2_mistral-cyrill-congo-language-adapter"
 DATALOADER_NUM_WORKERS=12
 EVALUATION_STRATEGY="steps"
-EVAL_STEPS=2001
+EVAL_STEPS=501
 LOAD_BEST_MODEL_AT_END=true
 METRIC_FOR_BEST_MODEL="eval_accuracy"
 GREATER_IS_BETTER=true
 
-EVAL_INTERVAL=2001
-EVAL_TASKS="belebele_apc_Arab,belebele_arz_Arab,belebele_ars_Arab,belebele_arb_Arab,belebele_acm_Arab"
-EVAL_METRICS_EARLYSTOPPING="belebele_apc_Arab,belebele_arz_Arab,belebele_ars_Arab,belebele_arb_Arab,belebele_acm_Arab"
+EVAL_INTERVAL=501
+EVAL_TASKS="belebele_khk_Cyrl,belebele_kaz_Cyrl"
+EVAL_METRICS_EARLYSTOPPING="belebele_khk_Cyrl,belebele_kaz_Cyrl"
 EARLY_STOPPING_PATIENCE=3
 RESUME_FROM_CHECKPOINT=False
 
@@ -55,9 +56,8 @@ EVAL_BATCH_SIZE=auto
 EVAL_LIMIT=200
 EVAL_CUDA_DEVICES="1"
 EVAL_LOG_SAMPLES=true
-EVAL_WANDB_PROJECT="final_2_mistral-arabic-language-adapter"
-LOG_FILE="$OUTPUT_DIR/mistral7b_arabic.log"
-
+EVAL_WANDB_PROJECT="final_2_mistral-cyrill-congo-language-adapter"
+LOG_FILE="$OUTPUT_DIR/mistral7b_cyrill_congo.log"
 
 # Run training
 nohup python ../train_language_adapter.py \
@@ -109,5 +109,4 @@ sleep 2
 echo "Training started with PID $!"
 echo "Logging to: $LOG_FILE"
 tail -f "$LOG_FILE"
-
 

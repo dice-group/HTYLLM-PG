@@ -72,7 +72,9 @@ class LMEvalCallback(TrainerCallback):
 
             log_data = {}
             for task, metrics in results.items():
+                print(f"[DEBUG] Task: {task}")
                 for k, v in metrics.items():
+                    print(f"[DEBUG]   Metric: {k} = {v}")
                     if isinstance(v, (int, float)):
                         tag = f"{task}/{k.replace(',', '_')}"
                         log_data[tag] = v
@@ -88,7 +90,9 @@ class LMEvalCallback(TrainerCallback):
     def get_latest_checkpoint(self, output_dir):
         checkpoints = glob.glob(os.path.join(output_dir, "checkpoint-*"))
         if not checkpoints:
+            print("[LMEvalCallback] No checkpoints found.")
             return output_dir
+        print(f"[LMEvalCallback] Found checkpoints: {checkpoints} \nSelecting the latest one.")
         return max(checkpoints, key=lambda x: int(x.split("-")[-1]))
 
     def on_train_end(self, *args, **kwargs):

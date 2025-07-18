@@ -7,6 +7,7 @@ from transformers import (
 )
 import xlora
 from lm_harness_eval import LMEvalCallback
+from torch.profiler import profile, record_function, ProfilerActivity
 
 def train_model(tokenized_data_dir, model_name, output_dir, logging_dir):
     dataset = load_from_disk(tokenized_data_dir)
@@ -96,8 +97,20 @@ def train_model(tokenized_data_dir, model_name, output_dir, logging_dir):
         # )]
     )
 
-    #trainer.train(resume_from_checkpoint=True)
-    trainer.train()
+    profiler_output_path = os.path.join(output_dir, "flops_profile.txt")
+
+    with profile(
+        activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+        record_shapes=True,
+        profile_memory=True,
+        with_flops=True,
+        with_stack=False
+    ) as prof:
+        trainer.train(resume_from_checkpoint=True)
+
+    with open(profiler_output_path, "w") as f:
+        f.write(prof.key_averages().table(sort_by="flops", row_limit=50))
+
     model.save_pretrained(os.path.join(output_dir, "xlora_adapter"))
 
 if __name__ == "__main__":

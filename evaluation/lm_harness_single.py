@@ -54,11 +54,7 @@ Path(eval_output_base).mkdir(parents=True, exist_ok=True)
 tb_writer = SummaryWriter(log_dir=logdir)
 
 # ======= wandb init (single run) =======
-run = wandb.init(
-    project=args.wandb_project,
-    name=args.run_name,
-    resume="allow"
-)
+run = wandb.init(project=args.wandb_project)
 run_id = wandb.run.id
 
 # ======= checkpoint loop =======
@@ -89,8 +85,8 @@ for ckpt_path in checkpoints:
             "--model_args", f"pretrained={args.model_name},peft={ckpt_path},tokenizer={args.tokenizer_name}",
             "--tasks", args.eval_tasks,
             "--batch_size", args.batch_size,
-            #"--limit", args.limit,
-            "--output_path", step_dir,
+            "--limit", args.limit,
+            "--output_path", os.path.join(step_dir, f"results_{step}.json"),
             #"--wandb_args", f"project={args.wandb_project},group={args.wandb_group},job_type=step_{step}",
             "--log_samples"
         ], env=run_env, check=True)
@@ -111,6 +107,7 @@ for ckpt_path in checkpoints:
 
         log_data = {}
         for task, metrics in results.items():
+            print(f"[DEBUG] Task: {task}, Metric: {k} -> {v}")
             for k, v in metrics.items():
                 if isinstance(v, (int, float)):
                     tag = f"{task}/{k.replace(',', '_')}"
