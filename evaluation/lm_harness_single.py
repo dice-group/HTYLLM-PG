@@ -107,14 +107,14 @@ for ckpt_path in checkpoints:
 
         log_data = {}
         for task, metrics in results.items():
-            print(f"[DEBUG] Task: {task}, Metric: {k} -> {v}")
-            for k, v in metrics.items():
-                if isinstance(v, (int, float)):
-                    tag = f"{task}/{k.replace(',', '_')}"
-                    log_data[tag] = v
-                    tb_writer.add_scalar(tag, v, global_step=step)
-                    if k == "acc,none":
-                        summary_results[f"{task}@step{step}"] = v
+                print(f"[DEBUG] Task: {task}")
+                for k, v in metrics.items():
+                    print(f"[DEBUG]   Metric: {k} = {v}")
+                    if isinstance(v, (int, float)):
+                        tag = f"{task}/{k.replace(',', '_')}"
+                        log_data[tag] = v
+                        if tb_writer:
+                            tb_writer.add_scalar(tag, v, global_step=step)
         wandb.log(log_data, step=step)
     except Exception as e:
         print(f"[ERROR] Failed to process results at step {step}: {e}")
