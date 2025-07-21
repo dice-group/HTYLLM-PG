@@ -5,6 +5,7 @@ import json
 import io
 import sys
 
+
 model_name = "google/gemma-3-4b-pt"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -45,7 +46,7 @@ profile_data = {
     "Full_Report": profile_report_text
 }
 
-with open("gemma_model_profile_detailed.json", "w") as f:
+with open("gemma_model_profiler_16-07-2025.json", "w") as f:
     json.dump(profile_data, f, indent=4)
 
-print("Full model profiling data saved to gemma_model_profile_detailed.json")
+print("Full model profiling data saved to gemma_model_profiler_16-07-2025.json")
