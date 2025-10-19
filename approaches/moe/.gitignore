@@ -1,0 +1,85 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variable files
+.env
+*.env
+
+# Python egg
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# PyInstaller
+*.spec
+
+requirements.txt
+# mypy
+.mypy_cache/
+
+# pytest
+# Dataset directories
+fineweb2_subset/
+.pytest_cache/
+
+# coverage
+htmlcov/
+.coverage
+.coverage.*
+
+# logs
+*.log
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# MacOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Datasets
+input.txt
+datasets/
+*.zip
+*.csv
+*.txt
+
+# Exclude binary files
+*.bin
+
+# Exclude Parquet files
+*.parquet
+
+# Exclude PyTorch model files
+*.pt
+
+# Exclude everything in data directory except .py files
+src/data/*
+!src/data/**/*.py
+
+# (Optionally) exclude entire directories:
+pre_processed_data/
+tokenized_data/
+*.out
+
+checkpoints/
+
+
+data/
