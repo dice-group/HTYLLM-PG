@@ -1,0 +1,1902 @@
+[
+  {
+    "ISO 639-3 code": "rus",
+    "Script": "Cyrl",
+    "Name": "Russian",
+    "Language Family": "Indo-European",
+    "Subset": "`rus_Cyrl`",
+    "Words": 537248642150,
+    "Documents": 605468615,
+    "Disk size": "1.65TB"
+  },
+  {
+    "ISO 639-3 code": "deu",
+    "Script": "Latn",
+    "Name": "German",
+    "Language Family": "Indo-European",
+    "Subset": "`deu_Latn`",
+    "Words": 234845525340,
+    "Documents": 427700394,
+    "Disk size": "640.76GB"
+  },
+  {
+    "ISO 639-3 code": "spa",
+    "Script": "Latn",
+    "Name": "Spanish",
+    "Language Family": "Indo-European",
+    "Subset": "`spa_Latn`",
+    "Words": 244541319983,
+    "Documents": 405634303,
+    "Disk size": "554.08GB"
+  },
+  {
+    "ISO 639-3 code": "jpn",
+    "Script": "Jpan",
+    "Name": "Japanese",
+    "Language Family": "Japonic",
+    "Subset": "`jpn_Jpan`",
+    "Words": 133338461195,
+    "Documents": 376134745,
+    "Disk size": "636.71GB"
+  },
+  {
+    "ISO 639-3 code": "fra",
+    "Script": "Latn",
+    "Name": "French",
+    "Language Family": "Indo-European",
+    "Subset": "`fra_Latn`",
+    "Words": 206642953127,
+    "Documents": 332646715,
+    "Disk size": "476.55GB"
+  },
+  {
+    "ISO 639-3 code": "ita",
+    "Script": "Latn",
+    "Name": "Italian",
+    "Language Family": "Indo-European",
+    "Subset": "`ita_Latn`",
+    "Words": 128812336382,
+    "Documents": 219117921,
+    "Disk size": "305.96GB"
+  },
+  {
+    "ISO 639-3 code": "por",
+    "Script": "Latn",
+    "Name": "Portuguese",
+    "Language Family": "Indo-European",
+    "Subset": "`por_Latn`",
+    "Words": 105274251441,
+    "Documents": 189851449,
+    "Disk size": "246.33GB"
+  },
+  {
+    "ISO 639-3 code": "pol",
+    "Script": "Latn",
+    "Name": "Polish",
+    "Language Family": "Indo-European",
+    "Subset": "`pol_Latn`",
+    "Words": 67348057023,
+    "Documents": 138337436,
+    "Disk size": "193.34GB"
+  },
+  {
+    "ISO 639-3 code": "nld",
+    "Script": "Latn",
+    "Name": "Dutch",
+    "Language Family": "Indo-European",
+    "Subset": "`nld_Latn`",
+    "Words": 69031468676,
+    "Documents": 133855612,
+    "Disk size": "162.98GB"
+  },
+  {
+    "ISO 639-3 code": "ind",
+    "Script": "Latn",
+    "Name": "Indonesian",
+    "Language Family": "Austronesian",
+    "Subset": "`ind_Latn`",
+    "Words": 57058990049,
+    "Documents": 92992647,
+    "Disk size": "134.84GB"
+  },
+  {
+    "ISO 639-3 code": "tur",
+    "Script": "Latn",
+    "Name": "Turkish",
+    "Language Family": "Turkic",
+    "Subset": "`tur_Latn`",
+    "Words": 39147774979,
+    "Documents": 88769907,
+    "Disk size": "116.64GB"
+  },
+  {
+    "ISO 639-3 code": "ces",
+    "Script": "Latn",
+    "Name": "Czech",
+    "Language Family": "Indo-European",
+    "Subset": "`ces_Latn`",
+    "Words": 34180069985,
+    "Documents": 62703458,
+    "Disk size": "98.30GB"
+  },
+  {
+    "ISO 639-3 code": "kor",
+    "Script": "Hang",
+    "Name": "Korean",
+    "Language Family": "Koreanic",
+    "Subset": "`kor_Hang`",
+    "Words": 47231383119,
+    "Documents": 58160164,
+    "Disk size": "94.73GB"
+  },
+  {
+    "ISO 639-3 code": "arb",
+    "Script": "Arab",
+    "Name": "Standard Arabic",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`arb_Arab`",
+    "Words": 31018164224,
+    "Documents": 57752149,
+    "Disk size": "94.52GB"
+  },
+  {
+    "ISO 639-3 code": "ron",
+    "Script": "Latn",
+    "Name": "Romanian",
+    "Language Family": "Indo-European",
+    "Subset": "`ron_Latn`",
+    "Words": 33510926028,
+    "Documents": 54128784,
+    "Disk size": "81.30GB"
+  },
+  {
+    "ISO 639-3 code": "ukr",
+    "Script": "Cyrl",
+    "Name": "Ukrainian",
+    "Language Family": "Indo-European",
+    "Subset": "`ukr_Cyrl`",
+    "Words": 23370443644,
+    "Documents": 47552562,
+    "Disk size": "77.40GB"
+  },
+  {
+    "ISO 639-3 code": "hun",
+    "Script": "Latn",
+    "Name": "Hungarian",
+    "Language Family": "Uralic",
+    "Subset": "`hun_Latn`",
+    "Words": 29020551784,
+    "Documents": 46879826,
+    "Disk size": "85.72GB"
+  },
+  {
+    "ISO 639-3 code": "swe",
+    "Script": "Latn",
+    "Name": "Swedish",
+    "Language Family": "Indo-European",
+    "Subset": "`swe_Latn`",
+    "Words": 25442802114,
+    "Documents": 45329979,
+    "Disk size": "63.27GB"
+  },
+  {
+    "ISO 639-3 code": "ell",
+    "Script": "Grek",
+    "Name": "Modern Greek (1453-)",
+    "Language Family": "Indo-European",
+    "Subset": "`ell_Grek`",
+    "Words": 21559658874,
+    "Documents": 44202550,
+    "Disk size": "68.91GB"
+  },
+  {
+    "ISO 639-3 code": "dan",
+    "Script": "Latn",
+    "Name": "Danish",
+    "Language Family": "Indo-European",
+    "Subset": "`dan_Latn`",
+    "Words": 26976451710,
+    "Documents": 42975661,
+    "Disk size": "63.04GB"
+  },
+  {
+    "ISO 639-3 code": "vie",
+    "Script": "Latn",
+    "Name": "Vietnamese",
+    "Language Family": "Austro-Asiatic",
+    "Subset": "`vie_Latn`",
+    "Words": 33145536765,
+    "Documents": 40741340,
+    "Disk size": "78.95GB"
+  },
+  {
+    "ISO 639-3 code": "tha",
+    "Script": "Thai",
+    "Name": "Thai",
+    "Language Family": "Kra-Dai",
+    "Subset": "`tha_Thai`",
+    "Words": 25047743431,
+    "Documents": 35949449,
+    "Disk size": "70.86GB"
+  },
+  {
+    "ISO 639-3 code": "nob",
+    "Script": "Latn",
+    "Name": "Norwegian Bokmål",
+    "Language Family": "Indo-European",
+    "Subset": "`nob_Latn`",
+    "Words": 30468659206,
+    "Documents": 35502989,
+    "Disk size": "74.48GB"
+  },
+  {
+    "ISO 639-3 code": "fin",
+    "Script": "Latn",
+    "Name": "Finnish",
+    "Language Family": "Uralic",
+    "Subset": "`fin_Latn`",
+    "Words": 18558719801,
+    "Documents": 33162591,
+    "Disk size": "56.79GB"
+  },
+  {
+    "ISO 639-3 code": "slk",
+    "Script": "Latn",
+    "Name": "Slovak",
+    "Language Family": "Indo-European",
+    "Subset": "`slk_Latn`",
+    "Words": 14094646493,
+    "Documents": 26470482,
+    "Disk size": "40.43GB"
+  },
+  {
+    "ISO 639-3 code": "bul",
+    "Script": "Cyrl",
+    "Name": "Bulgarian",
+    "Language Family": "Indo-European",
+    "Subset": "`bul_Cyrl`",
+    "Words": 15267314656,
+    "Documents": 23838661,
+    "Disk size": "43.04GB"
+  },
+  {
+    "ISO 639-3 code": "hrv",
+    "Script": "Latn",
+    "Name": "Croatian",
+    "Language Family": "Indo-European",
+    "Subset": "`hrv_Latn`",
+    "Words": 12671235751,
+    "Documents": 20637731,
+    "Disk size": "32.91GB"
+  },
+  {
+    "ISO 639-3 code": "hin",
+    "Script": "Deva",
+    "Name": "Hindi",
+    "Language Family": "Indo-European",
+    "Subset": "`hin_Deva`",
+    "Words": 10627216436,
+    "Documents": 20587135,
+    "Disk size": "30.59GB"
+  },
+  {
+    "ISO 639-3 code": "bos",
+    "Script": "Latn",
+    "Name": "Bosnian",
+    "Language Family": "Indo-European",
+    "Subset": "`bos_Latn`",
+    "Words": 8423093759,
+    "Documents": 19390133,
+    "Disk size": "23.03GB"
+  },
+  {
+    "ISO 639-3 code": "cat",
+    "Script": "Latn",
+    "Name": "Catalan",
+    "Language Family": "Indo-European",
+    "Subset": "`cat_Latn`",
+    "Words": 7596471602,
+    "Documents": 15512049,
+    "Disk size": "16.66GB"
+  },
+  {
+    "ISO 639-3 code": "ben",
+    "Script": "Beng",
+    "Name": "Bengali",
+    "Language Family": "Indo-European",
+    "Subset": "`ben_Beng`",
+    "Words": 5684497360,
+    "Documents": 14129440,
+    "Disk size": "20.48GB"
+  },
+  {
+    "ISO 639-3 code": "heb",
+    "Script": "Hebr",
+    "Name": "Hebrew",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`heb_Hebr`",
+    "Words": 8112550066,
+    "Documents": 13639095,
+    "Disk size": "22.20GB"
+  },
+  {
+    "ISO 639-3 code": "lit",
+    "Script": "Latn",
+    "Name": "Lithuanian",
+    "Language Family": "Indo-European",
+    "Subset": "`lit_Latn`",
+    "Words": 8778132954,
+    "Documents": 12364135,
+    "Disk size": "24.52GB"
+  },
+  {
+    "ISO 639-3 code": "slv",
+    "Script": "Latn",
+    "Name": "Slovenian",
+    "Language Family": "Indo-European",
+    "Subset": "`slv_Latn`",
+    "Words": 7596809203,
+    "Documents": 11561268,
+    "Disk size": "18.91GB"
+  },
+  {
+    "ISO 639-3 code": "zsm",
+    "Script": "Latn",
+    "Name": "Standard Malay",
+    "Language Family": "Austronesian",
+    "Subset": "`zsm_Latn`",
+    "Words": 5465873952,
+    "Documents": 8832556,
+    "Disk size": "12.87GB"
+  },
+  {
+    "ISO 639-3 code": "als",
+    "Script": "Latn",
+    "Name": "Tosk Albanian",
+    "Language Family": "Indo-European",
+    "Subset": "`als_Latn`",
+    "Words": 3277161199,
+    "Documents": 8016293,
+    "Disk size": "7.95GB"
+  },
+  {
+    "ISO 639-3 code": "lvs",
+    "Script": "Latn",
+    "Name": "Standard Latvian",
+    "Language Family": "Indo-European",
+    "Subset": "`lvs_Latn`",
+    "Words": 5284221488,
+    "Documents": 7754179,
+    "Disk size": "14.41GB"
+  },
+  {
+    "ISO 639-3 code": "azj",
+    "Script": "Latn",
+    "Name": "North Azerbaijani",
+    "Language Family": "Turkic",
+    "Subset": "`azj_Latn`",
+    "Words": 3650335666,
+    "Documents": 6753102,
+    "Disk size": "9.72GB"
+  },
+  {
+    "ISO 639-3 code": "ary",
+    "Script": "Arab",
+    "Name": "Moroccan Arabic",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`ary_Arab`",
+    "Words": 1737061304,
+    "Documents": 6111598,
+    "Disk size": "5.79GB"
+  },
+  {
+    "ISO 639-3 code": "tam",
+    "Script": "Taml",
+    "Name": "Tamil",
+    "Language Family": "Dravidian",
+    "Subset": "`tam_Taml`",
+    "Words": 1921191055,
+    "Documents": 5450192,
+    "Disk size": "8.64GB"
+  },
+  {
+    "ISO 639-3 code": "npi",
+    "Script": "Deva",
+    "Name": "Nepali (individual language)",
+    "Language Family": "Indo-European",
+    "Subset": "`npi_Deva`",
+    "Words": 1461508712,
+    "Documents": 4264777,
+    "Disk size": "5.53GB"
+  },
+  {
+    "ISO 639-3 code": "urd",
+    "Script": "Arab",
+    "Name": "Urdu",
+    "Language Family": "Indo-European",
+    "Subset": "`urd_Arab`",
+    "Words": 2483704532,
+    "Documents": 4164316,
+    "Disk size": "5.80GB"
+  },
+  {
+    "ISO 639-3 code": "mkd",
+    "Script": "Cyrl",
+    "Name": "Macedonian",
+    "Language Family": "Indo-European",
+    "Subset": "`mkd_Cyrl`",
+    "Words": 1510099711,
+    "Documents": 3885664,
+    "Disk size": "4.52GB"
+  },
+  {
+    "ISO 639-3 code": "srp",
+    "Script": "Cyrl",
+    "Name": "Serbian",
+    "Language Family": "Indo-European",
+    "Subset": "`srp_Cyrl`",
+    "Words": 2699692738,
+    "Documents": 3842269,
+    "Disk size": "8.12GB"
+  },
+  {
+    "ISO 639-3 code": "mar",
+    "Script": "Deva",
+    "Name": "Marathi",
+    "Language Family": "Indo-European",
+    "Subset": "`mar_Deva`",
+    "Words": 1512164293,
+    "Documents": 3762395,
+    "Disk size": "5.70GB"
+  },
+  {
+    "ISO 639-3 code": "kat",
+    "Script": "Geor",
+    "Name": "Georgian",
+    "Language Family": "Kartvelian",
+    "Subset": "`kat_Geor`",
+    "Words": 1407709680,
+    "Documents": 3645892,
+    "Disk size": "6.22GB"
+  },
+  {
+    "ISO 639-3 code": "mal",
+    "Script": "Mlym",
+    "Name": "Malayalam",
+    "Language Family": "Dravidian",
+    "Subset": "`mal_Mlym`",
+    "Words": 1055322995,
+    "Documents": 3406035,
+    "Disk size": "5.50GB"
+  },
+  {
+    "ISO 639-3 code": "kaz",
+    "Script": "Cyrl",
+    "Name": "Kazakh",
+    "Language Family": "Turkic",
+    "Subset": "`kaz_Cyrl`",
+    "Words": 1837049585,
+    "Documents": 3316631,
+    "Disk size": "6.21GB"
+  },
+  {
+    "ISO 639-3 code": "isl",
+    "Script": "Latn",
+    "Name": "Icelandic",
+    "Language Family": "Indo-European",
+    "Subset": "`isl_Latn`",
+    "Words": 1635293855,
+    "Documents": 2818643,
+    "Disk size": "4.40GB"
+  },
+  {
+    "ISO 639-3 code": "tel",
+    "Script": "Telu",
+    "Name": "Telugu",
+    "Language Family": "Dravidian",
+    "Subset": "`tel_Telu`",
+    "Words": 1094792783,
+    "Documents": 2811760,
+    "Disk size": "4.56GB"
+  },
+  {
+    "ISO 639-3 code": "glg",
+    "Script": "Latn",
+    "Name": "Galician",
+    "Language Family": "Indo-European",
+    "Subset": "`glg_Latn`",
+    "Words": 1217033695,
+    "Documents": 2483607,
+    "Disk size": "2.87GB"
+  },
+  {
+    "ISO 639-3 code": "kan",
+    "Script": "Knda",
+    "Name": "Kannada",
+    "Language Family": "Dravidian",
+    "Subset": "`kan_Knda`",
+    "Words": 731507322,
+    "Documents": 2309261,
+    "Disk size": "3.20GB"
+  },
+  {
+    "ISO 639-3 code": "bel",
+    "Script": "Cyrl",
+    "Name": "Belarusian",
+    "Language Family": "Indo-European",
+    "Subset": "`bel_Cyrl`",
+    "Words": 1113445856,
+    "Documents": 1978448,
+    "Disk size": "3.69GB"
+  },
+  {
+    "ISO 639-3 code": "afr",
+    "Script": "Latn",
+    "Name": "Afrikaans",
+    "Language Family": "Indo-European",
+    "Subset": "`afr_Latn`",
+    "Words": 1585916310,
+    "Documents": 1963230,
+    "Disk size": "3.36GB"
+  },
+  {
+    "ISO 639-3 code": "guj",
+    "Script": "Gujr",
+    "Name": "Gujarati",
+    "Language Family": "Indo-European",
+    "Subset": "`guj_Gujr`",
+    "Words": 856121025,
+    "Documents": 1944408,
+    "Disk size": "2.84GB"
+  },
+  {
+    "ISO 639-3 code": "ars",
+    "Script": "Arab",
+    "Name": "Najdi Arabic",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`ars_Arab`",
+    "Words": 562612688,
+    "Documents": 1639585,
+    "Disk size": "1.81GB"
+  },
+  {
+    "ISO 639-3 code": "mya",
+    "Script": "Mymr",
+    "Name": "Burmese",
+    "Language Family": "Sino-Tibetan",
+    "Subset": "`mya_Mymr`",
+    "Words": 881917647,
+    "Documents": 1619895,
+    "Disk size": "3.05GB"
+  },
+  {
+    "ISO 639-3 code": "eus",
+    "Script": "Latn",
+    "Name": "Basque",
+    "Language Family": "Language isolate",
+    "Subset": "`eus_Latn`",
+    "Words": 710683241,
+    "Documents": 1611832,
+    "Disk size": "1.90GB"
+  },
+  {
+    "ISO 639-3 code": "khk",
+    "Script": "Cyrl",
+    "Name": "Halh Mongolian",
+    "Language Family": "Mongolic",
+    "Subset": "`khk_Cyrl`",
+    "Words": 792199677,
+    "Documents": 1566203,
+    "Disk size": "2.50GB"
+  },
+  {
+    "ISO 639-3 code": "khm",
+    "Script": "Khmr",
+    "Name": "Khmer",
+    "Language Family": "Austro-Asiatic",
+    "Subset": "`khm_Khmr`",
+    "Words": 610578779,
+    "Documents": 1467637,
+    "Disk size": "1.95GB"
+  },
+  {
+    "ISO 639-3 code": "arz",
+    "Script": "Arab",
+    "Name": "Egyptian Arabic",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`arz_Arab`",
+    "Words": 439877753,
+    "Documents": 1410134,
+    "Disk size": "1.40GB"
+  },
+  {
+    "ISO 639-3 code": "hye",
+    "Script": "Armn",
+    "Name": "Armenian",
+    "Language Family": "Indo-European",
+    "Subset": "`hye_Armn`",
+    "Words": 476562063,
+    "Documents": 1370205,
+    "Disk size": "1.70GB"
+  },
+  {
+    "ISO 639-3 code": "swh",
+    "Script": "Latn",
+    "Name": "Swahili (individual language)",
+    "Language Family": "Niger-Congo",
+    "Subset": "`swh_Latn`",
+    "Words": 553991794,
+    "Documents": 1166177,
+    "Disk size": "1.31GB"
+  },
+  {
+    "ISO 639-3 code": "ory",
+    "Script": "Orya",
+    "Name": "Odia",
+    "Language Family": "Indo-European",
+    "Subset": "`ory_Orya`",
+    "Words": 298519091,
+    "Documents": 1158595,
+    "Disk size": "1.14GB"
+  },
+  {
+    "ISO 639-3 code": "nno",
+    "Script": "Latn",
+    "Name": "Norwegian Nynorsk",
+    "Language Family": "Indo-European",
+    "Subset": "`nno_Latn`",
+    "Words": 477892927,
+    "Documents": 1139655,
+    "Disk size": "1.20GB"
+  },
+  {
+    "ISO 639-3 code": "uzn",
+    "Script": "Latn",
+    "Name": "Northern Uzbek",
+    "Language Family": "Turkic",
+    "Subset": "`uzn_Latn`",
+    "Words": 616563348,
+    "Documents": 1098843,
+    "Disk size": "1.68GB"
+  },
+  {
+    "ISO 639-3 code": "sin",
+    "Script": "Sinh",
+    "Name": "Sinhala",
+    "Language Family": "Indo-European",
+    "Subset": "`sin_Sinh`",
+    "Words": 481573894,
+    "Documents": 1077501,
+    "Disk size": "1.74GB"
+  },
+  {
+    "ISO 639-3 code": "kir",
+    "Script": "Cyrl",
+    "Name": "Kirghiz",
+    "Language Family": "Turkic",
+    "Subset": "`kir_Cyrl`",
+    "Words": 385676123,
+    "Documents": 1033688,
+    "Disk size": "1.33GB"
+  },
+  {
+    "ISO 639-3 code": "som",
+    "Script": "Latn",
+    "Name": "Somali",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`som_Latn`",
+    "Words": 353960176,
+    "Documents": 1017436,
+    "Disk size": "908.41MB"
+  },
+  {
+    "ISO 639-3 code": "pan",
+    "Script": "Guru",
+    "Name": "Panjabi",
+    "Language Family": "Indo-European",
+    "Subset": "`pan_Guru`",
+    "Words": 482517682,
+    "Documents": 864180,
+    "Disk size": "1.34GB"
+  },
+  {
+    "ISO 639-3 code": "cym",
+    "Script": "Latn",
+    "Name": "Welsh",
+    "Language Family": "Indo-European",
+    "Subset": "`cym_Latn`",
+    "Words": 455436005,
+    "Documents": 710320,
+    "Disk size": "972.73MB"
+  },
+  {
+    "ISO 639-3 code": "tgk",
+    "Script": "Cyrl",
+    "Name": "Tajik",
+    "Language Family": "Indo-European",
+    "Subset": "`tgk_Cyrl`",
+    "Words": 382508382,
+    "Documents": 650793,
+    "Disk size": "1.11GB"
+  },
+  {
+    "ISO 639-3 code": "pbt",
+    "Script": "Arab",
+    "Name": "Southern Pashto",
+    "Language Family": "Indo-European",
+    "Subset": "`pbt_Arab`",
+    "Words": 314932104,
+    "Documents": 592983,
+    "Disk size": "759.09MB"
+  },
+  {
+    "ISO 639-3 code": "tat",
+    "Script": "Cyrl",
+    "Name": "Tatar",
+    "Language Family": "Turkic",
+    "Subset": "`tat_Cyrl`",
+    "Words": 294230594,
+    "Documents": 538005,
+    "Disk size": "973.32MB"
+  },
+  {
+    "ISO 639-3 code": "gle",
+    "Script": "Latn",
+    "Name": "Irish",
+    "Language Family": "Indo-European",
+    "Subset": "`gle_Latn`",
+    "Words": 380239711,
+    "Documents": 534443,
+    "Disk size": "842.60MB"
+  },
+  {
+    "ISO 639-3 code": "ckb",
+    "Script": "Arab",
+    "Name": "Central Kurdish",
+    "Language Family": "Indo-European",
+    "Subset": "`ckb_Arab`",
+    "Words": 217589474,
+    "Documents": 495859,
+    "Disk size": "722.73MB"
+  },
+  {
+    "ISO 639-3 code": "mlt",
+    "Script": "Latn",
+    "Name": "Maltese",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`mlt_Latn`",
+    "Words": 245205669,
+    "Documents": 425681,
+    "Disk size": "587.48MB"
+  },
+  {
+    "ISO 639-3 code": "kmr",
+    "Script": "Latn",
+    "Name": "Northern Kurdish",
+    "Language Family": "Indo-European",
+    "Subset": "`kmr_Latn`",
+    "Words": 202189014,
+    "Documents": 393683,
+    "Disk size": "489.01MB"
+  },
+  {
+    "ISO 639-3 code": "ltz",
+    "Script": "Latn",
+    "Name": "Luxembourgish",
+    "Language Family": "Indo-European",
+    "Subset": "`ltz_Latn`",
+    "Words": 178752854,
+    "Documents": 347654,
+    "Disk size": "462.09MB"
+  },
+  {
+    "ISO 639-3 code": "lao",
+    "Script": "Laoo",
+    "Name": "Lao",
+    "Language Family": "Kra-Dai",
+    "Subset": "`lao_Laoo`",
+    "Words": 187033627,
+    "Documents": 346324,
+    "Disk size": "552.85MB"
+  },
+  {
+    "ISO 639-3 code": "epo",
+    "Script": "Latn",
+    "Name": "Esperanto",
+    "Language Family": "Constructed language",
+    "Subset": "`epo_Latn`",
+    "Words": 203459718,
+    "Documents": 291191,
+    "Disk size": "485.72MB"
+  },
+  {
+    "ISO 639-3 code": "amh",
+    "Script": "Ethi",
+    "Name": "Amharic",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`amh_Ethi`",
+    "Words": 146925120,
+    "Documents": 280355,
+    "Disk size": "530.70MB"
+  },
+  {
+    "ISO 639-3 code": "aeb",
+    "Script": "Arab",
+    "Name": "Tunisian Arabic",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`aeb_Arab`",
+    "Words": 65751442,
+    "Documents": 262884,
+    "Disk size": "202.95MB"
+  },
+  {
+    "ISO 639-3 code": "fao",
+    "Script": "Latn",
+    "Name": "Faroese",
+    "Language Family": "Indo-European",
+    "Subset": "`fao_Latn`",
+    "Words": 95066797,
+    "Documents": 261937,
+    "Disk size": "249.96MB"
+  },
+  {
+    "ISO 639-3 code": "plt",
+    "Script": "Latn",
+    "Name": "Plateau Malagasy",
+    "Language Family": "Austronesian",
+    "Subset": "`plt_Latn`",
+    "Words": 154032076,
+    "Documents": 254482,
+    "Disk size": "343.76MB"
+  },
+  {
+    "ISO 639-3 code": "asm",
+    "Script": "Beng",
+    "Name": "Assamese",
+    "Language Family": "Indo-European",
+    "Subset": "`asm_Beng`",
+    "Words": 92134659,
+    "Documents": 239357,
+    "Disk size": "334.14MB"
+  },
+  {
+    "ISO 639-3 code": "tuk",
+    "Script": "Latn",
+    "Name": "Turkmen",
+    "Language Family": "Turkic",
+    "Subset": "`tuk_Latn`",
+    "Words": 97605670,
+    "Documents": 236553,
+    "Disk size": "294.71MB"
+  },
+  {
+    "ISO 639-3 code": "hat",
+    "Script": "Latn",
+    "Name": "Haitian",
+    "Language Family": "Creole",
+    "Subset": "`hat_Latn`",
+    "Words": 134707151,
+    "Documents": 222184,
+    "Disk size": "281.06MB"
+  },
+  {
+    "ISO 639-3 code": "kin",
+    "Script": "Latn",
+    "Name": "Kinyarwanda",
+    "Language Family": "Niger-Congo",
+    "Subset": "`kin_Latn`",
+    "Words": 58407371,
+    "Documents": 199112,
+    "Disk size": "170.48MB"
+  },
+  {
+    "ISO 639-3 code": "gla",
+    "Script": "Latn",
+    "Name": "Scottish Gaelic",
+    "Language Family": "Indo-European",
+    "Subset": "`gla_Latn`",
+    "Words": 155140058,
+    "Documents": 195647,
+    "Disk size": "317.78MB"
+  },
+  {
+    "ISO 639-3 code": "snd",
+    "Script": "Arab",
+    "Name": "Sindhi",
+    "Language Family": "Indo-European",
+    "Subset": "`snd_Arab`",
+    "Words": 141700175,
+    "Documents": 193119,
+    "Disk size": "332.32MB"
+  },
+  {
+    "ISO 639-3 code": "bak",
+    "Script": "Cyrl",
+    "Name": "Bashkir",
+    "Language Family": "Turkic",
+    "Subset": "`bak_Cyrl`",
+    "Words": 78681703,
+    "Documents": 179964,
+    "Disk size": "273.20MB"
+  },
+  {
+    "ISO 639-3 code": "pap",
+    "Script": "Latn",
+    "Name": "Papiamento",
+    "Language Family": "Creole",
+    "Subset": "`pap_Latn`",
+    "Words": 91647585,
+    "Documents": 176641,
+    "Disk size": "196.14MB"
+  },
+  {
+    "ISO 639-3 code": "ceb",
+    "Script": "Latn",
+    "Name": "Cebuano",
+    "Language Family": "Austronesian",
+    "Subset": "`ceb_Latn`",
+    "Words": 117057498,
+    "Documents": 173644,
+    "Disk size": "236.42MB"
+  },
+  {
+    "ISO 639-3 code": "jav",
+    "Script": "Latn",
+    "Name": "Javanese",
+    "Language Family": "Austronesian",
+    "Subset": "`jav_Latn`",
+    "Words": 132233895,
+    "Documents": 172668,
+    "Disk size": "299.66MB"
+  },
+  {
+    "ISO 639-3 code": "mri",
+    "Script": "Latn",
+    "Name": "Maori",
+    "Language Family": "Austronesian",
+    "Subset": "`mri_Latn`",
+    "Words": 118024259,
+    "Documents": 158804,
+    "Disk size": "194.75MB"
+  },
+  {
+    "ISO 639-3 code": "uig",
+    "Script": "Arab",
+    "Name": "Uighur",
+    "Language Family": "Turkic",
+    "Subset": "`uig_Arab`",
+    "Words": 84382822,
+    "Documents": 156755,
+    "Disk size": "295.69MB"
+  },
+  {
+    "ISO 639-3 code": "bod",
+    "Script": "Tibt",
+    "Name": "Tibetan",
+    "Language Family": "Sino-Tibetan",
+    "Subset": "`bod_Tibt`",
+    "Words": 138486091,
+    "Documents": 155315,
+    "Disk size": "389.13MB"
+  },
+  {
+    "ISO 639-3 code": "ydd",
+    "Script": "Hebr",
+    "Name": "Eastern Yiddish",
+    "Language Family": "Indo-European",
+    "Subset": "`ydd_Hebr`",
+    "Words": 90363432,
+    "Documents": 125061,
+    "Disk size": "247.93MB"
+  },
+  {
+    "ISO 639-3 code": "zul",
+    "Script": "Latn",
+    "Name": "Zulu",
+    "Language Family": "Niger-Congo",
+    "Subset": "`zul_Latn`",
+    "Words": 61995832,
+    "Documents": 116693,
+    "Disk size": "182.96MB"
+  },
+  {
+    "ISO 639-3 code": "smo",
+    "Script": "Latn",
+    "Name": "Samoan",
+    "Language Family": "Austronesian",
+    "Subset": "`smo_Latn`",
+    "Words": 88739849,
+    "Documents": 106185,
+    "Disk size": "146.42MB"
+  },
+  {
+    "ISO 639-3 code": "sun",
+    "Script": "Latn",
+    "Name": "Sundanese",
+    "Language Family": "Austronesian",
+    "Subset": "`sun_Latn`",
+    "Words": 70978221,
+    "Documents": 102316,
+    "Disk size": "171.27MB"
+  },
+  {
+    "ISO 639-3 code": "xho",
+    "Script": "Latn",
+    "Name": "Xhosa",
+    "Language Family": "Niger-Congo",
+    "Subset": "`xho_Latn`",
+    "Words": 45278182,
+    "Documents": 99567,
+    "Disk size": "134.72MB"
+  },
+  {
+    "ISO 639-3 code": "nya",
+    "Script": "Latn",
+    "Name": "Nyanja",
+    "Language Family": "Niger-Congo",
+    "Subset": "`nya_Latn`",
+    "Words": 59438885,
+    "Documents": 97692,
+    "Disk size": "151.73MB"
+  },
+  {
+    "ISO 639-3 code": "acm",
+    "Script": "Arab",
+    "Name": "Mesopotamian Arabic",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`acm_Arab`",
+    "Words": 19288606,
+    "Documents": 95315,
+    "Disk size": "63.18MB"
+  },
+  {
+    "ISO 639-3 code": "ibo",
+    "Script": "Latn",
+    "Name": "Igbo",
+    "Language Family": "Niger-Congo",
+    "Subset": "`ibo_Latn`",
+    "Words": 74162858,
+    "Documents": 95184,
+    "Disk size": "139.08MB"
+  },
+  {
+    "ISO 639-3 code": "run",
+    "Script": "Latn",
+    "Name": "Rundi",
+    "Language Family": "Niger-Congo",
+    "Subset": "`run_Latn`",
+    "Words": 25051735,
+    "Documents": 88823,
+    "Disk size": "71.38MB"
+  },
+  {
+    "ISO 639-3 code": "sot",
+    "Script": "Latn",
+    "Name": "Southern Sotho",
+    "Language Family": "Niger-Congo",
+    "Subset": "`sot_Latn`",
+    "Words": 72283044,
+    "Documents": 83329,
+    "Disk size": "127.57MB"
+  },
+  {
+    "ISO 639-3 code": "lus",
+    "Script": "Latn",
+    "Name": "Lushai",
+    "Language Family": "Sino-Tibetan",
+    "Subset": "`lus_Latn`",
+    "Words": 44450187,
+    "Documents": 81748,
+    "Disk size": "88.11MB"
+  },
+  {
+    "ISO 639-3 code": "sna",
+    "Script": "Latn",
+    "Name": "Shona",
+    "Language Family": "Niger-Congo",
+    "Subset": "`sna_Latn`",
+    "Words": 39881207,
+    "Documents": 80003,
+    "Disk size": "113.29MB"
+  },
+  {
+    "ISO 639-3 code": "oci",
+    "Script": "Latn",
+    "Name": "Occitan (post 1500)",
+    "Language Family": "Indo-European",
+    "Subset": "`oci_Latn`",
+    "Words": 34955196,
+    "Documents": 70426,
+    "Disk size": "87.66MB"
+  },
+  {
+    "ISO 639-3 code": "yor",
+    "Script": "Latn",
+    "Name": "Yoruba",
+    "Language Family": "Niger-Congo",
+    "Subset": "`yor_Latn`",
+    "Words": 49165864,
+    "Documents": 67447,
+    "Disk size": "96.55MB"
+  },
+  {
+    "ISO 639-3 code": "azb",
+    "Script": "Arab",
+    "Name": "South Azerbaijani",
+    "Language Family": "Turkic",
+    "Subset": "`azb_Arab`",
+    "Words": 33841273,
+    "Documents": 66088,
+    "Disk size": "108.35MB"
+  },
+  {
+    "ISO 639-3 code": "tir",
+    "Script": "Ethi",
+    "Name": "Tigrinya",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`tir_Ethi`",
+    "Words": 32335783,
+    "Documents": 65569,
+    "Disk size": "114.29MB"
+  },
+  {
+    "ISO 639-3 code": "ast",
+    "Script": "Latn",
+    "Name": "Asturian",
+    "Language Family": "Indo-European",
+    "Subset": "`ast_Latn`",
+    "Words": 41945813,
+    "Documents": 63347,
+    "Disk size": "102.78MB"
+  },
+  {
+    "ISO 639-3 code": "gaz",
+    "Script": "Latn",
+    "Name": "West Central Oromo",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`gaz_Latn`",
+    "Words": 17177245,
+    "Documents": 43468,
+    "Disk size": "49.21MB"
+  },
+  {
+    "ISO 639-3 code": "crh",
+    "Script": "Latn",
+    "Name": "Crimean Tatar",
+    "Language Family": "Turkic",
+    "Subset": "`crh_Latn`",
+    "Words": 21365608,
+    "Documents": 41908,
+    "Disk size": "59.28MB"
+  },
+  {
+    "ISO 639-3 code": "lim",
+    "Script": "Latn",
+    "Name": "Limburgan",
+    "Language Family": "Indo-European",
+    "Subset": "`lim_Latn`",
+    "Words": 15383105,
+    "Documents": 35699,
+    "Disk size": "42.43MB"
+  },
+  {
+    "ISO 639-3 code": "lug",
+    "Script": "Latn",
+    "Name": "Ganda",
+    "Language Family": "Niger-Congo",
+    "Subset": "`lug_Latn`",
+    "Words": 9845873,
+    "Documents": 32954,
+    "Disk size": "30.24MB"
+  },
+  {
+    "ISO 639-3 code": "wol",
+    "Script": "Latn",
+    "Name": "Wolof",
+    "Language Family": "Niger-Congo",
+    "Subset": "`wol_Latn`",
+    "Words": 9194182,
+    "Documents": 24103,
+    "Disk size": "24.63MB"
+  },
+  {
+    "ISO 639-3 code": "srd",
+    "Script": "Latn",
+    "Name": "Sardinian",
+    "Language Family": "Indo-European",
+    "Subset": "`srd_Latn`",
+    "Words": 11355268,
+    "Documents": 23431,
+    "Disk size": "27.58MB"
+  },
+  {
+    "ISO 639-3 code": "dzo",
+    "Script": "Tibt",
+    "Name": "Dzongkha",
+    "Language Family": "Sino-Tibetan",
+    "Subset": "`dzo_Tibt`",
+    "Words": 10786574,
+    "Documents": 23066,
+    "Disk size": "32.15MB"
+  },
+  {
+    "ISO 639-3 code": "mai",
+    "Script": "Deva",
+    "Name": "Maithili",
+    "Language Family": "Indo-European",
+    "Subset": "`mai_Deva`",
+    "Words": 13616365,
+    "Documents": 22544,
+    "Disk size": "43.46MB"
+  },
+  {
+    "ISO 639-3 code": "san",
+    "Script": "Deva",
+    "Name": "Sanskrit",
+    "Language Family": "Indo-European",
+    "Subset": "`san_Deva`",
+    "Words": 16815844,
+    "Documents": 22118,
+    "Disk size": "83.47MB"
+  },
+  {
+    "ISO 639-3 code": "lmo",
+    "Script": "Latn",
+    "Name": "Lombard",
+    "Language Family": "Indo-European",
+    "Subset": "`lmo_Latn`",
+    "Words": 14233524,
+    "Documents": 21746,
+    "Disk size": "31.28MB"
+  },
+  {
+    "ISO 639-3 code": "shn",
+    "Script": "Mymr",
+    "Name": "Shan",
+    "Language Family": "Kra-Dai",
+    "Subset": "`shn_Mymr`",
+    "Words": 3957730,
+    "Documents": 21366,
+    "Disk size": "19.76MB"
+  },
+  {
+    "ISO 639-3 code": "scn",
+    "Script": "Latn",
+    "Name": "Sicilian",
+    "Language Family": "Indo-European",
+    "Subset": "`scn_Latn`",
+    "Words": 6576200,
+    "Documents": 21135,
+    "Disk size": "18.65MB"
+  },
+  {
+    "ISO 639-3 code": "ilo",
+    "Script": "Latn",
+    "Name": "Iloko",
+    "Language Family": "Austronesian",
+    "Subset": "`ilo_Latn`",
+    "Words": 8427372,
+    "Documents": 18838,
+    "Disk size": "19.21MB"
+  },
+  {
+    "ISO 639-3 code": "bho",
+    "Script": "Deva",
+    "Name": "Bhojpuri",
+    "Language Family": "Indo-European",
+    "Subset": "`bho_Deva`",
+    "Words": 7587524,
+    "Documents": 17935,
+    "Disk size": "22.99MB"
+  },
+  {
+    "ISO 639-3 code": "apc",
+    "Script": "Arab",
+    "Name": "Levantine Arabic",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`apc_Arab`",
+    "Words": 2125590,
+    "Documents": 17627,
+    "Disk size": "8.75MB"
+  },
+  {
+    "ISO 639-3 code": "lij",
+    "Script": "Latn",
+    "Name": "Ligurian",
+    "Language Family": "Indo-European",
+    "Subset": "`lij_Latn`",
+    "Words": 26344020,
+    "Documents": 16575,
+    "Disk size": "47.95MB"
+  },
+  {
+    "ISO 639-3 code": "lin",
+    "Script": "Latn",
+    "Name": "Lingala",
+    "Language Family": "Niger-Congo",
+    "Subset": "`lin_Latn`",
+    "Words": 9573421,
+    "Documents": 15241,
+    "Disk size": "20.03MB"
+  },
+  {
+    "ISO 639-3 code": "ban",
+    "Script": "Latn",
+    "Name": "Balinese",
+    "Language Family": "Austronesian",
+    "Subset": "`ban_Latn`",
+    "Words": 11296596,
+    "Documents": 14624,
+    "Disk size": "22.55MB"
+  },
+  {
+    "ISO 639-3 code": "bam",
+    "Script": "Latn",
+    "Name": "Bambara",
+    "Language Family": "Niger-Congo",
+    "Subset": "`bam_Latn`",
+    "Words": 4615051,
+    "Documents": 14044,
+    "Disk size": "8.90MB"
+  },
+  {
+    "ISO 639-3 code": "hne",
+    "Script": "Deva",
+    "Name": "Chhattisgarhi",
+    "Language Family": "Indo-European",
+    "Subset": "`hne_Deva`",
+    "Words": 7321665,
+    "Documents": 11894,
+    "Disk size": "19.64MB"
+  },
+  {
+    "ISO 639-3 code": "fij",
+    "Script": "Latn",
+    "Name": "Fijian",
+    "Language Family": "Austronesian",
+    "Subset": "`fij_Latn`",
+    "Words": 9625209,
+    "Documents": 11497,
+    "Disk size": "15.63MB"
+  },
+  {
+    "ISO 639-3 code": "fur",
+    "Script": "Latn",
+    "Name": "Friulian",
+    "Language Family": "Indo-European",
+    "Subset": "`fur_Latn`",
+    "Words": 3268623,
+    "Documents": 11194,
+    "Disk size": "7.64MB"
+  },
+  {
+    "ISO 639-3 code": "ltg",
+    "Script": "Latn",
+    "Name": "Latgalian",
+    "Language Family": "Indo-European",
+    "Subset": "`ltg_Latn`",
+    "Words": 5142439,
+    "Documents": 9735,
+    "Disk size": "14.67MB"
+  },
+  {
+    "ISO 639-3 code": "kab",
+    "Script": "Latn",
+    "Name": "Kabyle",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`kab_Latn`",
+    "Words": 1899585,
+    "Documents": 7717,
+    "Disk size": "5.16MB"
+  },
+  {
+    "ISO 639-3 code": "ayr",
+    "Script": "Latn",
+    "Name": "Central Aymara",
+    "Language Family": "Aymaran",
+    "Subset": "`ayr_Latn`",
+    "Words": 2788708,
+    "Documents": 7036,
+    "Disk size": "8.17MB"
+  },
+  {
+    "ISO 639-3 code": "kik",
+    "Script": "Latn",
+    "Name": "Kikuyu",
+    "Language Family": "Niger-Congo",
+    "Subset": "`kik_Latn`",
+    "Words": 686867,
+    "Documents": 7022,
+    "Disk size": "2.30MB"
+  },
+  {
+    "ISO 639-3 code": "szl",
+    "Script": "Latn",
+    "Name": "Silesian",
+    "Language Family": "Indo-European",
+    "Subset": "`szl_Latn`",
+    "Words": 3661924,
+    "Documents": 6629,
+    "Disk size": "10.57MB"
+  },
+  {
+    "ISO 639-3 code": "kac",
+    "Script": "Latn",
+    "Name": "Kachin",
+    "Language Family": "Sino-Tibetan",
+    "Subset": "`kac_Latn`",
+    "Words": 4920267,
+    "Documents": 6326,
+    "Disk size": "7.06MB"
+  },
+  {
+    "ISO 639-3 code": "twi",
+    "Script": "Latn",
+    "Name": "Twi",
+    "Language Family": "Atlantic-Congo",
+    "Subset": "`twi_Latn`",
+    "Words": 5486865,
+    "Documents": 5655,
+    "Disk size": "13.11MB"
+  },
+  {
+    "ISO 639-3 code": "tso",
+    "Script": "Latn",
+    "Name": "Tsonga",
+    "Language Family": "Niger-Congo",
+    "Subset": "`tso_Latn`",
+    "Words": 5647115,
+    "Documents": 5591,
+    "Disk size": "10.14MB"
+  },
+  {
+    "ISO 639-3 code": "tsn",
+    "Script": "Latn",
+    "Name": "Tswana",
+    "Language Family": "Niger-Congo",
+    "Subset": "`tsn_Latn`",
+    "Words": 5634304,
+    "Documents": 5530,
+    "Disk size": "9.57MB"
+  },
+  {
+    "ISO 639-3 code": "kea",
+    "Script": "Latn",
+    "Name": "Kabuverdianu",
+    "Language Family": "Creole",
+    "Subset": "`kea_Latn`",
+    "Words": 2585843,
+    "Documents": 5399,
+    "Disk size": "5.95MB"
+  },
+  {
+    "ISO 639-3 code": "nso",
+    "Script": "Latn",
+    "Name": "Pedi",
+    "Language Family": "Niger-Congo",
+    "Subset": "`nso_Latn`",
+    "Words": 5102432,
+    "Documents": 5180,
+    "Disk size": "8.64MB"
+  },
+  {
+    "ISO 639-3 code": "awa",
+    "Script": "Deva",
+    "Name": "Awadhi",
+    "Language Family": "Indo-European",
+    "Subset": "`awa_Deva`",
+    "Words": 1843891,
+    "Documents": 4873,
+    "Disk size": "5.60MB"
+  },
+  {
+    "ISO 639-3 code": "vec",
+    "Script": "Latn",
+    "Name": "Venetian",
+    "Language Family": "Indo-European",
+    "Subset": "`vec_Latn`",
+    "Words": 2152286,
+    "Documents": 4562,
+    "Disk size": "4.56MB"
+  },
+  {
+    "ISO 639-3 code": "sag",
+    "Script": "Latn",
+    "Name": "Sango",
+    "Language Family": "Creole",
+    "Subset": "`sag_Latn`",
+    "Words": 4846772,
+    "Documents": 4537,
+    "Disk size": "6.60MB"
+  },
+  {
+    "ISO 639-3 code": "arb",
+    "Script": "Latn",
+    "Name": "Standard Arabic",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`arb_Latn`",
+    "Words": 2054985,
+    "Documents": 4485,
+    "Disk size": "5.72MB"
+  },
+  {
+    "ISO 639-3 code": "tpi",
+    "Script": "Latn",
+    "Name": "Tok Pisin",
+    "Language Family": "Creole",
+    "Subset": "`tpi_Latn`",
+    "Words": 2588814,
+    "Documents": 4027,
+    "Disk size": "4.34MB"
+  },
+  {
+    "ISO 639-3 code": "ace",
+    "Script": "Latn",
+    "Name": "Achinese",
+    "Language Family": "Austronesian",
+    "Subset": "`ace_Latn`",
+    "Words": 2763910,
+    "Documents": 3339,
+    "Disk size": "5.40MB"
+  },
+  {
+    "ISO 639-3 code": "ewe",
+    "Script": "Latn",
+    "Name": "Ewe",
+    "Language Family": "Niger-Congo",
+    "Subset": "`ewe_Latn`",
+    "Words": 1423991,
+    "Documents": 2972,
+    "Disk size": "3.06MB"
+  },
+  {
+    "ISO 639-3 code": "bjn",
+    "Script": "Latn",
+    "Name": "Banjar",
+    "Language Family": "Austronesian",
+    "Subset": "`bjn_Latn`",
+    "Words": 1707908,
+    "Documents": 2932,
+    "Disk size": "3.47MB"
+  },
+  {
+    "ISO 639-3 code": "quy",
+    "Script": "Latn",
+    "Name": "Ayacucho Quechua",
+    "Language Family": "Quechuan",
+    "Subset": "`quy_Latn`",
+    "Words": 859168,
+    "Documents": 2739,
+    "Disk size": "2.66MB"
+  },
+  {
+    "ISO 639-3 code": "mni",
+    "Script": "Beng",
+    "Name": "Manipuri",
+    "Language Family": "Sino-Tibetan",
+    "Subset": "`mni_Beng`",
+    "Words": 2209261,
+    "Documents": 2721,
+    "Disk size": "7.90MB"
+  },
+  {
+    "ISO 639-3 code": "tzm",
+    "Script": "Tfng",
+    "Name": "Central Atlas Tamazight",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`tzm_Tfng`",
+    "Words": 801615,
+    "Documents": 2376,
+    "Disk size": "2.75MB"
+  },
+  {
+    "ISO 639-3 code": "luo",
+    "Script": "Latn",
+    "Name": "Luo (Kenya and Tanzania)",
+    "Language Family": "Nilo-Saharan",
+    "Subset": "`luo_Latn`",
+    "Words": 1149848,
+    "Documents": 2210,
+    "Disk size": "2.38MB"
+  },
+  {
+    "ISO 639-3 code": "dyu",
+    "Script": "Latn",
+    "Name": "Dyula",
+    "Language Family": "Niger-Congo",
+    "Subset": "`dyu_Latn`",
+    "Words": 1041710,
+    "Documents": 2209,
+    "Disk size": "1.67MB"
+  },
+  {
+    "ISO 639-3 code": "fuv",
+    "Script": "Latn",
+    "Name": "Nigerian Fulfulde",
+    "Language Family": "Niger-Congo",
+    "Subset": "`fuv_Latn`",
+    "Words": 851049,
+    "Documents": 2169,
+    "Disk size": "2.27MB"
+  },
+  {
+    "ISO 639-3 code": "bjn",
+    "Script": "Arab",
+    "Name": "Banjar",
+    "Language Family": "Austronesian",
+    "Subset": "`bjn_Arab`",
+    "Words": 1261648,
+    "Documents": 1910,
+    "Disk size": "3.25MB"
+  },
+  {
+    "ISO 639-3 code": "mos",
+    "Script": "Latn",
+    "Name": "Mossi",
+    "Language Family": "Niger-Congo",
+    "Subset": "`mos_Latn`",
+    "Words": 1824683,
+    "Documents": 1747,
+    "Disk size": "3.10MB"
+  },
+  {
+    "ISO 639-3 code": "taq",
+    "Script": "Latn",
+    "Name": "Tamasheq",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`taq_Latn`",
+    "Words": 1186637,
+    "Documents": 1729,
+    "Disk size": "2.22MB"
+  },
+  {
+    "ISO 639-3 code": "ssw",
+    "Script": "Latn",
+    "Name": "Swati",
+    "Language Family": "Niger-Congo",
+    "Subset": "`ssw_Latn`",
+    "Words": 1007751,
+    "Documents": 1668,
+    "Disk size": "2.77MB"
+  },
+  {
+    "ISO 639-3 code": "sat",
+    "Script": "Olck",
+    "Name": "Santali",
+    "Language Family": "Austro-Asiatic",
+    "Subset": "`sat_Olck`",
+    "Words": 688213,
+    "Documents": 1468,
+    "Disk size": "2.22MB"
+  },
+  {
+    "ISO 639-3 code": "fon",
+    "Script": "Latn",
+    "Name": "Fon",
+    "Language Family": "Niger-Congo",
+    "Subset": "`fon_Latn`",
+    "Words": 1151878,
+    "Documents": 1263,
+    "Disk size": "2.01MB"
+  },
+  {
+    "ISO 639-3 code": "kbp",
+    "Script": "Latn",
+    "Name": "Kabiyè",
+    "Language Family": "Niger-Congo",
+    "Subset": "`kbp_Latn`",
+    "Words": 363382,
+    "Documents": 1231,
+    "Disk size": "880.80KB"
+  },
+  {
+    "ISO 639-3 code": "kam",
+    "Script": "Latn",
+    "Name": "Kamba (Kenya)",
+    "Language Family": "Niger-Congo",
+    "Subset": "`kam_Latn`",
+    "Words": 405946,
+    "Documents": 1218,
+    "Disk size": "961.03KB"
+  },
+  {
+    "ISO 639-3 code": "bem",
+    "Script": "Latn",
+    "Name": "Bemba (Zambia)",
+    "Language Family": "Niger-Congo",
+    "Subset": "`bem_Latn`",
+    "Words": 699328,
+    "Documents": 1143,
+    "Disk size": "1.60MB"
+  },
+  {
+    "ISO 639-3 code": "kmb",
+    "Script": "Latn",
+    "Name": "Kimbundu",
+    "Language Family": "Niger-Congo",
+    "Subset": "`kmb_Latn`",
+    "Words": 862635,
+    "Documents": 1132,
+    "Disk size": "1.41MB"
+  },
+  {
+    "ISO 639-3 code": "kas",
+    "Script": "Deva",
+    "Name": "Kashmiri",
+    "Language Family": "Indo-European",
+    "Subset": "`kas_Deva`",
+    "Words": 510245,
+    "Documents": 992,
+    "Disk size": "1.46MB"
+  },
+  {
+    "ISO 639-3 code": "dik",
+    "Script": "Latn",
+    "Name": "Southwestern Dinka",
+    "Language Family": "Nilo-Saharan",
+    "Subset": "`dik_Latn`",
+    "Words": 521801,
+    "Documents": 969,
+    "Disk size": "1.06MB"
+  },
+  {
+    "ISO 639-3 code": "pag",
+    "Script": "Latn",
+    "Name": "Pangasinan",
+    "Language Family": "Austronesian",
+    "Subset": "`pag_Latn`",
+    "Words": 195814,
+    "Documents": 828,
+    "Disk size": "499.05KB"
+  },
+  {
+    "ISO 639-3 code": "mag",
+    "Script": "Deva",
+    "Name": "Magahi",
+    "Language Family": "Indo-European",
+    "Subset": "`mag_Deva`",
+    "Words": 414762,
+    "Documents": 818,
+    "Disk size": "1.39MB"
+  },
+  {
+    "ISO 639-3 code": "min",
+    "Script": "Latn",
+    "Name": "Minangkabau",
+    "Language Family": "Austronesian",
+    "Subset": "`min_Latn`",
+    "Words": 804943,
+    "Documents": 754,
+    "Disk size": "1.43MB"
+  },
+  {
+    "ISO 639-3 code": "lua",
+    "Script": "Latn",
+    "Name": "Luba-Lulua",
+    "Language Family": "Niger-Congo",
+    "Subset": "`lua_Latn`",
+    "Words": 452075,
+    "Documents": 749,
+    "Disk size": "955.95KB"
+  },
+  {
+    "ISO 639-3 code": "umb",
+    "Script": "Latn",
+    "Name": "Umbundu",
+    "Language Family": "Niger-Congo",
+    "Subset": "`umb_Latn`",
+    "Words": 281649,
+    "Documents": 709,
+    "Disk size": "574.01KB"
+  },
+  {
+    "ISO 639-3 code": "war",
+    "Script": "Latn",
+    "Name": "Waray (Philippines)",
+    "Language Family": "Austronesian",
+    "Subset": "`war_Latn`",
+    "Words": 109997,
+    "Documents": 554,
+    "Disk size": "278.48KB"
+  },
+  {
+    "ISO 639-3 code": "tum",
+    "Script": "Latn",
+    "Name": "Tumbuka",
+    "Language Family": "Niger-Congo",
+    "Subset": "`tum_Latn`",
+    "Words": 96252,
+    "Documents": 443,
+    "Disk size": "266.37KB"
+  },
+  {
+    "ISO 639-3 code": "kas",
+    "Script": "Arab",
+    "Name": "Kashmiri",
+    "Language Family": "Indo-European",
+    "Subset": "`kas_Arab`",
+    "Words": 307600,
+    "Documents": 442,
+    "Disk size": "817.35KB"
+  },
+  {
+    "ISO 639-3 code": "knc",
+    "Script": "Latn",
+    "Name": "Central Kanuri",
+    "Language Family": "Nilo-Saharan",
+    "Subset": "`knc_Latn`",
+    "Words": 135146,
+    "Documents": 437,
+    "Disk size": "292.01KB"
+  },
+  {
+    "ISO 639-3 code": "knc",
+    "Script": "Arab",
+    "Name": "Central Kanuri",
+    "Language Family": "Nilo-Saharan",
+    "Subset": "`knc_Arab`",
+    "Words": 1079707,
+    "Documents": 290,
+    "Disk size": "3.06MB"
+  },
+  {
+    "ISO 639-3 code": "taq",
+    "Script": "Tfng",
+    "Name": "Tamasheq",
+    "Language Family": "Afro-Asiatic",
+    "Subset": "`taq_Tfng`",
+    "Words": 78308,
+    "Documents": 208,
+    "Disk size": "257.42KB"
+  },
+  {
+    "ISO 639-3 code": "nus",
+    "Script": "Latn",
+    "Name": "Nuer",
+    "Language Family": "Nilo-Saharan",
+    "Subset": "`nus_Latn`",
+    "Words": 100450,
+    "Documents": 152,
+    "Disk size": "212.61KB"
+  },
+  {
+    "ISO 639-3 code": "bug",
+    "Script": "Latn",
+    "Name": "Buginese",
+    "Language Family": "Austronesian",
+    "Subset": "`bug_Latn`",
+    "Words": 108580,
+    "Documents": 145,
+    "Disk size": "220.39KB"
+  },
+  {
+    "ISO 639-3 code": "ace",
+    "Script": "Arab",
+    "Name": "Achinese",
+    "Language Family": "Austronesian",
+    "Subset": "`ace_Arab`",
+    "Words": 14607,
+    "Documents": 72,
+    "Disk size": "72.12KB"
+  },
+  {
+    "ISO 639-3 code": "min",
+    "Script": "Arab",
+    "Name": "Minangkabau",
+    "Language Family": "Austronesian",
+    "Subset": "`min_Arab`",
+    "Words": 30418,
+    "Documents": 59,
+    "Disk size": "100.09KB"
+  },
+  {
+    "ISO 639-3 code": "cjk",
+    "Script": "Latn",
+    "Name": "Chokwe",
+    "Language Family": "Niger-Congo",
+    "Subset": "`cjk_Latn`",
+    "Words": 15180,
+    "Documents": 44,
+    "Disk size": "46.99KB"
+  }
+]
