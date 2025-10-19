@@ -1,0 +1,96 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variable files
+.env
+*.env
+
+# Python egg
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# PyInstaller
+*.spec
+
+# mypy
+.mypy_cache/
+
+# pytest
+.pytest_cache/
+
+# coverage
+htmlcov/
+.coverage
+.coverage.*
+
+# logs
+*.log
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# MacOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Datasets
+input.txt
+datasets/
+*.zip
+*.csv
+*.txt
+
+# Exclude binary files
+*.bin
+
+# Exclude Parquet files
+*.parquet
+
+# Exclude PyTorch model files
+*.pt
+
+# Exclude everything in data directory except .py files
+src/data/*
+!src/data/**/*.py
+
+# (Optionally) exclude entire directories:
+pre_processed_data/
+tokenized_data/
+results/
+lm_eval_results/
+runs/
+logs/
+fineweb2_subset_old/
+fineweb2_subset/
+checkpoints/
+acc_none_by_dataset.xlsx
+base_model_lm_eval_results/
+cluster_train.sh
+dockerfile
+extract_lm_eval.py
+fine_tune_comparison.png
+fine_tune_comparison_accuracy.png
+gemma_model_profile_detailed.json
+gemma_model_profiler_16-07-2025.json
+models/
+plot_eval_results.py
+profile_results/
+wandb/
