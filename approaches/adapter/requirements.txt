@@ -1,0 +1,10 @@
+torch
+datasets
+sentencepiece
+adapter-transformers
+peft
+bitsandbytes
+tensorboard
+accelerate
+transformers==4.48.3
+lm-harness @ git+https://github.com/EleutherAI/lm-evaluation-harness.git
