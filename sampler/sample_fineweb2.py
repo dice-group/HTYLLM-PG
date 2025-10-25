@@ -63,16 +63,15 @@ def load_data(total_gb: float, num_languages: int | str, dont_include_english: b
     
     sorted_languages = sorted(metadata_list, key=lambda x: x['Disk_size_GB'])
     
-    # Select the top num_languages languages
     selected_languages = sorted_languages[:num_languages]
     
     TASKS = []
     
-    # Calculate initial fair share
     total_languages = num_languages + (0 if dont_include_english else 1)
     fair_share_gb = total_gb / total_languages
     
     remaining_gb = total_gb
+    successful_languages = 0
     
     print(f"\n{'='*80}")
     print(f"Sampling {total_gb}GB from {num_languages} fineweb-2 languages" + 
@@ -80,7 +79,6 @@ def load_data(total_gb: float, num_languages: int | str, dont_include_english: b
     print(f"Initial fair share per language: {fair_share_gb:.2f}GB")
     print(f"{'='*80}\n")
     
-    # First pass: sample from fineweb-2 languages
     for i, lang in enumerate(selected_languages):
         available_gb = lang['Disk_size_GB']
         gb_to_sample = min(fair_share_gb, available_gb)
@@ -97,7 +95,7 @@ def load_data(total_gb: float, num_languages: int | str, dont_include_english: b
             print(f"  Sampling: {actual_gb:.2f}GB (~{docs_to_sample:,} docs)")
             print(f"  Output: {output_path}\n")
             
-            TASKS.append((lang_name, LocalPipelineExecutor(
+            TASKS.append((lang_name, actual_gb, LocalPipelineExecutor(
                 pipeline=[
                     ParquetReader(reader_path, limit=docs_to_sample),
                     JsonlWriter(output_path)
@@ -106,6 +104,7 @@ def load_data(total_gb: float, num_languages: int | str, dont_include_english: b
             )))
             
             remaining_gb -= actual_gb
+            successful_languages += 1
         
         # Recalculate fair share for remaining languages
         remaining_languages = num_languages - i - 1 + (0 if dont_include_english else 1)
@@ -118,6 +117,7 @@ def load_data(total_gb: float, num_languages: int | str, dont_include_english: b
         
         if english_gb_to_sample > 0:
             # Estimate English documents needed
+            # Rough estimate: ~1.6MB per document compressed
             estimated_docs_per_gb = 640  # ~1.6MB per doc
             english_docs_to_sample = int(english_gb_to_sample * estimated_docs_per_gb)
             
@@ -135,7 +135,7 @@ def load_data(total_gb: float, num_languages: int | str, dont_include_english: b
                 ],
                 tasks=1
             )
-            TASKS.append(("english", english_pipeline))
+            TASKS.append(("english", english_gb_to_sample, english_pipeline))
     
     print(f"{'='*80}")
     print(f"Total languages to process: {len(TASKS)}")
@@ -145,15 +145,41 @@ def load_data(total_gb: float, num_languages: int | str, dont_include_english: b
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
     
-    # Execute all pipelines
-    for lang_name, executor in TASKS:
-        print(f"Processing {lang_name}...")
-        executor.run()
-        print(f"Completed {lang_name}\n")
+    # Execute all pipelines with error handling
+    successful_downloads = []
+    failed_downloads = []
     
+    for lang_name, target_gb, executor in TASKS:
+        print(f"Processing {lang_name}...")
+        try:
+            executor.run()
+            print(f"Completed {lang_name}\n")
+            successful_downloads.append((lang_name, target_gb))
+        except Exception as e:
+            print(f"Failed {lang_name}: {str(e)}\n")
+            failed_downloads.append((lang_name, target_gb, str(e)))
+            # Continue with next language instead of crashing
+            continue
+    
+    # Summary
     print(f"{'='*80}")
-    print(f"All data extraction complete!")
-    print(f"Output directory: {output_dir}")
+    print(f"Data extraction complete!")
+    print(f"{'='*80}")
+    print(f"Successful: {len(successful_downloads)}/{len(TASKS)} languages")
+    
+    if successful_downloads:
+        total_successful_gb = sum(gb for _, gb in successful_downloads)
+        print(f"Total data downloaded: ~{total_successful_gb:.2f}GB")
+        print(f"\nSuccessful languages:")
+        for lang_name, gb in successful_downloads:
+            print(f"  ✓ {lang_name}: ~{gb:.2f}GB")
+    
+    if failed_downloads:
+        print(f"\nFailed languages ({len(failed_downloads)}):")
+        for lang_name, gb, error in failed_downloads:
+            print(f"  ✗ {lang_name}: {error[:100]}")
+    
+    print(f"\nOutput directory: {output_dir}")
     print(f"{'='*80}")
 
 def main():
