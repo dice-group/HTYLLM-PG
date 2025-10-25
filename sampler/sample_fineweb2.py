@@ -61,7 +61,8 @@ def load_data(total_gb: float, num_languages: int | str, dont_include_english: b
     if num_languages == "all":
         num_languages = len(metadata_list)
     
-    sorted_languages = sorted(metadata_list, key=lambda x: x['Disk_size_GB'])
+    # Sort by disk size in DESCENDING order (largest first)
+    sorted_languages = sorted(metadata_list, key=lambda x: x['Disk_size_GB'], reverse=True)
     
     selected_languages = sorted_languages[:num_languages]
     
