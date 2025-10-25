@@ -19,7 +19,7 @@ def parse_arguments():
     return parser.parse_args()
 
 def parse_disk_size(size_str):
-    """Convert disk size string (e.g., '1.65TB', '640.76GB') to GB."""
+    """Convert disk size string (e.g., '1.65TB', '640.76GB', '925.90KB') to GB."""
     size_str = size_str.strip()
     if 'TB' in size_str:
         return float(size_str.replace('TB', '')) * 1024
@@ -27,6 +27,8 @@ def parse_disk_size(size_str):
         return float(size_str.replace('GB', ''))
     elif 'MB' in size_str:
         return float(size_str.replace('MB', '')) / 1024
+    elif 'KB' in size_str:
+        return float(size_str.replace('KB', '')) / (1024 * 1024)
     else:
         raise ValueError(f"Unknown size format: {size_str}")
 
