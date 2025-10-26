@@ -55,6 +55,44 @@ def calculate_documents_from_gb(lang, target_gb):
     
     return docs_needed, min(target_gb, lang_total_gb)
 
+def calculate_fair_shares(languages, total_gb):
+    """
+    Iteratively calculate fair shares for languages, redistributing excess
+    from languages that can't provide their full share.
+    
+    Returns a dict mapping language index to allocated GB.
+    """
+    num_langs = len(languages)
+    allocated = {}  # language index -> allocated GB
+    remaining_langs = set(range(num_langs))
+    remaining_gb = total_gb
+    
+    iteration = 0
+    while remaining_langs and remaining_gb > 0.001:  # Stop when < 1MB left
+        iteration += 1
+        fair_share = remaining_gb / len(remaining_langs)
+        
+        uncapped_langs = []
+        
+        for idx in remaining_langs:
+            available = languages[idx]['Disk_size_GB']
+            if available < fair_share:
+                capped_langs.append(idx)
+            else:
+                uncapped_langs.append(idx)
+        
+        for idx in capped_langs:
+            remaining_gb -= allocated[idx]
+            remaining_langs.remove(idx)
+        
+        if not capped_langs and remaining_langs:
+            for idx in remaining_langs:
+                allocated[idx] = fair_share
+            remaining_gb = 0
+            break
+    
+    return allocated
+
 def load_data(total_gb: float, num_languages: int | str, dont_include_english: bool, output_dir: str, meta_file: str):
     metadata_list = load_metadata(meta_file)
     
@@ -66,80 +104,56 @@ def load_data(total_gb: float, num_languages: int | str, dont_include_english: b
     
     selected_languages = sorted_languages[:num_languages]
     
-    TASKS = []
-    
-    total_languages = num_languages + (0 if dont_include_english else 1)
-    fair_share_gb = total_gb / total_languages
-    
-    remaining_gb = total_gb
-    successful_languages = 0
+    languages_to_process = selected_languages.copy()
+    if not dont_include_english:
+        english_entry = {
+            'Name': 'English',
+            'Subset': 'eng_Latn',
+            'Disk_size_GB': 10000.0,  # Very large, effectively unlimited
+        }
+        languages_to_process.append(english_entry)
     
     print(f"\n{'='*80}")
-    print(f"Sampling {total_gb}GB from {num_languages} fineweb-2 languages" + 
-          ("" if dont_include_english else " + English"))
-    print(f"Initial fair share per language: {fair_share_gb:.2f}GB")
     print(f"{'='*80}\n")
     
-    for i, lang in enumerate(selected_languages):
-        available_gb = lang['Disk_size_GB']
-        gb_to_sample = min(fair_share_gb, available_gb)
+    allocations = calculate_fair_shares(languages_to_process, total_gb)
+    
+    TASKS = []
+    print(f"Language allocations:")
+    print(f"{'-'*80}\n")
+    for idx, lang in enumerate(languages_to_process):
+        gb_to_sample = allocations.get(idx, 0)
         
-        if gb_to_sample > 0:
-            docs_to_sample, actual_gb = calculate_documents_from_gb(lang, gb_to_sample)
-            
+        if gb_to_sample > 0.001:  # Skip if less than 1MB
             lang_name = lang['Subset'].strip('`')
-            reader_path = f"hf://datasets/HuggingFaceFW/fineweb-2/data/{lang_name}/train"
-            output_path = os.path.join(output_dir, f"{lang_name}.jsonl")
+            
+            if lang_name == 'eng_Latn' and not dont_include_english:
+                estimated_docs_per_gb = 640
+                docs_to_sample = int(gb_to_sample * estimated_docs_per_gb)
+                output_path = os.path.join(output_dir, "english.jsonl")
+                available_gb = "unlimited"
+            else:
+                docs_to_sample, actual_gb = calculate_documents_from_gb(lang, gb_to_sample)
+                reader_path = f"hf://datasets/HuggingFaceFW/fineweb-2/data/{lang_name}/train"
+                output_path = os.path.join(output_dir, f"{lang_name}.jsonl")
+                available_gb = f"{lang['Disk_size_GB']:.2f}GB"
             
             print(f"Language: {lang['Name']} ({lang_name})")
-            print(f"  Available: {available_gb:.2f}GB ({lang['Documents']:,} docs)")
-            print(f"  Sampling: {actual_gb:.2f}GB (~{docs_to_sample:,} docs)")
+            print(f"  Available: {available_gb}")
+            print(f"  Allocated: {gb_to_sample:.2f}GB (~{docs_to_sample:,} docs)")
             print(f"  Output: {output_path}\n")
             
-            TASKS.append((lang_name, actual_gb, LocalPipelineExecutor(
+            TASKS.append((lang_name, gb_to_sample, LocalPipelineExecutor(
                 pipeline=[
                     ParquetReader(reader_path, limit=docs_to_sample),
                     JsonlWriter(output_path)
                 ],
                 tasks=1
             )))
-            
-            remaining_gb -= actual_gb
-            successful_languages += 1
-        
-        # Recalculate fair share for remaining languages
-        remaining_languages = num_languages - i - 1 + (0 if dont_include_english else 1)
-        if remaining_languages > 0:
-            fair_share_gb = remaining_gb / remaining_languages
-    
-    # Add English with remaining GB
-    if not dont_include_english:
-        english_gb_to_sample = remaining_gb
-        
-        if english_gb_to_sample > 0:
-            # Estimate English documents needed
-            # Rough estimate: ~1.6MB per document compressed
-            estimated_docs_per_gb = 640  # ~1.6MB per doc
-            english_docs_to_sample = int(english_gb_to_sample * estimated_docs_per_gb)
-            
-            english_output_path = os.path.join(output_dir, "english.jsonl")
-            
-            print(f"Language: English (eng_Latn)")
-            print(f"  Sampling: {english_gb_to_sample:.2f}GB (~{english_docs_to_sample:,} docs)")
-            print(f"  Output: {english_output_path}\n")
-            
-            english_pipeline = LocalPipelineExecutor(
-                pipeline=[
-                    ParquetReader("hf://datasets/HuggingFaceFW/fineweb/data/CC-MAIN-2024-10", 
-                                 limit=english_docs_to_sample),
-                    JsonlWriter(english_output_path)
-                ],
-                tasks=1
-            )
-            TASKS.append(("english", english_gb_to_sample, english_pipeline))
     
     print(f"{'='*80}")
     print(f"Total languages to process: {len(TASKS)}")
+    print(f"Total allocated: {sum(allocations.values()):.2f}GB")
     print(f"Starting data extraction...")
     print(f"{'='*80}\n")
     
