@@ -72,6 +72,8 @@ def calculate_fair_shares(languages, total_gb):
         iteration += 1
         fair_share = remaining_gb / len(remaining_langs)
         
+        # Find languages that can't provide their fair share
+        capped_langs = []
         uncapped_langs = []
         
         for idx in remaining_langs:
@@ -81,7 +83,9 @@ def calculate_fair_shares(languages, total_gb):
             else:
                 uncapped_langs.append(idx)
         
+        # Allocate to capped languages (they get all they can provide)
         for idx in capped_langs:
+            allocated[idx] = languages[idx]['Disk_size_GB']
             remaining_gb -= allocated[idx]
             remaining_langs.remove(idx)
         
@@ -110,10 +114,12 @@ def load_data(total_gb: float, num_languages: int | str, dont_include_english: b
             'Name': 'English',
             'Subset': 'eng_Latn',
             'Disk_size_GB': 10000.0,  # Very large, effectively unlimited
+            'Documents': 10000000  # Placeholder
         }
         languages_to_process.append(english_entry)
     
     print(f"\n{'='*80}")
+    print(f"Calculating optimal distribution for {total_gb}GB across {len(languages_to_process)} languages")
     print(f"{'='*80}\n")
     
     allocations = calculate_fair_shares(languages_to_process, total_gb)
@@ -121,15 +127,18 @@ def load_data(total_gb: float, num_languages: int | str, dont_include_english: b
     TASKS = []
     print(f"Language allocations:")
     print(f"{'-'*80}\n")
+    
     for idx, lang in enumerate(languages_to_process):
         gb_to_sample = allocations.get(idx, 0)
         
         if gb_to_sample > 0.001:  # Skip if less than 1MB
             lang_name = lang['Subset'].strip('`')
             
+            # Special handling for English
             if lang_name == 'eng_Latn' and not dont_include_english:
                 estimated_docs_per_gb = 640
                 docs_to_sample = int(gb_to_sample * estimated_docs_per_gb)
+                reader_path = "hf://datasets/HuggingFaceFW/fineweb/data/CC-MAIN-2024-10"
                 output_path = os.path.join(output_dir, "english.jsonl")
                 available_gb = "unlimited"
             else:
