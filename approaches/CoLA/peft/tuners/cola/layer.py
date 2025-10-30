@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import math
 import warnings
+import logging
+logger = logging.getLogger(__name__)
 from typing import Any, Optional, Union
 
 import torch
@@ -118,7 +120,7 @@ class ColaLayer(BaseTunerLayer):
                 self._move_adapter_to_device_of_base_layer(name)
                 self._active_adapters.append(name)
 
-            print(f"[MoE-COLA] Created {self.num_experts} CoLA experts (r={r}, num_A={num_A}, num_B={num_B})")
+            logger.info(f"[MoE-COLA] Created {self.num_experts} CoLA experts (r={r}, num_A={num_A}, num_B={num_B})")
             return
 
         # This code works for linear layers, override for other layer types

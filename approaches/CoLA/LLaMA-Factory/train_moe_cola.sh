@@ -7,8 +7,7 @@ CUDA_VISIBLE_DEVICES=0 llamafactory-cli train \
   --finetuning_type cola \
   --output_dir ./saves/smoke_test \
   --overwrite_output_dir \
-  --max_samples 50 \
-  --num_train_epochs 0.1 \
+  --num_train_epochs 1 \
   --per_device_train_batch_size 2 \
   --per_device_eval_batch_size 1 \
   --num_A 1 \
@@ -16,3 +15,10 @@ CUDA_VISIBLE_DEVICES=0 llamafactory-cli train \
   --lora_rank 4 \
   --lora_alpha 8
 
+: '
+TODOs:
+- use multilingual data: sample data as in cluster or run in cluster
+- use multilingual tokenizer (maybe do one run with and without to compare complexity)
+- preprocess data with llamafactory
+- run longer MoE cola test
+'
