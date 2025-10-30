@@ -103,11 +103,25 @@ class ColaLayer(BaseTunerLayer):
     def update_layer(
         self, adapter_name, r, lora_alpha, lora_dropout, num_A, num_B, init_lora_weights
     ):
-        if self.use_cola_experts:
-            self.experts = nn.ModuleList([
-                ColaExpert(self.in_features, self.out_features, num_A, num_B, r, lora_alpha, lora_dropout)
-                for _ in range(self.num_experts)
-            ])
+        if self.use_cola_experts and adapter_name == self._active_adapter:
+            self.active_adapters = []
+            for e in range(self.num_experts):
+                name = f"expert_{e}"
+                self.r[name] = r
+                self.lora_alpha[name] = lora_alpha
+                self.num_A[name] = num_A
+                self.num_B[name] = num_B
+                self.lora_dropout[name] = nn.Dropout(lora_dropout) if lora_dropout > 0 else nn.Identity()
+                self.lora_A[name] = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(num_A)])
+                self.lora_B[name] = nn.ModuleList([nn.Linear(r, self.out_features, bias=False) for _ in range(num_B)])
+                self.scaling[name] = lora_alpha / r
+
+                # PiSSA for every expert # TODO: residualize?
+                self.pissa_init(name)
+                self._move_adapter_to_device_of_base_layer(name)
+                self.active_adapters.append(name)
+
+            print(f"[MoE-COLA] Created {self.num_experts} CoLA experts (r={r}, num_A={num_A}, num_B={num_B})")
             return
 
         # This code works for linear layers, override for other layer types
@@ -282,7 +296,7 @@ class ColaExpert(nn.Module):
     def __init__(self, in_features, out_features, num_A, num_B, r, lora_alpha, dropout=0.0):
         super().__init__()
         self.As = nn.ModuleList([nn.Linear(in_features, r, bias=False) for _ in range(num_A)])
-        self.Bs = nn.ModuleList([nn.Linear(out_features, r, bias=False) for _ in range(num_B)])
+        self.Bs = nn.ModuleList([nn.Linear(r, out_features, bias=False) for _ in range(num_B)])
 
         self.dropout = nn.Dropout(dropout)
         self.scale = lora_alpha / r
@@ -348,61 +362,61 @@ class Linear(nn.Module, ColaLayer):
         elif self.merged:
             result = self.base_layer(x, *args, **kwargs)
         else:
-            result = self.base_layer(x, *args, **kwargs)
+            result = self.base_layer(x, *args, **kwargs) # base output
             torch_result_dtype = result.dtype
-            for active_adapter in self.active_adapters:
-                if active_adapter not in self.lora_A.keys():
-                    continue
-                # assert self.num_A[active_adapter] <= self.num_B[active_adapter], "The number of matrix A must not exceed the number of matrix B"
-                lora_A = self.lora_A[active_adapter]
-                lora_B = self.lora_B[active_adapter]
 
-                dropout = self.lora_dropout[active_adapter]
-                scaling = self.scaling[active_adapter]
-                x = x.to(lora_A[0].weight.dtype)
-                
-                # Fully Collaborative Strategy
-                for i in range(self.num_A[active_adapter]):
-                    for j in range(self.num_B[active_adapter]):
-                        result = result + lora_B[j](lora_A[i](dropout(x))) * scaling
+            if not getattr(self, "use_cola_experts", False):
+                for active_adapter in self.active_adapters:
+                    if active_adapter not in self.lora_A.keys():
+                        continue
+                    # assert self.num_A[active_adapter] <= self.num_B[active_adapter], "The number of matrix A must not exceed the number of matrix B"
+                    lora_A = self.lora_A[active_adapter]
+                    lora_B = self.lora_B[active_adapter]
 
-                # Random Collaborative Strategy #TODO: make configurable which to use
-                # import random
-                # for i in range(self.num_A[active_adapter]):
-                #     result = result + random.choice(lora_B)(lora_A[i](dropout(x))) * scaling
+                    dropout = self.lora_dropout[active_adapter]
+                    scaling = self.scaling[active_adapter]
+                    x = x.to(lora_A[0].weight.dtype)
 
-                # Random Collaborative Strategy (reversal)
-                # import random
-                # for i in range(self.num_B[active_adapter]):
-                #     result = result + lora_B[i](random.choice(lora_A)(dropout(x))) * scaling
+                    # Fully Collaborative Strategy
+                    for i in range(self.num_A[active_adapter]):
+                        for j in range(self.num_B[active_adapter]):
+                            result = result + lora_B[j](lora_A[i](dropout(x))) * scaling
 
+                    # Random Collaborative Strategy #TODO: make configurable which to use
+                    # import random
+                    # for i in range(self.num_A[active_adapter]):
+                    #     result = result + random.choice(lora_B)(lora_A[i](dropout(x))) * scaling
 
-                # Heuristic Collaborative Strategy
-                # lora_num = self.num_B[active_adapter] // self.num_A[active_adapter]
-                # B_i = 0
-                # for i in range(self.num_A[active_adapter]):
-                #     for _ in range(lora_num):
-                #         result = result + lora_B[B_i](lora_A[i](dropout(x))) * scaling
-                #         B_i += 1
-                # for i in range(B_i, self.num_B[active_adapter]):
-                #     result = result + lora_B[i](lora_A[i-B_i](dropout(x))) * scaling
-                            
-            result = result.to(torch_result_dtype)
+                    # Random Collaborative Strategy (reversal)
+                    # import random
+                    # for i in range(self.num_B[active_adapter]):
+                    #     result = result + lora_B[i](random.choice(lora_A)(dropout(x))) * scaling
 
-        if getattr(self, "use_cola_experts", False):
-            logits = self.router(x)
-            topk_val, topk_idx = torch.topk(logits, self.top_k, dim=-1)
-            weights = torch.softmax(topk_val, dim=-1)
+                    # Heuristic Collaborative Strategy
+                    # lora_num = self.num_B[active_adapter] // self.num_A[active_adapter]
+                    # B_i = 0
+                    # for i in range(self.num_A[active_adapter]):
+                    #     for _ in range(lora_num):
+                    #         result = result + lora_B[B_i](lora_A[i](dropout(x))) * scaling
+                    #         B_i += 1
+                    # for i in range(B_i, self.num_B[active_adapter]):
+                    #     result = result + lora_B[i](lora_A[i-B_i](dropout(x))) * scaling
 
-            out = torch.zeros_like(result)
-            for i in range(self.top_k):
-                idx = topk_idx[..., i]      #get the i-th element from the last dimension
-                w = weights[..., i].unsqueeze(-1)
-                expert_out = torch.stack([self.experts[j](x[k]) for k, j in enumerate(idx)])
-                out += w * expert_out
-            result = result + out
+            else:
+                logits = self.router(x.to(torch.float32)).to(x.dtype)
+                topv, topi = torch.topk(logits, self.top_k, dim=-1)
+                weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
 
-        return result
+                expert_outs = [self._adapter_delta(x, f"expert_{e}") for e in range(self.num_experts)]
+                expert_outs = torch.stack(expert_outs, dim=-1)  # [B, S, D_out, E]
+
+                topi_expanded = topi.unsqueeze(2).expand(-1, -1, expert_outs.size(2), -1)
+                gathered = torch.gather(expert_outs, dim=3, index=topi_expanded)
+                weights_expanded = weights.unsqueeze(2)
+                moe_out = (gathered * weights_expanded).sum(dim=-1)
+
+                result = result + moe_out
+            return result.to(torch_result_dtype)
 
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
         """
@@ -501,9 +515,18 @@ class Linear(nn.Module, ColaLayer):
 
         return output_tensor
 
+    def _adapter_delta(self, x: torch.Tensor, name: str) -> torch.Tensor:
+        A_list = self.lora_A[name]
+        B_list = self.lora_B[name]
+        drop = self.lora_dropout[name]
+        scale = self.scaling[name]
+        xA = [A(drop(x)) for A in A_list]
+        out = 0
+        for B in B_list:
+            for xa in xA:
+                out = out + B(xa)
+        return out * scale
 
-    
-   
     def __repr__(self) -> str:
         rep = super().__repr__()
         return "lora." + rep
