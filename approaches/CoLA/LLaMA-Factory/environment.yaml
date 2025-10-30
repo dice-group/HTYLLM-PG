@@ -1,4 +1,4 @@
-name: llama_factory
+name: cola_llama_factory
 channels:
   - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
   - https://mirrors.ustc.edu.cn/anaconda/pkgs/r/
@@ -144,7 +144,7 @@ dependencies:
       - tomlkit==0.12.0
       - torch==2.5.1
       - tqdm==4.67.1
-      - transformers==4.46.1
+      - transformers>=4.41.2,<4.49.0
       - triton==3.1.0
       - trl==0.9.6
       - typer==0.15.1
@@ -159,4 +159,4 @@ dependencies:
       - xxhash==3.5.0
       - yarl==1.18.3
       - yaspin==3.1.0
-prefix: /home/root/miniconda3/envs/llama_factory
+prefix: /upb/users/j/joeldag/profiles/unix/cs/.conda/envs/cola_llama_factory
