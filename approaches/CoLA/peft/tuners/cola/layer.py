@@ -86,10 +86,30 @@ class ColaLayer(BaseTunerLayer):
         self.in_features = in_features
         self.out_features = out_features
 
+        # hierarchical design addition
+        self.use_cola_experts = kwargs.pop("use_cola_experts", False)
+        self.num_experts = kwargs.pop("num_experts", 4)
+        self.top_k = kwargs.pop("top_k", 2)
+
+        if self.use_cola_experts:
+            self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
+            self.experts = nn.ModuleList([
+                ColaExpert(self.in_features, self.out_features, **kwargs)
+                for _ in range(self.num_experts)
+            ])
+
+
 
     def update_layer(
         self, adapter_name, r, lora_alpha, lora_dropout, num_A, num_B, init_lora_weights
     ):
+        if self.use_cola_experts:
+            self.experts = nn.ModuleList([
+                ColaExpert(self.in_features, self.out_features, num_A, num_B, r, lora_alpha, lora_dropout)
+                for _ in range(self.num_experts)
+            ])
+            return
+
         # This code works for linear layers, override for other layer types
         if r <= 0:
             raise ValueError(f"`r` should be a positive integer value but the value passed is {r}")
@@ -258,6 +278,21 @@ class ColaLayer(BaseTunerLayer):
         return result
 
 
+class ColaExpert(nn.Module):
+    def __init__(self, in_features, out_features, num_A, num_B, r, lora_alpha, dropout=0.0):
+        super().__init__()
+        self.As = nn.ModuleList([nn.Linear(in_features, r, bias=False) for _ in range(num_A)])
+        self.Bs = nn.ModuleList([nn.Linear(out_features, r, bias=False) for _ in range(num_B)])
+
+        self.dropout = nn.Dropout(dropout)
+        self.scale = lora_alpha / r
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h = sum(A(self.dropout(x)) for A in self.As) / len(self.As)
+        out = sum(B(h) for B in self.Bs) / len(self.Bs)
+        return out * self.scale
+
+
 # Below code is based on https://github.com/microsoft/LoRA/blob/main/loralib/layers.py
 # and modified to work with PyTorch FSDP
 
@@ -331,7 +366,7 @@ class Linear(nn.Module, ColaLayer):
                     for j in range(self.num_B[active_adapter]):
                         result = result + lora_B[j](lora_A[i](dropout(x))) * scaling
 
-                # Random Collaborative Strategy
+                # Random Collaborative Strategy #TODO: make configurable which to use
                 # import random
                 # for i in range(self.num_A[active_adapter]):
                 #     result = result + random.choice(lora_B)(lora_A[i](dropout(x))) * scaling
@@ -353,6 +388,19 @@ class Linear(nn.Module, ColaLayer):
                 #     result = result + lora_B[i](lora_A[i-B_i](dropout(x))) * scaling
                             
             result = result.to(torch_result_dtype)
+
+        if getattr(self, "use_cola_experts", False):
+            logits = self.router(x)
+            topk_val, topk_idx = torch.topk(logits, self.top_k, dim=-1)
+            weights = torch.softmax(topk_val, dim=-1)
+
+            out = torch.zeros_like(result)
+            for i in range(self.top_k):
+                idx = topk_idx[..., i]      #get the i-th element from the last dimension
+                w = weights[..., i].unsqueeze(-1)
+                expert_out = torch.stack([self.experts[j](x[k]) for k, j in enumerate(idx)])
+                out += w * expert_out
+            result = result + out
 
         return result
 
