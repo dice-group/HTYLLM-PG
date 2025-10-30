@@ -355,7 +355,7 @@ def _setup_cola_tuning(
             "lora_dropout": finetuning_args.lora_dropout,
             "num_A": finetuning_args.num_A,
             "num_B": finetuning_args.num_B,
-            "cola_type": finetuning_args.cola_type,
+            # "cola_type": finetuning_args.cola_type,
             # "expert_num": finetuning_args.expert_num,
             "modules_to_save": finetuning_args.additional_target,
         }

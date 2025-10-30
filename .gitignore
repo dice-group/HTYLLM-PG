@@ -1,2 +1,14 @@
 approaches/adapter/language_adapters/xlora/
 approaches/adapter/evaluation/*.log
+
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+*.pyo
+*.pyd
+build/
+dist/
+
+.idea/

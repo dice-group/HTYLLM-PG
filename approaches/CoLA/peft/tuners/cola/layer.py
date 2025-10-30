@@ -54,7 +54,7 @@ class ColaLayer(BaseTunerLayer):
         self.merged_adapters = []
         self._caches: dict[str, Any] = {}
         self.ephemeral_gpu_offload: bool = ephemeral_gpu_offload
-        self.active_adapters = []
+        setattr(self, "_active_adapters", [])
         self.kwargs = kwargs
 
         base_layer = self.get_base_layer()
@@ -101,7 +101,7 @@ class ColaLayer(BaseTunerLayer):
         self, adapter_name, r, lora_alpha, lora_dropout, num_A, num_B, init_lora_weights
     ):
         if self.use_cola_experts and adapter_name == self._active_adapter:
-            self.active_adapters = []
+            self._active_adapters = []
             for e in range(self.num_experts):
                 name = f"expert_{e}"
                 self.r[name] = r
@@ -116,7 +116,7 @@ class ColaLayer(BaseTunerLayer):
                 # PiSSA for every expert # TODO: residualize?
                 self.pissa_init(name)
                 self._move_adapter_to_device_of_base_layer(name)
-                self.active_adapters.append(name)
+                self._active_adapters.append(name)
 
             print(f"[MoE-COLA] Created {self.num_experts} CoLA experts (r={r}, num_A={num_A}, num_B={num_B})")
             return
@@ -147,7 +147,7 @@ class ColaLayer(BaseTunerLayer):
         # call this before dora_init
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
-        self.set_adapter(self.active_adapters)
+        self.set_adapter(self._active_adapters)
 
     def reset_lora_parameters(self, adapter_name, init_lora_weights):
         if init_lora_weights is False:
@@ -221,14 +221,14 @@ class ColaLayer(BaseTunerLayer):
         if scale == 1:
             return
 
-        for active_adapter in self.active_adapters:
+        for active_adapter in self._active_adapters:
             if active_adapter not in self.lora_A.keys():
                 continue
 
             self.scaling[active_adapter] *= scale
 
     def unscale_layer(self, scale=None) -> None:
-        for active_adapter in self.active_adapters:
+        for active_adapter in self._active_adapters:
             if active_adapter not in self.lora_A.keys():
                 continue
 
@@ -366,7 +366,7 @@ class Linear(nn.Module, ColaLayer):
             torch_result_dtype = result.dtype
 
             if not getattr(self, "use_cola_experts", False):
-                for active_adapter in self.active_adapters:
+                for active_adapter in self._active_adapters:
                     if active_adapter not in self.lora_A.keys():
                         continue
                     # assert self.num_A[active_adapter] <= self.num_B[active_adapter], "The number of matrix A must not exceed the number of matrix B"
@@ -578,7 +578,7 @@ class Embedding(nn.Module, ColaLayer):
             self.reset_lora_parameters(adapter_name, init_lora_weights)
 
         self._move_adapter_to_device_of_base_layer(adapter_name)
-        self.set_adapter(self.active_adapters)
+        self.set_adapter(self._active_adapters)
 
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
         """
@@ -721,7 +721,7 @@ class Embedding(nn.Module, ColaLayer):
         else:
             result = self.base_layer(x, *args, **kwargs)
             torch_result_dtype = result.dtype
-            for active_adapter in self.active_adapters:
+            for active_adapter in self._active_adapters:
                 if active_adapter not in self.lora_embedding_A:
                     continue
                 embedding_A = self.lora_embedding_A[active_adapter].T
@@ -790,7 +790,7 @@ class Conv2d(nn.Module, ColaLayer):
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
 
-        self.set_adapter(self.active_adapters)
+        self.set_adapter(self._active_adapters)
 
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
         """
@@ -910,7 +910,7 @@ class Conv2d(nn.Module, ColaLayer):
             result = self.base_layer(x, *args, **kwargs)
             torch_result_dtype = result.dtype
 
-            for active_adapter in self.active_adapters:
+            for active_adapter in self._active_adapters:
                 if active_adapter not in self.lora_A.keys():
                     continue
                 lora_A = self.lora_A[active_adapter]
