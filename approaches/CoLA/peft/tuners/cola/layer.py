@@ -54,6 +54,7 @@ class ColaLayer(BaseTunerLayer):
         self.merged_adapters = []
         self._caches: dict[str, Any] = {}
         self.ephemeral_gpu_offload: bool = ephemeral_gpu_offload
+        self.active_adapters = []
         self.kwargs = kwargs
 
         base_layer = self.get_base_layer()
@@ -93,10 +94,6 @@ class ColaLayer(BaseTunerLayer):
 
         if self.use_cola_experts:
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
-            self.experts = nn.ModuleList([
-                ColaExpert(self.in_features, self.out_features, **kwargs)
-                for _ in range(self.num_experts)
-            ])
 
 
 
@@ -292,6 +289,8 @@ class ColaLayer(BaseTunerLayer):
         return result
 
 
+"""
+# TODO: think about reintroducing later
 class ColaExpert(nn.Module):
     def __init__(self, in_features, out_features, num_A, num_B, r, lora_alpha, dropout=0.0):
         super().__init__()
@@ -305,6 +304,7 @@ class ColaExpert(nn.Module):
         h = sum(A(self.dropout(x)) for A in self.As) / len(self.As)
         out = sum(B(h) for B in self.Bs) / len(self.Bs)
         return out * self.scale
+"""
 
 
 # Below code is based on https://github.com/microsoft/LoRA/blob/main/loralib/layers.py
@@ -356,11 +356,11 @@ class Linear(nn.Module, ColaLayer):
         if self.disable_adapters:
             if self.merged:
                 self.unmerge()
-            result = self.base_layer(x, *args, **kwargs)
+            return self.base_layer(x, *args, **kwargs)
         elif adapter_names is not None:
-            result = self._mixed_batch_forward(x, *args, adapter_names=adapter_names, **kwargs)
+            return self._mixed_batch_forward(x, *args, adapter_names=adapter_names, **kwargs)
         elif self.merged:
-            result = self.base_layer(x, *args, **kwargs)
+            return self.base_layer(x, *args, **kwargs)
         else:
             result = self.base_layer(x, *args, **kwargs) # base output
             torch_result_dtype = result.dtype
@@ -520,11 +520,10 @@ class Linear(nn.Module, ColaLayer):
         B_list = self.lora_B[name]
         drop = self.lora_dropout[name]
         scale = self.scaling[name]
-        xA = [A(drop(x)) for A in A_list]
-        out = 0
-        for B in B_list:
-            for xa in xA:
-                out = out + B(xa)
+
+        intermediate = drop(x.to(A_list[0].weight.dtype))
+        a_dot_x = sum(A(intermediate) for A in A_list)
+        out = sum(B(a_dot_x) for B in B_list)
         return out * scale
 
     def __repr__(self) -> str:
