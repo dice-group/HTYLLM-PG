@@ -99,13 +99,15 @@ class ColaLayer(BaseTunerLayer):
 
 
 
-    def update_layer(
-        self, adapter_name, r, lora_alpha, lora_dropout, num_A, num_B, init_lora_weights
-    ):
+    def update_layer(self, adapter_name, r, lora_alpha, lora_dropout, num_A, num_B, init_lora_weights):
         if self.use_cola_experts and adapter_name == self._active_adapter:
             self._active_adapters = []
+            adapter_names = []
+
             for e in range(self.num_experts):
                 name = f"expert_{e}"
+                adapter_names.append(name)
+
                 self.r[name] = r
                 self.lora_alpha[name] = lora_alpha
                 self.num_A[name] = num_A
@@ -115,10 +117,10 @@ class ColaLayer(BaseTunerLayer):
                 self.lora_B[name] = nn.ModuleList([nn.Linear(r, self.out_features, bias=False) for _ in range(num_B)])
                 self.scaling[name] = lora_alpha / r
 
-                # PiSSA for every expert # TODO: residualize?
-                self.pissa_init(name)
                 self._move_adapter_to_device_of_base_layer(name)
                 self._active_adapters.append(name)
+
+            self.shared_pissa_init(adapter_names) # shared pissa init, only one residualization
 
             logger.info(f"[MoE-COLA] Created {self.num_experts} CoLA experts (r={r}, num_A={num_A}, num_B={num_B})")
             return
@@ -203,6 +205,41 @@ class ColaLayer(BaseTunerLayer):
 
         weight = weight.data - self.scaling[adapter_name] * ((lora_B * self.num_B[adapter_name]) @ (lora_A * self.num_A[adapter_name]))
 
+        weight = weight.to(dtype)
+        self.get_base_layer().weight.data = weight
+
+    def shared_pissa_init(self, adapter_names):
+        weight = self.get_base_layer().weight
+        dtype = weight.dtype
+        if dtype not in [torch.float32, torch.float16, torch.bfloat16]:
+            raise TypeError(
+                "Please initialize PiSSA under float32, float16, or bfloat16. "
+                "Subsequently, re-quantize the residual model to help minimize quantization errors."
+            )
+        weight = weight.to(torch.float32)
+        V, S, Uh = torch.linalg.svd(weight.data, full_matrices=False)
+
+        ref = adapter_names[0]
+
+        Vr = V[:, : self.r[ref]]
+        Sr = S[: self.r[ref]]
+        Sr /= self.scaling[ref]
+        Uhr = Uh[: self.r[ref]]
+
+        lora_A = (torch.diag(torch.sqrt(Sr)) @ Uhr) / self.num_A[ref]
+        lora_B = (Vr @ torch.diag(torch.sqrt(Sr))) / self.num_B[ref]
+
+        # assign same init to all experts
+        for name in adapter_names:
+            for i in range(self.num_A[name]):
+                self.lora_A[name][i].weight.data = lora_A
+            for i in range(self.num_B[name]):
+                self.lora_B[name][i].weight.data = lora_B
+
+        # residualize base weight only once
+        weight = weight.data - self.scaling[ref] * (
+                (lora_B * self.num_B[ref]) @ (lora_A * self.num_A[ref])
+        )
         weight = weight.to(dtype)
         self.get_base_layer().weight.data = weight
 
