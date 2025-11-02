@@ -91,8 +91,8 @@ class ColaLayer(BaseTunerLayer):
 
         # hierarchical design addition
         self.use_cola_experts = kwargs.pop("use_cola_experts", False)
-        self.num_experts = kwargs.pop("num_experts", 4)
-        self.top_k = kwargs.pop("top_k", 2)
+        self.num_experts = kwargs.pop("cola_num_experts", 4)
+        self.top_k = kwargs.pop("cola_top_k", 2)
 
         if self.use_cola_experts:
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
