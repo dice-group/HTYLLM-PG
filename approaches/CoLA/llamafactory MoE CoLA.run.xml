@@ -1,12 +1,11 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="llamafactory-cli" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
+  <configuration default="false" name="llamafactory MoE CoLA" type="PythonConfigurationType" factoryName="Python">
     <module name="HTYLLM-PG" />
     <option name="ENV_FILES" value="" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>
       <env name="CUDA_VISIBLE_DEVICES" value="0" />
-      <env name="HF_TOKEN" value="my_token" />
       <env name="PYTHONUNBUFFERED" value="1" />
       <env name="HF_HOME" value="/data/shared_home_cache" />
     </envs>
@@ -14,14 +13,14 @@
     <option name="SDK_NAME" value="cola_llama_factory" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/approaches/CoLA/LLaMA-Factory" />
     <option name="IS_MODULE_SDK" value="false" />
-    <option name="ADD_CONTENT_ROOTS" value="true" />
-    <option name="ADD_SOURCE_ROOTS" value="true" />
+    <option name="ADD_CONTENT_ROOTS" value="false" />
+    <option name="ADD_SOURCE_ROOTS" value="false" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
-    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/../.conda/envs/cola_llama_factory/bin/llamafactory-cli" />
-    <option name="PARAMETERS" value="train --stage sft --do_train --model_name_or_path meta-llama/Llama-3.2-3B --dataset gsm8k --dataset_dir ./data --template llama3 --finetuning_type cola --output_dir ./saves/smoke_test --overwrite_output_dir --num_train_epochs 1 --per_device_train_batch_size 2 --per_device_eval_batch_size 1 --num_A 1 --num_B 1 --lora_rank 4 --lora_alpha 8" />
+    <option name="SCRIPT_NAME" value="llamafactory.cli" />
+    <option name="PARAMETERS" value="train --stage sft --do_train --model_name_or_path meta-llama/Llama-3.2-3B --dataset gsm8k --dataset_dir ./data --template llama3 --finetuning_type cola --output_dir ./saves/smoke_test --overwrite_output_dir --num_train_epochs 1 --per_device_train_batch_size 2 --per_device_eval_batch_size 1 --lora_rank 4 --lora_alpha 8" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />
-    <option name="MODULE_MODE" value="false" />
+    <option name="MODULE_MODE" value="true" />
     <option name="REDIRECT_INPUT" value="false" />
     <option name="INPUT_FILE" value="" />
     <method v="2" />

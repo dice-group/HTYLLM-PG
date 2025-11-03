@@ -22,14 +22,16 @@ from typing import Any, Optional, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import svd_lowrank
 from transformers.pytorch_utils import Conv1D
 
 from peft.tuners.tuners_utils import BaseTunerLayer, check_adapters_to_merge
-from peft.utils.integrations import dequantize_module_weight, gather_params_ctx
 from peft.utils.other import transpose
 
 from .config import ColaConfig
+import sys
+
+def debug(msg: str):
+    print(f"[DEBUG] {msg}", file=sys.stderr, flush=True)
 
 
 class ColaLayer(BaseTunerLayer):
@@ -90,8 +92,9 @@ class ColaLayer(BaseTunerLayer):
         self.out_features = out_features
 
         # hierarchical design addition
-        self.use_cola_experts = kwargs.pop("use_cola_experts", False)
+        self.use_cola_experts = kwargs.pop("use_cola_experts", True)
         self.num_experts = kwargs.pop("cola_num_experts", 4)
+        self.cola_debug = kwargs.pop("cola_debug", True)
         self.top_k = kwargs.pop("cola_top_k", 2)
 
         if self.use_cola_experts:
@@ -120,9 +123,9 @@ class ColaLayer(BaseTunerLayer):
                 self._move_adapter_to_device_of_base_layer(name)
                 self._active_adapters.append(name)
 
-            self.shared_pissa_init(adapter_names) # shared pissa init, only one residualization
-
-            logger.info(f"[MoE-COLA] Created {self.num_experts} CoLA experts (r={r}, num_A={num_A}, num_B={num_B})")
+            self.shared_pissa_init(adapter_names)
+            self._verify_cola_expert_init()
+            debug(f"[MoE-COLA] Created {self.num_experts} CoLA experts (r={r}, num_A={num_A}, num_B={num_B})")
             return
 
         # This code works for linear layers, override for other layer types
@@ -326,6 +329,29 @@ class ColaLayer(BaseTunerLayer):
             result[sub_batch_indices_list[i]] += lora_output.to(torch_result_dtype)
 
         return result
+
+    def _verify_cola_expert_init(self):
+        """Verify CoLA expert initialization if cola_debug flag is active."""
+        if not getattr(self, "cola_debug", False):
+            return
+
+        debug(f"[COLA DEBUG] Verifying CoLA experts in {self.__class__.__name__} ({self.num_experts} experts)")
+        for i in range(self.num_experts):
+            debug(f"  Expert {i}: "
+                  f"A_shapes={[a.weight.shape for a in self.lora_A[f'expert_{i}']]}, "
+                  f"B_shapes={[b.weight.shape for b in self.lora_B[f'expert_{i}']]}, "
+                  f"scaling={self.scaling[f'expert_{i}']}")
+        for i in range(self.num_experts - 1):
+            a_equal = torch.allclose(
+                self.lora_A[f'expert_{i}'][0].weight,
+                self.lora_A[f'expert_{i + 1}'][0].weight
+            )
+            b_equal = torch.allclose(
+                self.lora_B[f'expert_{i}'][0].weight,
+                self.lora_B[f'expert_{i + 1}'][0].weight
+            )
+            debug(f"[COLA DEBUG] Experts {i} vs {i + 1}: A identical={a_equal}, B identical={b_equal}")
+        debug("=" * 60)
 
 
 """

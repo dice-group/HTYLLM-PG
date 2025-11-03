@@ -274,6 +274,10 @@ def _setup_cola_tuning(
     if is_trainable:
         logger.info_rank0("Fine-tuning method: COLA")
 
+    cola_debug = getattr(finetuning_args, "cola_debug", False)
+    if cola_debug:
+        logger.info_rank0("[COLA DEBUG] Enabled CoLA architecture + expert init verification.")
+
     adapter_to_resume = None
 
     if model_args.adapter_name_or_path is not None:
@@ -383,6 +387,24 @@ def _setup_cola_tuning(
     if is_trainable and cast_trainable_params_to_fp32:
         for param in filter(lambda p: p.requires_grad, model.parameters()):
             param.data = param.data.to(torch.float32)
+
+    if cola_debug:
+        for name, module in model.named_modules():
+            if hasattr(module, "use_cola_experts"):
+                module.cola_debug = True
+        logger.info_rank0("[COLA DEBUG] Attached cola_debug=True to all CoLA layers.")
+        print("\n========== [COLA DEBUG] MODEL STRUCTURE ==========")
+        print(model)
+        print("==================================================\n")
+
+        try:
+            sample_layer = next(
+                m for n, m in model.named_modules() if hasattr(m, "use_cola_experts")
+            )
+            print(f"[COLA DEBUG] Sample CoLA layer: {sample_layer.__class__.__name__}")
+            print(sample_layer)
+        except StopIteration:
+            print("[COLA DEBUG] No CoLA layer found for inspection.")
 
     return model
 
