@@ -387,6 +387,10 @@ class FinetuningArguments(
     lora_num: int = field(default=1, metadata={"help": "Lora number"})
     num_A: int = field(default=1, metadata={"help": "Matrix A number"})
     num_B: int = field(default=1, metadata={"help": "Matrix B number"})
+    use_cola_experts: bool = field(default=False, metadata={"help": "Enable mixture-of-experts routing for CoLA adapters."})
+    cola_num_experts: int = field(default=1, metadata={"help": "Number of experts per CoLA layer when mixture-of-experts is enabled."})
+    cola_top_k: int = field(default=1, metadata={"help": "Top-k experts to select per token when mixture-of-experts is enabled."})
+    cola_debug: bool = field(default=False, metadata={"help": "Enable verbose CoLA debugging output."})
 
     
 

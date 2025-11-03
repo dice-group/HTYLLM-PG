@@ -19,6 +19,9 @@ For reproducibility, we open-source our data and code; the open-source list is a
 - Baseline code for single-domain (peft, please place it in your own conda environment, e.g., `/home/root/miniconda3/envs/llama_factory/lib/python3.10/site-packages/peft`). Due to inconsistencies across multiple modified Transformers repositories, please refer to the corresponding paper repositories for multi-domain baselines.
 - Complete fine-tuning code (`LLaMA-Factory`)
 
+## HTYLLM addition
+After setting up the Conda environment using environment.yaml, uninstall llamafactory and peft, then reinstall them in editable mode from this repository.
+
 ## 🚀Download & Installation
 
 Enter the `LLaMA-Factory` directory, download the [Llama-3.2-3B](https://huggingface.co/meta-llama/Llama-3.2-3B) and [Llama-3.1-8B](https://huggingface.co/meta-llama/Llama-3.1-8B) model weights to the `models` directory, modify the `prefix` field in the `environment.yaml` file, and set it to the directory where your Miniconda3/Anaconda is installed, and then create the conda environment:

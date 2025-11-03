@@ -92,10 +92,10 @@ class ColaLayer(BaseTunerLayer):
         self.out_features = out_features
 
         # hierarchical design addition
-        self.use_cola_experts = kwargs.pop("use_cola_experts", True)
-        self.num_experts = kwargs.pop("cola_num_experts", 4)
-        self.cola_debug = kwargs.pop("cola_debug", True)
-        self.top_k = kwargs.pop("cola_top_k", 2)
+        self.use_cola_experts = kwargs.pop("use_cola_experts", False)
+        self.num_experts = kwargs.pop("cola_num_experts", 1)
+        self.cola_debug = kwargs.pop("cola_debug", False)
+        self.top_k = kwargs.pop("cola_top_k", 1)
 
         if self.use_cola_experts:
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
@@ -122,6 +122,14 @@ class ColaLayer(BaseTunerLayer):
 
                 self._move_adapter_to_device_of_base_layer(name)
                 self._active_adapters.append(name)
+
+            for name in adapter_names:
+                for a in self.lora_A[name]:
+                    for p in a.parameters():
+                        p.requires_grad = True
+                for b in self.lora_B[name]:
+                    for p in b.parameters():
+                        p.requires_grad = True
 
             self.shared_pissa_init(adapter_names)
             self._verify_cola_expert_init()
