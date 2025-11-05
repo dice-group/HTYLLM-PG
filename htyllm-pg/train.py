@@ -91,7 +91,7 @@ def main():
                     f"Test Loss: {test_loss.item():.4f}\n{'='*30}")
                 test_pred, _ = model(torch.arange(10).unsqueeze(0).to(device))
                 print(test_pred.shape)
-                print("Prediction for [0,...,10]:", torch.argmax(test_pred))
+                print("Prediction for [0,...,9]:", torch.argmax(test_pred.squeeze()[9]))
 
 
 
