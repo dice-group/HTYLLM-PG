@@ -1,9 +1,11 @@
+from numpy import argmax
 from torch import nn
 import torch
 from torch.utils.data import DataLoader, Dataset
 import deepspeed
 import argparse
 from model_builder import moe_builder
+from tqdm.auto import tqdm
 
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 
@@ -12,7 +14,7 @@ def get_args() -> argparse.Namespace :
     parser = argparse.ArgumentParser()
     parser.add_argument("--workers", default=8, type=int, help="Number of workers for the Dataloaders!")
     parser.add_argument("--epochs", default=1, type=int, help="Number of epochs of the training data!")
-    parser.add_argument("--lr", default=0.001, type=float, help="Learning rate for AdamW optimizer!")
+    parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate for AdamW optimizer!")
     parser.add_argument("--weight-decay", default=1e-4, type=float, dest="weight_decay")
     parser.add_argument("--local_rank", type=int, default=-1)
     parser = deepspeed.add_config_arguments(parser)
@@ -45,8 +47,6 @@ def main():
         weight_decay=args.weight_decay,
     )
 
-    
-
     model, optimizer, _, _ = deepspeed.initialize(
         model = model_pytorch,
         optimizer=optimizer,
@@ -54,6 +54,7 @@ def main():
     )
 
     criterion = nn.CrossEntropyLoss().to(device)
+    
 
     train_dataset = DummyTextDataset(vocab_size=vocab_size, seq_len=seq_len, num_samples=8_000)
     test_dataset = DummyTextDataset(vocab_size=vocab_size, seq_len=seq_len, num_samples=2_000)
@@ -64,15 +65,19 @@ def main():
     for epoch in range(args.epochs): #normalerweise 1
 
         model.train()
-        for step, (input_ids, target) in enumerate(train_dataloader):
+        for step, (input_ids, target) in tqdm(enumerate(train_dataloader), total=len(train_dataloader)):
             input_ids = input_ids.to(device)
             target = target.to(device)
 
             output, l_aux = model(input_ids)
-            loss = criterion(output.transpose(1,2), target) + 0.01 * l_aux
+            
+            ce_loss = criterion(output.float().transpose(1, 2), target)
+
+            loss = ce_loss + 0.01 * l_aux
+
             model.backward(loss)
             model.step()
-            if step % 10 == 0:
+            if step % 100 == 0 and step != 0:
                 model.eval()
                 with torch.inference_mode():
                     for input_ids, target in test_dataloader:
@@ -80,10 +85,13 @@ def main():
                         target = target.to(device)
 
                         output, l_aux = model(input_ids)
-                        test_loss = criterion(output.transpose(1,2), target) + 0.01 * l_aux
+                        test_loss = criterion(output.float().transpose(1,2), target) + 0.01 * l_aux
                 print(f"{'='*30}\nEpoch [{epoch+1}/{args.epochs}], Step [{step}], "
                     f"Train Loss: {loss.item():.4f}\n"
                     f"Test Loss: {test_loss.item():.4f}\n{'='*30}")
+                test_pred, _ = model(torch.arange(10).unsqueeze(0).to(device))
+                print(test_pred.shape)
+                print("Prediction for [0,...,10]:", torch.argmax(test_pred))
 
 
 
@@ -98,6 +106,7 @@ class DummyTextDataset(Dataset):
 
     def __getitem__(self, idx):
         x = torch.randint(0, self.vocab_size, (self.seq_len,), dtype=torch.long)
+        x = torch.arange(self.seq_len)
         # next token prediction: shift by 1
         y = torch.roll(x, shifts=-1)
         return x, y
