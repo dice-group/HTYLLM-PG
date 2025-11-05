@@ -125,7 +125,7 @@ class Transformer(nn.Module):
         return self.norm(x), l_aux
 
 class MoE_Transformer(nn.Module):
-    def __init__(self, vocab_size, max_seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0.):
+    def __init__(self, vocab_size, max_seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0., moe_layers: List[int] = []):
         super().__init__()
 
         self.token_embedding = nn.Embedding(vocab_size, dim) # lookup table for token_id -> embedding (shape: [vocab_size, dim], 
@@ -134,7 +134,7 @@ class MoE_Transformer(nn.Module):
         self.pos_embedding = nn.Parameter(torch.randn(1, max_seq_len, dim)) # embeddings for each postion (ie token at postion 0 gets first postion embedding added independent of the token)
         self.dropout = nn.Dropout(emb_dropout)
 
-        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout, moe_layers)
 
         self.mlp_head = nn.Linear(dim, vocab_size)
 
