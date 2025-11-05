@@ -105,11 +105,11 @@ class DummyTextDataset(Dataset):
         return self.num_samples
 
     def __getitem__(self, idx):
-        x = torch.randint(0, self.vocab_size, (self.seq_len,), dtype=torch.long)
-        x = torch.arange(self.seq_len)
-        # next token prediction: shift by 1
-        y = torch.roll(x, shifts=-1)
-        return x, y
+        x = torch.arange(self.seq_len + 1)
+        inputs = x[:-1]
+        targets = x[1:]
+
+        return inputs, targets
 
 
 if __name__ == "__main__":
