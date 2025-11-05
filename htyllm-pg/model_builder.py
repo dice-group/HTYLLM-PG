@@ -46,6 +46,10 @@ class Attention(nn.Module):
 
         qkv = self.to_qkv(x).chunk(3, dim = -1)# linear layer that maps each 8-dim vector to a big vector (inner_dim * 3)
                                                # 3 because after chunk the is one for q, k, v (shape each: (batch, tokens, inner_dim) )
+                                                # Q = x @ W_Q
+                                                # K = x @ W_K
+                                                # V = x @ W_V
+
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv) # split into multiple heads 
                                                                                                 # query, key, and values for each token for each header
                                                                                                 # Heads might focus on different things in a sentence (syntax, semantic, ...who knows:v)
@@ -65,6 +69,7 @@ class Attention(nn.Module):
         attn = self.dropout(attn) # Regularization (drops some random weights)
 
         out = torch.matmul(attn, v) # dot product with learned values using probablities for weighting (ie likes row here)
+                                    # Values are like they information a token holds and the attention (q * k) is the amount the other token takes from that value 
                                     # out_head0["likes"] = 0.30 * v_head0["Luke"]
                                     #                       + 0.40 * v_head0["likes"]
                                     #                       + 0.30 * v_head0["cats"]
@@ -113,16 +118,16 @@ class Transformer(nn.Module):
 
         l_aux = 0.0
         for i, (attn, ff) in enumerate(self.layers):
-            x = attn(x) + x
+            x = attn(x) + x # Residual connection
 
-            if i in self.moe_layers:
+            if i in self.moe_layers: # moe layers feed forward nn
                 output, moe_loss, _ = ff(x)
                 l_aux += moe_loss
-                x = x + output
-            else:
-                x = ff(x) + x
+                x = x + output # residual connection 
+            else: # "normal" feed forward layers 
+                x = ff(x) + x # residual connetion
 
-        return self.norm(x), l_aux
+        return self.norm(x), l_aux # normalization 
 
 class MoE_Transformer(nn.Module):
     def __init__(self, vocab_size, max_seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0., moe_layers: List[int] = []):
