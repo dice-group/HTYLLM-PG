@@ -1,4 +1,5 @@
 import token
+from typing import List
 import torch
 from torch import dtype, nn
 
@@ -60,7 +61,10 @@ class Attention(nn.Module):
 
 from deepspeed.moe.layer import MoE
 class Transformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., moe_layers:List[int]=[]):
+        for moe in moe_layers:
+            assert moe >= 0, "MOE layers must be greater than or equal to 0"
+            assert moe < depth, "MOE layers must be less than the depth of the transformer"
         super().__init__()
         self.norm = nn.LayerNorm(dim)
         self.layers = nn.ModuleList([])
@@ -72,7 +76,7 @@ class Transformer(nn.Module):
                 FeedForward(dim, mlp_dim, dropout = dropout)
             ]))
 
-        self.moe_layers = [0, 3]
+        self.moe_layers = moe_layers
 
         for layer in self.moe_layers:
             self.layers[layer][1] = MoE(
@@ -135,7 +139,8 @@ def moe_builder():
         dim=768,
         depth=4,
         heads=4,
-        mlp_dim=512
+        mlp_dim=512,
+        moe_layers=[0, 3]
     )
 
     return model
