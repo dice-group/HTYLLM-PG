@@ -29,35 +29,55 @@ class Attention(nn.Module):
         inner_dim = dim_head *  heads
         project_out = not (heads == 1 and dim_head == dim)
 
-        self.heads = heads
-        self.scale = dim_head ** -0.5
+        self.heads = heads # number of attention heads (how many attentions are stacked per layer)
+        self.scale = dim_head ** -0.5 
 
-        self.norm = nn.LayerNorm(dim)
+        self.norm = nn.LayerNorm(dim) 
 
         self.attend = nn.Softmax(dim = -1)
         self.dropout = nn.Dropout(dropout)
 
-        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
-
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False) 
+                                                                  
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, dim),
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
     def forward(self, x):
-        x = self.norm(x)
+        x = self.norm(x)# nomralize each tokens along dimension (mean 0, variance 1) shape stays 
 
-        qkv = self.to_qkv(x).chunk(3, dim = -1)
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
+        qkv = self.to_qkv(x).chunk(3, dim = -1)# linear layer that maps each 8-dim vector to a big vector (inner_dim * 3)
+                                               # 3 because after chunk the is one for q, k, v (shape each: (batch, tokens, inner_dim) )
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv) # split into multiple heads 
+                                                                                                # query, key, and values for each token for each header
+                                                                                                # Heads might focus on different things in a sentence (syntax, semantic, ...who knows:v)
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # compute dot product for each head and for each token pair (e.g. i, j)
+                                                                 # i,e: score(i,j) = dot( q_i, k_j ) * scale <-> scale is for stability 
+                                                                 # E.g. Head 0:
+                                                                #           Luke   likes   cats   (as *keys*)
+                                                                # Luke    [ 1.2    0.1    0.5 ]
+                                                                # likes   [ 0.9    1.5    1.1 ]
+                                                                # cats    [ 0.2    0.3    1.8 ]
+                                                                #  ^ as queries
+        attn = self.attend(dots) # This is than turned into probabilites:
+                                    # Luke-row after softmax:  [0.60, 0.15, 0.25]
+                                    # likes-row after softmax: [0.30, 0.40, 0.30]
+                                    # cats-row after softmax:  [0.10, 0.10, 0.80]
 
-        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+        attn = self.dropout(attn) # Regularization (drops some random weights)
 
-        attn = self.attend(dots)
-        attn = self.dropout(attn)
+        out = torch.matmul(attn, v) # dot product with learned values using probablities for weighting (ie likes row here)
+                                    # out_head0["likes"] = 0.30 * v_head0["Luke"]
+                                    #                       + 0.40 * v_head0["likes"]
+                                    #                       + 0.30 * v_head0["cats"]
 
-        out = torch.matmul(attn, v)
-        out = rearrange(out, 'b h n d -> b n (h d)')
-        return self.to_out(out)
+        out = rearrange(out, 'b h n d -> b n (h d)') # concatnated the heads 
+                                                     # final_head_concat["Luke"]  = [out_head0["Luke"],  out_head1["Luke"]]  # length inner dim
+                                                     # final_head_concat["likes"] = [out_head0["likes"], out_head1["likes"]] # length inner dim 
+                                                     # final_head_concat["cats"]  = [out_head0["cats"],  out_head1["cats"]]  # length inner dim
+
+        return self.to_out(out) # project from inner_dim back to dim (get embeddings back)
 
 from deepspeed.moe.layer import MoE
 class Transformer(nn.Module):
