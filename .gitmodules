@@ -1,3 +1,3 @@
 [submodule "DeepSpeed"]
 	path = DeepSpeed
-	url = https://github.com/deepspeedai/DeepSpeed.git
+	url = git@github.com:LckyLke/DeepSpeed.git
