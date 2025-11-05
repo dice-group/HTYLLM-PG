@@ -190,7 +190,7 @@ if __name__ == "__main__":
     batch_size = 2
     seq_len = 128
     # Start with prompt
-    tokens = torch.tensor([[10, 25, 78]]).to(device)  # "The cat sat"
+    tokens = torch.tensor([[10, 25, 78]]).to(device)  # "The cat sat" - (not really as we have no tokenizer yet :v )
 
 
     for i in range(5):
