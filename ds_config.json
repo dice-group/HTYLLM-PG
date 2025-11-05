@@ -1,16 +1,11 @@
 {
   "train_batch_size": 32,
-  "gradient_accumulation_steps": 1,
-  "optimizer": {
-    "type": "Adam",
-    "params": {
-      "lr": 0.001
-    }
-  },
+  "gradient_accumulation_steps": 4,
+  "train_micro_batch_size_per_gpu": 8,
   "fp16": {
-    "enabled": false
+    "enabled": true
   },
   "zero_optimization": {
-    "stage": 0
+    "stage": 2
   }
 }

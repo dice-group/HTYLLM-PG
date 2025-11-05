@@ -5,6 +5,7 @@ from torch import nn
 from einops import rearrange
 
 
+
 class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim, dropout = 0.):
         super().__init__()
@@ -155,10 +156,10 @@ class MoE_Transformer(nn.Module):
         return self.mlp_head(x), l_aux
 
 
-def moe_builder():
+def moe_builder(vocab_size: int , max_seq_len:int):
     model = MoE_Transformer(
-        vocab_size=32_000,
-        max_seq_len=500,
+        vocab_size=vocab_size,
+        max_seq_len=max_seq_len,
         dim=768,
         depth=4,
         heads=4,
