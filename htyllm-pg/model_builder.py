@@ -135,6 +135,7 @@ class MoE_Transformer(nn.Module):
 
         self.token_embedding = nn.Embedding(vocab_size, dim) # lookup table for token_id -> embedding (shape: [vocab_size, dim], 
                                                             # ie table with vocab_size rows and dim columns, each row is a embedding vector of length dim
+                                                            # under the hood (I think?) this turns the ids into one-hot encoded vectors which it feeds into a linear layer to get the embedding (shape: [batch, seq_len, dim])
 
         self.pos_embedding = nn.Parameter(torch.randn(1, max_seq_len, dim)) # embeddings for each postion (ie token at postion 0 gets first postion embedding added independent of the token)
         self.dropout = nn.Dropout(emb_dropout)
@@ -191,20 +192,18 @@ if __name__ == "__main__":
     # Start with prompt
     tokens = torch.tensor([[10, 25, 78]]).to(device)  # "The cat sat"
 
-    # Forward pass
-    output, l_aux = model_engine(tokens)  # shape [1, 3, 32000]
 
-    # Get prediction for NEXT token (after "sat")
-    next_token_logits = output[0, -1, :]  # shape [32000]
+    for i in range(5):
+    # Forward pass
+        output, l_aux = model_engine(tokens)  # shape [1, 3, 32000]
+
+        # Get prediction for NEXT token (after "sat")
+        next_token_logits = output[0, -1, :]  # shape [32000]
                                 # ↑ last position
 
-    # Sample or argmax to get next token
-    next_token = torch.argmax(next_token_logits)  # e.g., token 92 = "on"
+         # Sample or argmax to get next token (most likely token in this case)
+        next_token = torch.argmax(next_token_logits)  
 
-    # Append and repeat
-    tokens = torch.cat([tokens, next_token.unsqueeze(0).unsqueeze(0)], dim=1)
-    tokens = torch.cat([tokens, tokens],dim=0)
-    print(tokens)
-    output,l_aux=model_engine(tokens)
-    print(output)
-    # Now tokens = [[10, 25, 78, 92]] → "The cat sat on"
+        # Append and repeat
+        tokens = torch.cat([tokens, next_token.unsqueeze(0).unsqueeze(0)], dim=1)
+        print(tokens)
