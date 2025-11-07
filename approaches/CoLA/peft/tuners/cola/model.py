@@ -389,28 +389,7 @@ class ColaModel(BaseTuner):
                 if module.merged:
                     warnings.warn("Adapter cannot be set when the model is merged. Unmerging the model first.")
                     module.unmerge()
-                # module.set_adapter(adapter_name)
-
-                module_dict = getattr(module, "lora_A")
-                for key, layer in module_dict.items():
-                    if key in self.active_adapters:
-                        for expert_layer in layer:
-                            expert_layer.requires_grad_(True)
-                    else:
-                        for expert_layer in layer:
-                            expert_layer.requires_grad_(False)
-                       
-                module_dict = getattr(module, "lora_B")
-                for key, layer in module_dict.items():
-                    if key in self.active_adapters:
-                        for expert_layer in layer:
-                            expert_layer.requires_grad_(True)
-                    else:
-                        for expert_layer in layer:
-                            expert_layer.requires_grad_(False)
-
-             
-
+                module.set_adapter(adapter_name)
         self.active_adapter = adapter_name
 
     @contextmanager

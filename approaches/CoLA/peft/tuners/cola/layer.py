@@ -50,6 +50,8 @@ class ColaLayer(BaseTunerLayer):
         self.lora_dropout = nn.ModuleDict({})
         self.lora_A = nn.ModuleDict({})
         self.lora_B = nn.ModuleDict({})
+        self._cola_expert_parent: dict[str, str] = {}
+        self._cola_parent_children: dict[str, list[str]] = {}
         # For Embedding layer
         self.lora_embedding_A = nn.ParameterDict({})
         self.lora_embedding_B = nn.ParameterDict({})
@@ -110,6 +112,7 @@ class ColaLayer(BaseTunerLayer):
             for e in range(self.num_experts):
                 name = f"expert_{e}"
                 adapter_names.append(name)
+                self._cola_expert_parent[name] = adapter_name
 
                 self.r[name] = r
                 self.lora_alpha[name] = lora_alpha
@@ -133,6 +136,8 @@ class ColaLayer(BaseTunerLayer):
 
             self.shared_pissa_init(adapter_names)
             self._verify_cola_expert_init()
+            self._cola_parent_children[adapter_name] = adapter_names
+            self.set_adapter(adapter_name)
             debug(f"[MoE-COLA] Created {self.num_experts} CoLA experts (r={r}, num_A={num_A}, num_B={num_B})")
             return
 
@@ -163,6 +168,27 @@ class ColaLayer(BaseTunerLayer):
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
         self.set_adapter(self._active_adapters)
+
+    def set_adapter(self, adapter_names: str | list[str]) -> None:
+        """Override to keep MoE experts in sync with their parent adapter selection."""
+        if isinstance(adapter_names, str):
+            adapter_names = [adapter_names]
+
+        expanded: list[str] = []
+        cola_parent_active = False
+        for name in adapter_names:
+            if self.use_cola_experts and name in self._cola_parent_children:
+                expanded.extend(self._cola_parent_children[name])
+                cola_parent_active = True
+            else:
+                expanded.append(name)
+                if self.use_cola_experts and name in self._cola_expert_parent:
+                    cola_parent_active = True
+
+        if self.use_cola_experts and hasattr(self, "router"):
+            self.router.requires_grad_(cola_parent_active)
+
+        super().set_adapter(expanded)
 
     def reset_lora_parameters(self, adapter_name, init_lora_weights):
         if init_lora_weights is False:

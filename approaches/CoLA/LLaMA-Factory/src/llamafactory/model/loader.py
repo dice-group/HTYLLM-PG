@@ -201,6 +201,9 @@ def load_model(
         param_stats = f"all params: {all_param:,}"
 
     logger.info_rank0(param_stats)
+    
+    if is_trainable and trainable_params == 0:
+        raise ValueError("No trainable parameters found — check your adapter or model configuration.")
 
     if model_args.print_param_status:
         for name, param in model.named_parameters():

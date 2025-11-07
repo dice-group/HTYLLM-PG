@@ -25,7 +25,7 @@ CUDA_VISIBLE_DEVICES=0 llamafactory-cli train \
   --lora_rank 4 \
   --lora_alpha 8 \
   --use_cola_experts \
-  --cola_num_experts 4 \
+  --cola_num_experts 2 \
   --cola_top_k 2 \
   --cola_debug 2>&1 | tee train_moe_debug.log
 
