@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="llamafactory",
-    version="0.9.2+cola",
+    version="0.9.2+cola.hydralora",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     entry_points={

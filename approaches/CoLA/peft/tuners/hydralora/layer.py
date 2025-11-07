@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import math
 import warnings
+import logging
+logger = logging.getLogger(__name__)
 from typing import Any, Optional, Union
 
 import torch
@@ -54,6 +56,7 @@ class HydraLoraLayer(BaseTunerLayer):
         self.merged_adapters = []
         self._caches: dict[str, Any] = {}
         self.ephemeral_gpu_offload: bool = ephemeral_gpu_offload
+        setattr(self, "_active_adapters", [])
         self.kwargs = kwargs
 
         base_layer = self.get_base_layer()
@@ -86,14 +89,43 @@ class HydraLoraLayer(BaseTunerLayer):
         self.in_features = in_features
         self.out_features = out_features
 
-        self.W_V = None
-        self.W_S = None
-        self.Uh = None
+        #self.W_V = None
+        #self.W_S = None
+        #self.Uh = None
+
+        # hierarchical design addition
+        self.use_hydralora_experts = kwargs.pop("use_hydralora_experts", False)
+        self.num_experts = kwargs.pop("hydralora_num_experts", 4)
+        self.top_k = kwargs.pop("hydralora_top_k", 2)
+
+        if self.use_hydralora_experts:
+            self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
 
 
     def update_layer(
         self, adapter_name, r, lora_alpha, lora_dropout, lora_num, init_lora_weights
     ):
+        if self.use_hydralora_experts and adapter_name == self._active_adapter:
+            self._active_adapters = []
+            for e in range(self.num_experts):
+                name = f"expert_{e}"
+                self.r[name] = r
+                self.lora_alpha[name] = lora_alpha
+                self.lora_num[name] = lora_num
+                self.lora_dropout[name] = nn.Dropout(lora_dropout) if lora_dropout > 0 else nn.Identity()
+                self.lora_A[name] = nn.Linear(self.in_features, r, bias=False)
+                self.lora_B[name] = nn.ModuleList([nn.Linear(r, self.out_features, bias=False) for _ in range(lora_num)])
+                self.lora_route[name] = nn.Linear(self.in_features, lora_num, bias=False)
+                self.scaling[name] = lora_alpha / r
+
+                # Reset the parameters for each expert
+                self.reset_lora_parameters(name, init_lora_weights)
+                self._move_adapter_to_device_of_base_layer(name)
+                self._active_adapters.append(name)
+
+            logger.info(f"[MoE-HydraLora] Created {self.num_experts} HydraLora experts (r={r}, lora_num={lora_num}, top_k={self.top_k})")
+            return
+        
         # This code works for linear layers, override for other layer types
         if r <= 0:
             raise ValueError(f"`r` should be a positive integer value but the value passed is {r}")
@@ -119,7 +151,7 @@ class HydraLoraLayer(BaseTunerLayer):
         # call this before dora_init
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
-        self.set_adapter(self.active_adapters)
+        self.set_adapter(self._active_adapters)
 
     def reset_lora_parameters(self, adapter_name, init_lora_weights):
         if init_lora_weights is False:
@@ -162,14 +194,14 @@ class HydraLoraLayer(BaseTunerLayer):
         if scale == 1:
             return
 
-        for active_adapter in self.active_adapters:
+        for active_adapter in self._active_adapters:
             if active_adapter not in self.lora_A.keys():
                 continue
 
             self.scaling[active_adapter] *= scale
 
     def unscale_layer(self, scale=None) -> None:
-        for active_adapter in self.active_adapters:
+        for active_adapter in self._active_adapters:
             if active_adapter not in self.lora_A.keys():
                 continue
 
@@ -283,24 +315,41 @@ class Linear(nn.Module, HydraLoraLayer):
         else:
             result = self.base_layer(x, *args, **kwargs)
             torch_result_dtype = result.dtype
-            for active_adapter in self.active_adapters:
-                if active_adapter not in self.lora_A.keys():
-                    continue
-                lora_A = self.lora_A[active_adapter]
-                lora_B = self.lora_B[active_adapter]
-                lora_route = self.lora_route[active_adapter]
-                
-                dropout = self.lora_dropout[active_adapter]
-                scaling = self.scaling[active_adapter]
-                
-           
-                x = x.to(lora_A.weight.dtype)
-                route_weight = nn.functional.softmax(lora_route(x), dim=-1, dtype=torch.float32).to(result.dtype)
+            
+            if not getattr(self, "use_hydralora_experts", False):
+                for active_adapter in self._active_adapters:
+                    if active_adapter not in self.lora_A.keys():
+                        continue
+                    lora_A = self.lora_A[active_adapter]
+                    lora_B = self.lora_B[active_adapter]
+                    lora_route = self.lora_route[active_adapter]
+                    
+                    dropout = self.lora_dropout[active_adapter]
+                    scaling = self.scaling[active_adapter]
+                    
+            
+                    x = x.to(lora_A.weight.dtype)
+                    route_weight = nn.functional.softmax(lora_route(x), dim=-1, dtype=torch.float32).to(result.dtype)
 
-                for i in range(self.lora_num[active_adapter]):
-                    result = result + torch.unsqueeze(route_weight[:,:,i], -1) * lora_B[i]((lora_A(dropout(x)))) * scaling
-          
-            result = result.to(torch_result_dtype)
+                    for i in range(self.lora_num[active_adapter]):
+                        result = result + torch.unsqueeze(route_weight[:,:,i], -1) * lora_B[i]((lora_A(dropout(x)))) * scaling
+            
+                result = result.to(torch_result_dtype)
+            else:
+                logits = self.router(x.to(torch.float32)).to(x.dtype)
+                topv, topi = torch.topk(logits, self.top_k, dim=-1)
+                weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
+
+                expert_outs = [self._adapter_delta(x, f"expert_{e}") for e in range(self.num_experts)]
+                expert_outs = torch.stack(expert_outs, dim=-1)  # [B, S, D_out, E]
+
+                topi_expanded = topi.unsqueeze(2).expand(-1, -1, expert_outs.size(2), -1)
+                gathered = torch.gather(expert_outs, dim=3, index=topi_expanded)
+                weights_expanded = weights.unsqueeze(2)
+                moe_out = (gathered * weights_expanded).sum(dim=-1)
+
+                result = result + moe_out
+                result = result.to(torch_result_dtype)
 
         return result
 
@@ -367,8 +416,8 @@ class Linear(nn.Module, HydraLoraLayer):
             adapter (str):
                 The name of the adapter for which the delta weight should be computed.
         """
-        device = self.lora_B[adapter].weight.device
-        dtype = self.lora_B[adapter].weight.dtype
+        device = self.lora_B[adapter][0].weight.device
+        dtype = self.lora_B[adapter][0].weight.dtype
 
         # In case users wants to merge the adapter weights that are in
         # float16 while being on CPU, we need to cast the weights to float32, perform the merge and then cast back to
@@ -376,7 +425,8 @@ class Linear(nn.Module, HydraLoraLayer):
         cast_to_fp32 = device.type == "cpu" and dtype == torch.float16
 
         weight_A = self.lora_A[adapter].weight
-        weight_B = self.lora_B[adapter].weight
+        # weight_B = self.lora_B[adapter].weight
+        weight_B = torch.sum(torch.stack([layer.weight for layer in self.lora_B[adapter]]), dim=0)
 
         if cast_to_fp32:
             weight_A = weight_A.float()
@@ -389,7 +439,9 @@ class Linear(nn.Module, HydraLoraLayer):
 
             # cast back the weights
             self.lora_A[adapter].weight.data = weight_A.to(dtype)
-            self.lora_B[adapter].weight.data = weight_B.to(dtype)
+            #self.lora_B[adapter].weight.data = weight_B.to(dtype)
+            for i in range(self.num_B[adapter]):
+                self.lora_B[adapter][i].weight.data = self.lora_B[adapter][i].weight.to(dtype)
 
         return output_tensor
 
@@ -445,7 +497,7 @@ class Embedding(nn.Module, HydraLoraLayer):
             self.reset_lora_parameters(adapter_name, init_lora_weights)
 
         self._move_adapter_to_device_of_base_layer(adapter_name)
-        self.set_adapter(self.active_adapters)
+        self.set_adapter(self._active_adapters)
 
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
         """
@@ -588,7 +640,7 @@ class Embedding(nn.Module, HydraLoraLayer):
         else:
             result = self.base_layer(x, *args, **kwargs)
             torch_result_dtype = result.dtype
-            for active_adapter in self.active_adapters:
+            for active_adapter in self._active_adapters:
                 if active_adapter not in self.lora_embedding_A:
                     continue
                 embedding_A = self.lora_embedding_A[active_adapter].T
@@ -657,7 +709,7 @@ class Conv2d(nn.Module, HydraLoraLayer):
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
 
-        self.set_adapter(self.active_adapters)
+        self.set_adapter(self._active_adapters)
 
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
         """
@@ -777,7 +829,7 @@ class Conv2d(nn.Module, HydraLoraLayer):
             result = self.base_layer(x, *args, **kwargs)
             torch_result_dtype = result.dtype
 
-            for active_adapter in self.active_adapters:
+            for active_adapter in self._active_adapters:
                 if active_adapter not in self.lora_A.keys():
                     continue
                 lora_A = self.lora_A[active_adapter]

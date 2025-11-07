@@ -1,4 +1,4 @@
-name: cola_llama_factory
+name: hydralora_llama_factory
 channels:
   - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
   - https://mirrors.ustc.edu.cn/anaconda/pkgs/r/
@@ -159,4 +159,4 @@ dependencies:
       - xxhash==3.5.0
       - yarl==1.18.3
       - yaspin==3.1.0
-prefix: /upb/users/j/joeldag/profiles/unix/cs/.conda/envs/cola_llama_factory
+prefix: /upb/users/s/sashreek/profiles/unix/cs/.conda/envs/hydralora_llama_factory

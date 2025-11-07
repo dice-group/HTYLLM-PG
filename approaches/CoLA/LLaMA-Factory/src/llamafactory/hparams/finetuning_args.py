@@ -21,6 +21,19 @@ class FreezeArguments:
     r"""
     Arguments pertaining to the freeze (partial-parameter) training.
     """
+    # Enable HydraLoRA MoE mode
+    use_hydralora_experts: bool = field(
+        default=False,
+        metadata={"help": "Enable HydraLoRA expert routing (shared A, multiple B heads per adapter, MoE over adapters)."}
+    )
+    hydralora_num_experts: int = field(
+        default=4,
+        metadata={"help": "Number of HydraLoRA experts (adapters) for MoE routing."}
+    )
+    hydralora_top_k: int = field(
+        default=2,
+        metadata={"help": "Top-k experts to select per token for HydraLoRA MoE."}
+    )
 
     freeze_trainable_layers: int = field(
         default=2,

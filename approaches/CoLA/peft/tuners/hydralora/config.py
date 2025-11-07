@@ -89,7 +89,7 @@ class HydraLoraConfig(PeftConfig):
             allows expanding (or shrinking) the model without duplicating the base model weights. The new layers will
             all have separate LoRA adapters attached to them.
     """
-
+    
     r: int = field(default=8, metadata={"help": "Lora attention dimension"})
     target_modules: Optional[Union[list[str], str]] = field(
         default=None,
@@ -106,6 +106,12 @@ class HydraLoraConfig(PeftConfig):
     lora_alpha: int = field(default=8, metadata={"help": "Lora alpha"})
     lora_dropout: float = field(default=0.0, metadata={"help": "Lora dropout"})
     lora_num: int = field(default=1, metadata={"help": "Lora number"})
+
+    use_hydralora_experts: bool = False
+    num_experts: int = 4
+    top_k: int = 2
+
+
     fan_in_fan_out: bool = field(
         default=False,
         metadata={"help": "Set this to True if the layer to replace stores weight like (fan_in, fan_out)"},
