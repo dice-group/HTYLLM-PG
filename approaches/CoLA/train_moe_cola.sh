@@ -10,16 +10,17 @@ mkdir -p "${OUTPUT_DIR}"
 CUDA_VISIBLE_DEVICES=0 llamafactory-cli train \
   --stage sft \
   --do_train \
-  --model_name_or_path meta-llama/Llama-3.2-1B \
-  --dataset gsm8k \
+  --model_name_or_path data/project_data/moe_study/models/llama-3.2-1B-multilingual \
+  --resize_vocab true \
+  --dataset c4 \
   --dataset_dir "${DATASET_DIR}" \
   --template llama3 \
   --finetuning_type cola \
   --output_dir "${OUTPUT_DIR}" \
   --overwrite_output_dir \
   --num_train_epochs 1 \
-  --per_device_train_batch_size 2 \
-  --per_device_eval_batch_size 1 \
+  --per_device_train_batch_size 16 \
+  --per_device_eval_batch_size 8 \
   --num_A 1 \
   --num_B 1 \
   --lora_rank 4 \
@@ -27,6 +28,8 @@ CUDA_VISIBLE_DEVICES=0 llamafactory-cli train \
   --use_cola_experts \
   --cola_num_experts 2 \
   --cola_top_k 2 \
+  --bf16 True \
+  --fp16 False \
   --cola_debug 2>&1 | tee train_moe_debug.log
 
 : '
@@ -36,3 +39,4 @@ TODOs:
 - preprocess data with llamafactory
 - run longer MoE cola test
 '
+ scp joeldag@login4.ln2025.pc2.uni-paderborn.de:/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/merged/state.json  /data/project_data/moe_study/tokenized/test_llama_3.2-1B_multilingual_tok/

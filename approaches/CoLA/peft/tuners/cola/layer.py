@@ -461,6 +461,8 @@ class Linear(nn.Module, ColaLayer):
         elif self.merged:
             return self.base_layer(x, *args, **kwargs)
         else:
+            # base_dtype = self.base_layer.weight.dtype   # get dtype of base layers weight
+            # x = x.to(base_dtype)                        # match dtype due to mixed precision errors
             result = self.base_layer(x, *args, **kwargs) # base output
             torch_result_dtype = result.dtype
 
@@ -515,6 +517,7 @@ class Linear(nn.Module, ColaLayer):
                 moe_out = (gathered * weights_expanded).sum(dim=-1)
 
                 result = result + moe_out
+            #return result.to(self.base_layer.weight.dtype)
             return result.to(torch_result_dtype)
 
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
