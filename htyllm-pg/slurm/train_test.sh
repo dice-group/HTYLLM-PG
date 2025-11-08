@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=moe-multinode
-#SBATCH --nodes=4
+#SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1          # one launcher process per node
 #SBATCH --cpus-per-task=4
 #SBATCH --time=00:30:00
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:h100:4            # 4 GPUs per node
+#SBATCH --gres=gpu:h100:2            # 4 GPUs per node
 #SBATCH --mem=32GB
 #SBATCH --account=hpc-prf-merlin
 
