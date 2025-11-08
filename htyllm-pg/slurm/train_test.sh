@@ -36,6 +36,12 @@ echo "MASTER_PORT = ${MASTER_PORT}"
 echo "NNODES      = ${NNODES}"
 echo "GPUS/Node   = ${GPUS_PER_NODE}"
 
+HOSTFILE="hostfile_${SLURM_JOB_ID}"
+scontrol show hostnames "$SLURM_JOB_NODELIST" > "$HOSTFILE"
+
+echo "Hostfile:"
+cat "$HOSTFILE"
+
 deepspeed \
   --num_nodes=${NNODES} \
   --num_gpus=${GPUS_PER_NODE} \
