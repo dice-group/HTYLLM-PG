@@ -448,6 +448,111 @@ def topkgating(
 
     return l_aux, combine_weights, dispatch_mask, exp_counts
 
+# === From DynMoe ===
+class GAMoEGateBackward(torch.autograd.Function):
+    # jump the sign operation as the sign operation does not have gradients
+
+    @staticmethod
+    def forward(ctx: Any, scores: Tensor):
+        signed_scores = torch.sign(scores) # turns scores into -1, 0 or 1 
+        return signed_scores
+
+    @staticmethod
+    def backward(ctx:Any, grad_output: Tensor): # ignores the gradient and passes the values right through  
+        return grad_output
+# === From DynMoe ===
+
+# Ours 
+class GAMoEGateSTEBackward(torch.autograd.Function):
+    """Straight-Through Estimator (STE) variant:
+    - forward: hard binary decision (scores > 0).float()
+    - backward: multiply incoming gradient by sigmoid'(scores) (= sigma*(1-sigma))
+
+
+    This produces hard forward decisions while providing a smooth (sigmoid) shaped
+    gradient in the backward pass.
+    """
+    @staticmethod
+    def forward(ctx: Any, scores: Tensor) -> Tensor:
+        # hard forward decision
+        hard = (scores > 0).float()
+        # save a 'soft' proxy used for gradient in backward
+        soft = scores.sigmoid()
+        ctx.save_for_backward(soft)
+        return hard
+
+    @staticmethod
+    def backward(ctx: Any, grad_output: Tensor) -> Tensor:
+        (soft,) = ctx.saved_tensors
+        # derivative of sigmoid: soft * (1 - soft)
+        grad = grad_output * (soft * (1.0 - soft))
+        return grad
+
+
+# === From DynMoe ===
+
+class GAMoEGateT(torch.nn.Module):
+    def __init__(self, model_dim, num_global_experts, fp32_gate=False, max_expert_num=64, adaptive_experts=False, init_t=1.0, gate_backward: str = "sign"):
+        super().__init__()
+        self.expert_num = num_global_experts# new gate idea (ours)
+        self.sim_matrix = torch.nn.Parameter(torch.nn.init.orthogonal_(torch.empty(max_expert_num, model_dim, dtype=torch.float32)).T.contiguous(), requires_grad=True)
+        # LF: these are the "embeddings" for the experts - used to compute similarity between tokens and experts
+        # self.register_parameter('sim_matrix', torch.nn.Parameter(torch.empty(max_expert_num, model_dim).T.contiguous(), requires_grad=True))
+        self.gates = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=True) # learnable threshold for each expert
+        self.experts_mask = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=False) # non-learnable expert-mask
+        self.temperature = torch.nn.Parameter(torch.log(torch.full([1], 1.0 / init_t, dtype=torch.float32)), requires_grad=False)
+        # for init_t = 1.0 this will make temperature = 0
+        self.clamp_max = torch.log(torch.tensor(1. / 0.01, dtype=torch.float32)).item() # this is about 4.61
+        # self.register_parameter('experts_mask', torch.nn.Parameter(torch.zeros(size=(max_expert_num,)), requires_grad=False))
+
+        self.experts_mask.requires_grad_(False) # FIX ME
+        self.experts_mask[:num_global_experts] = 1.0
+        
+        self.fp32_gate = fp32_gate
+        self.max_expert_num = max_expert_num
+        self.adaptive_experts = adaptive_experts
+
+    def forward(self, x):
+        if self.fp32_gate:
+            x = x.float()
+            sim_matrix = self.sim_matrix.float()
+            gates = self.gates.float()
+        else:
+            sim_matrix = self.sim_matrix
+            gates = self.gates
+        
+        logit_scale = torch.clamp(self.temperature, max=self.clamp_max).exp() # for init_t = 1 this is also logit_scale = 1
+        logits = torch.sigmoid(torch.matmul(F.normalize(x, dim=1),
+                              F.normalize(sim_matrix, dim=0)) * logit_scale) # compute simialrity logits between token and experts 
+        logits = logits * self.experts_mask # zero-out experts? TODO: why do we need this? Where does num_global_experts come from?
+        gates = torch.sigmoid(self.gates * logit_scale) # put gates into [0 - 1]
+        
+        if self.training:
+            # print('gate forward in train')
+            logits = F.relu(logits - gates) # similarity - threshold but negativ becomes zero (deactivated)
+            logits = GAMoEGateBackward.apply(logits) # make it binary (0 = do not use expert; 1 = use expert )
+            top_k = torch.sum(logits > 0, dim=1).to(torch.int) # count number of experts used 
+        else:
+
+            new_logits = F.relu(logits - gates)
+            # If remove this, gating scores range will changed from {0, 1} to [0, x]
+            new_logits = GAMoEGateBackward.apply(new_logits)
+            
+            top_k = torch.sum(new_logits > 0, dim=1).to(torch.int)
+
+            mask = (torch.sum(new_logits, dim=1) == 0).to(torch.int).repeat(logits.shape[1]).reshape(logits.shape[1], -1).T # s * e
+            max_index = torch.argmax(logits, dim=1)
+            one_hot = F.one_hot(max_index, num_classes=logits.shape[1])
+            logits = mask * one_hot + new_logits
+            
+            top_k = torch.max(top_k, torch.ones(top_k.shape).to(top_k.device)).to(torch.int)
+
+        return logits, top_k
+
+# === From DynMoe ===
+
+# new gate idea (ours) 
+# 
 
 class TopKGate(Module):
     """Gate module which implements Top2Gating as described in Gshard_.
@@ -481,7 +586,7 @@ class TopKGate(Module):
                  top2_2nd_expert_sampling: bool = True) -> None:
         super().__init__()
 
-        self.wg = torch.nn.Linear(model_dim, num_experts, bias=False)
+        self.wg = torch.nn.Linear(model_dim, num_experts, bias=False) # this is basically the routing network token -> experts 
         self.ep_group = ep_group
         self.k = k
         self.capacity_factor = capacity_factor

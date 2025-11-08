@@ -104,14 +104,14 @@ class Transformer(nn.Module):
         for layer in self.moe_layers:
             self.layers[layer][1] = MoE(
                 dim,
-                expert=self.layers[layer][1],
-                num_experts=2,
-                ep_size=1,
-                k=1,
-                capacity_factor=1.5,
-                eval_capacity_factor=2.0,
-                min_capacity=0.0,
-                use_residual=False,
+                expert=self.layers[layer][1], # feed forward network used per expert 
+                num_experts=2, # number of experts in the layer
+                ep_size=1, # number of ranks in the expert parallel world
+                k=1, # top-k gating value
+                capacity_factor=1.5, # capacity factor for the expert at training time
+                eval_capacity_factor=2.0, # capacity factor for the expert at evaluation time
+                min_capacity=0.0, # minimum capacity for the expert
+                use_residual=False, # whether to use residual connection in the MoE layer
                 # max_expert_num=4
             )
 
