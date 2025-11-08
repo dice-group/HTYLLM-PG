@@ -14,6 +14,10 @@ set -e
 source ~/.bashrc
 conda activate moe
 
+module load system/CUDA/12.6.0
+module load compiler/GCCcore/12.3.0  
+
+
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 export NCCL_DEBUG=INFO
 
