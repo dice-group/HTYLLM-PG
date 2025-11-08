@@ -56,7 +56,6 @@ input.txt
 datasets/
 *.zip
 *.csv
-*.txt
 
 # Exclude binary files
 *.bin
