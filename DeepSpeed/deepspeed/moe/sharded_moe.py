@@ -26,6 +26,7 @@ from torch.nn import Module
 import torch.nn.functional as F
 from deepspeed.utils import groups
 from .mappings import drop_tokens, gather_tokens
+from .loss import diverse_and_simple_gate_loss
 
 if TYPE_CHECKING:
     Base = Module[Tensor]
@@ -449,6 +450,55 @@ def topkgating(
     return l_aux, combine_weights, dispatch_mask, exp_counts
 
 # === From DynMoe ===
+def topanygating_opt(logits: Tensor, capacity_factor: float, min_capacity: int, K: Tensor, gate_tensor=None, expert_mask=None, ep_group=None) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    
+    """Implements TopanyGating on logits."""
+    gates = logits # shape: [num_tokens, num_experts] in binary, i.e. 0 or 1 for which experts are activated for each token
+    mask = gates.int()
+    exp_counts = torch.sum(mask, dim=0).detach().to('cpu') # how many tokens selected each expert, shape: (E,)
+
+    new_capacity = torch.max(exp_counts).to(logits.device) # max number of tokens any expert sees 
+    dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.get_world_group()) # max across all ranks
+    capacity = new_capacity
+
+    num_experts = int(gates.shape[1])
+
+    # Compute l_aux - loss to balance expert load
+    if gate_tensor is None or expert_mask is None:
+        me = torch.mean(gates, dim=0)
+        ce = torch.mean(mask.float(), dim=0) # here identical ce = me: mean of the number of tokens selected each expert selected_tokens / tokens 
+        l_aux = torch.mean(me * ce) * num_experts * num_experts # encouraging each expert to be selected by a similar number of tokens
+    else:
+        # load balance + efficiency loss
+        non_zero_mask = torch.sum(gates, dim=1) > 0 # mask tokens donnot actiavte any expert
+        if non_zero_mask.sum() != 0:
+            normalized_gates = gates[non_zero_mask]
+            normalized_gates = normalized_gates / (torch.sum(normalized_gates, dim=1, keepdim=True))
+            me = torch.mean(normalized_gates, dim=0)
+            ce = torch.mean(mask[non_zero_mask].float(), dim=0)
+            load_balance_loss = torch.mean(me * ce) * num_experts * num_experts
+        else:
+            load_balance_loss = 0
+        efficiency_loss = torch.mean(gates)
+        
+        l_aux = diverse_and_simple_gate_loss(gate_tensor, expert_mask) \
+                                            + load_balance_loss + efficiency_loss
+
+    # Store the capacity location for each token
+    locations1 = torch.cumsum(mask, dim=0) # sample * expert
+    locations1_s = ((locations1 * mask) - 1 ) % (capacity + 1) # sample * expert, mod `capacity + 1` to keep indices positive
+
+    # mask_k = K > 0
+    # gates[mask_k] = gates[mask_k] / K[mask_k].unsqueeze(1)
+    gates /= torch.clamp(K, min=1).unsqueeze(1)
+
+    locations1_sc = _one_hot_to_float(locations1_s, capacity + 1) # (sample, expert, capacity + 1) 
+    combine_weights = einsum("se,sec->sec", gates, locations1_sc[:,:,:-1]) # (sample, expert, capacity)
+
+    dispatch_mask = combine_weights.bool()
+
+    return l_aux, combine_weights, dispatch_mask, exp_counts
+
 
 class GAMoEGateSignBackward(torch.autograd.Function):
     """Original DynMoe behaviour: use torch.sign in forward and straight-through (identity) in backward.
@@ -464,6 +514,7 @@ class GAMoEGateSignBackward(torch.autograd.Function):
         # pass gradients unchanged
         return grad_output
 
+# Ours 
 class GAMoEGateSTEBackward(torch.autograd.Function):
     """Straight-Through Estimator (STE) variant:
     - forward: hard binary decision (scores > 0).float()
@@ -494,15 +545,15 @@ class GAMoEGateT(torch.nn.Module):
     def __init__(
         self,
         model_dim,
-        num_global_experts,
+        num_global_experts, # total number of experts in the model 
         fp32_gate: bool = False,
-        max_expert_num: int = 64,
+        max_expert_num: int = 64, # upper bound if we want dynamic expert adding and removing (e.g. DynMoe) / currently not implemented
         adaptive_experts: bool = False,
         init_t: float = 1.0,
         gate_backward: str = "sign",  # 'sign' (original) or 'ste' 
     ):
         super().__init__()
-        self.expert_num = num_global_experts
+        self.expert_num = num_global_experts # total number of experts in the model 
         self.sim_matrix = torch.nn.Parameter(
             torch.nn.init.orthogonal_(torch.empty(max_expert_num, model_dim, dtype=torch.float32)).T.contiguous(),
             requires_grad=True,
@@ -547,12 +598,12 @@ class GAMoEGateT(torch.nn.Module):
 
         logit_scale = torch.clamp(self.temperature, max=self.clamp_max).exp()  # for init_t = 1 this is also logit_scale = 1
         logits = torch.sigmoid(torch.matmul(F.normalize(x, dim=1), F.normalize(sim_matrix, dim=0)) * logit_scale )  # similarity - threshold but negativ becomes zero (deactivated)
-        logits = logits * self.experts_mask # zero-out experts? TODO: why do we need this? Where does num_global_experts come from?
+        # logits = logits * self.experts_mask # zero-out expert -> TODO: Currently this is not need as we do not implement dynamic epxert adding and removal
         gates = torch.sigmoid(self.gates * logit_scale) # put gates into [0 - 1]
 
         if self.training:
             # training: thresholded + binarised
-            logits = logits - gates
+            logits = logits - gates 
             logits = self._apply_gate_backward(logits)  
             top_k = torch.sum(logits > 0, dim=1).to(torch.int)
         else:
@@ -591,12 +642,10 @@ class TopKGate(Module):
             number of experts in model
     """
 
-    wg: torch.nn.Linear
-
     def __init__(self,
                  model_dim: int,
                  num_experts: int,
-                 k: int = 1,
+                 k: int = 1, # k=-1 for topanygating
                  capacity_factor: float = 1.0,
                  eval_capacity_factor: float = 1.0,
                  min_capacity: int = 8,
@@ -607,7 +656,10 @@ class TopKGate(Module):
                  top2_2nd_expert_sampling: bool = True) -> None:
         super().__init__()
 
-        self.wg = torch.nn.Linear(model_dim, num_experts, bias=False) # this is basically the routing network token -> experts 
+        if k == -1:
+            self.wg = GAMoEGateT(model_dim, num_experts, max_expert_num=num_experts,  fp32_gate=True, adaptive_experts=True, init_t=1.0)
+        else:
+            self.wg = torch.nn.Linear(model_dim, num_experts, bias=False) # this is basically the routing network token -> experts 
         self.ep_group = ep_group
         self.k = k
         self.capacity_factor = capacity_factor
@@ -637,9 +689,16 @@ class TopKGate(Module):
         # input jittering
         if self.noisy_gate_policy == 'Jitter' and self.training:
             input_fp32 = multiplicative_jitter(input_fp32, device=input.device)
-        logits = torch.nn.functional.linear(input_fp32, weight=self.wg.weight.float(), bias=None)
+        if self.k == -1:
+            logits, top_k = self.wg(input_fp32)
+            print(top_k)
+        else:
+            logits = torch.nn.functional.linear(input_fp32, weight=self.wg.weight.float(), bias=None)
 
-        if self.k == 1:
+        if self.k == -1:
+            gate_output = topanygating_opt(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
+                                     self.min_capacity, top_k, self.wg.sim_matrix, self.wg.experts_mask, self.ep_group)
+        elif self.k == 1:
             gate_output = top1gating(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
                                      self.min_capacity, used_token, self.noisy_gate_policy if self.training else None,
                                      self.drop_tokens, self.use_rts, self.ep_group, use_tutel)

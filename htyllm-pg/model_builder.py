@@ -107,7 +107,7 @@ class Transformer(nn.Module):
                 expert=self.layers[layer][1], # feed forward network used per expert 
                 num_experts=2, # number of experts in the layer
                 ep_size=1, # number of ranks in the expert parallel world
-                k=1, # top-k gating value
+                k=-1, # top-k gating value
                 capacity_factor=1.5, # capacity factor for the expert at training time
                 eval_capacity_factor=2.0, # capacity factor for the expert at evaluation time
                 min_capacity=0.0, # minimum capacity for the expert
