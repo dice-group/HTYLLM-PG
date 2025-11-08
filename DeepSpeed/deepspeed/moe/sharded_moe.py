@@ -456,8 +456,8 @@ class GAMoEGateSignBackward(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx: Any, scores: Tensor) -> Tensor:
-        signed_scores = torch.sign(scores) # yields 0 or 1 on the non-negative values (goes through relu first)
-        return signed_scores
+        hard = (scores > 0).float() # yields 0 or 1 
+        return hard
 
     @staticmethod
     def backward(ctx: Any, grad_output: Tensor) -> Tensor:
@@ -531,7 +531,6 @@ class GAMoEGateT(torch.nn.Module):
     def _apply_gate_backward(self, scores: Tensor) -> Tensor:
         """Dispatch to the requested backward strategy."""
         if self.gate_backward == "sign":
-            scores = F.relu(scores)
             return GAMoEGateSignBackward.apply(scores)
         else:
             return GAMoEGateSTEBackward.apply(scores)
