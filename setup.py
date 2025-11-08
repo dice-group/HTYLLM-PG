@@ -10,8 +10,10 @@ setup(
     version='0.1',
     packages=find_packages(),
     install_requires=[
-        'torch>=2.0.0',
+        'torch>=2.9.0',
         'einops>=0.6.0',
         f'deepspeed @ file://{deepspeed_path.resolve()}',
+        'matplotlib>=3.10.7',
+        'tqdm>=4.67.1',
     ],
 )
