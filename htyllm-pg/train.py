@@ -6,6 +6,7 @@ import deepspeed
 import argparse
 from model_builder import moe_builder
 from tqdm.auto import tqdm
+import matplotlib.pyplot as plt
 
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 
@@ -62,6 +63,12 @@ def main():
     train_dataloader = DataLoader(train_dataset, shuffle=True, num_workers=args.workers, batch_size=8)
     test_dataloader = DataLoader(test_dataset, shuffle=False, num_workers=args.workers, batch_size=8)
 
+    # Lists to track losses for plotting
+    train_losses = []
+    test_losses = []
+    train_steps = []
+    test_steps = []
+
     for epoch in range(args.epochs): #normalerweise 1
 
         model.train()
@@ -77,6 +84,11 @@ def main():
 
             model.backward(loss)
             model.step()
+            
+            # Track training loss
+            train_losses.append(loss.item())
+            train_steps.append(step)
+            
             if step % 100 == 0 and step != 0:
                 model.eval()
                 with torch.inference_mode():
@@ -86,13 +98,33 @@ def main():
 
                         output, l_aux = model(input_ids)
                         test_loss = criterion(output.float().transpose(1,2), target) + 0.01 * l_aux
+                
+                # Track test loss
+                test_losses.append(test_loss.item())
+                test_steps.append(step)
+                
                 print(f"{'='*30}\nEpoch [{epoch+1}/{args.epochs}], Step [{step}], "
                     f"Train Loss: {loss.item():.4f}\n"
                     f"Test Loss: {test_loss.item():.4f}\n{'='*30}")
                 test_pred, _ = model(torch.arange(10).unsqueeze(0).to(device))
                 print(test_pred.shape)
                 print("Prediction for [0,...,9]:", torch.argmax(test_pred.squeeze()[9]))
+                
+                model.train()
 
+    # Plot train and test loss
+    plt.figure(figsize=(10, 6))
+    plt.plot(train_steps, train_losses, label='Train Loss', alpha=0.7, linewidth=1)
+    plt.plot(test_steps, test_losses, label='Test Loss', marker='o', linewidth=2)
+    plt.xlabel('Training Step')
+    plt.ylabel('Loss')
+    plt.title('Training and Test Loss Over Time')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('loss_plot_sign.png', dpi=150)
+    print(f"\nLoss plot saved as 'loss_plot.png'")
+    plt.show()
 
 
 class DummyTextDataset(Dataset):

@@ -84,7 +84,9 @@ class Attention(nn.Module):
 
 from deepspeed.moe.layer import MoE
 class Transformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., moe_layers:List[int]=[]):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., moe_layers:List[int]=[], 
+                 num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
+                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1):
         for moe in moe_layers:
             assert moe >= 0, "MOE layers must be greater than or equal to 0"
             assert moe < depth, "MOE layers must be less than the depth of the transformer"
@@ -105,14 +107,15 @@ class Transformer(nn.Module):
             self.layers[layer][1] = MoE(
                 dim,
                 expert=self.layers[layer][1], # feed forward network used per expert 
-                num_experts=2, # number of experts in the layer
-                ep_size=1, # number of ranks in the expert parallel world
-                k=-1, # top-k gating value
-                capacity_factor=1.5, # capacity factor for the expert at training time
-                eval_capacity_factor=2.0, # capacity factor for the expert at evaluation time
-                min_capacity=0.0, # minimum capacity for the expert
-                use_residual=False, # whether to use residual connection in the MoE layer
-                # max_expert_num=4
+                num_experts=num_experts, # number of experts in the layer
+                ep_size=ep_size, # number of ranks in the expert parallel world
+                k=k, # top-k gating value
+                capacity_factor=capacity_factor, # capacity factor for the expert at training time
+                eval_capacity_factor=eval_capacity_factor, # capacity factor for the expert at evaluation time
+                min_capacity=min_capacity, # minimum capacity for the expert
+                use_residual=use_residual, # whether to use residual connection in the MoE layer
+                gate_backward=gate_backward,
+                #max_expert_num=4
             )
 
     def forward(self, x):
@@ -131,7 +134,9 @@ class Transformer(nn.Module):
         return self.norm(x), l_aux # normalization 
 
 class MoE_Transformer(nn.Module):
-    def __init__(self, vocab_size, max_seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0., moe_layers: List[int] = []):
+    def __init__(self, vocab_size, max_seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0., moe_layers: List[int] = [],
+                 num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
+                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1):
         super().__init__()
 
         self.token_embedding = nn.Embedding(vocab_size, dim) # lookup table for token_id -> embedding (shape: [vocab_size, dim], 
@@ -141,7 +146,10 @@ class MoE_Transformer(nn.Module):
         self.pos_embedding = nn.Parameter(torch.randn(1, max_seq_len, dim)) # embeddings for each postion (ie token at postion 0 gets first postion embedding added independent of the token)
         self.dropout = nn.Dropout(emb_dropout)
 
-        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout, moe_layers)
+        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout, moe_layers,
+                                      num_experts=num_experts, k=k, capacity_factor=capacity_factor,
+                                      eval_capacity_factor=eval_capacity_factor, min_capacity=min_capacity,
+                                      use_residual=use_residual, gate_backward=gate_backward, ep_size=ep_size)
 
         self.mlp_head = nn.Linear(dim, vocab_size)
 
@@ -156,15 +164,29 @@ class MoE_Transformer(nn.Module):
         return self.mlp_head(x), l_aux
 
 
-def moe_builder(vocab_size: int , max_seq_len:int):
+def moe_builder(vocab_size: int, max_seq_len: int, dim=768, depth=4, heads=4, mlp_dim=512, 
+                dim_head=64, dropout=0., emb_dropout=0., moe_layers=[0, 3],
+                num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0,
+                min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1):
     model = MoE_Transformer(
         vocab_size=vocab_size,
         max_seq_len=max_seq_len,
-        dim=768,
-        depth=4,
-        heads=4,
-        mlp_dim=512,
-        moe_layers=[0, 3]
+        dim=dim,
+        depth=depth,
+        heads=heads,
+        mlp_dim=mlp_dim,
+        dim_head=dim_head,
+        dropout=dropout,
+        emb_dropout=emb_dropout,
+        moe_layers=moe_layers,
+        num_experts=num_experts,
+        k=k,
+        capacity_factor=capacity_factor,
+        eval_capacity_factor=eval_capacity_factor,
+        min_capacity=min_capacity,
+        use_residual=use_residual,
+        gate_backward=gate_backward,
+        ep_size=ep_size
     )
 
     return model
@@ -172,7 +194,11 @@ def moe_builder(vocab_size: int , max_seq_len:int):
 
 if __name__ == "__main__":
     import deepspeed
-    model = moe_builder()
+    
+    vocab_size = 32_000
+    seq_len = 128
+    
+    model = moe_builder(vocab_size=vocab_size, max_seq_len=seq_len)
 
     ds_config = {
         "train_batch_size": 32,
@@ -187,9 +213,7 @@ if __name__ == "__main__":
 
     device = model_engine.local_rank if torch.cuda.is_available() else "cpu"
     
-    vocab_size = 32_000
     batch_size = 2
-    seq_len = 128
     # Start with prompt
     tokens = torch.tensor([[10, 25, 78]]).to(device)  # "The cat sat" - (not really as we have no tokenizer yet :v )
 

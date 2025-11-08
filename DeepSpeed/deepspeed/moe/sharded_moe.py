@@ -514,7 +514,7 @@ class GAMoEGateSignBackward(torch.autograd.Function):
         # pass gradients unchanged
         return grad_output
 
-# Ours 
+# Ours
 class GAMoEGateSTEBackward(torch.autograd.Function):
     """Straight-Through Estimator (STE) variant:
     - forward: hard binary decision (scores > 0).float()
@@ -542,15 +542,16 @@ class GAMoEGateSTEBackward(torch.autograd.Function):
 
 
 class GAMoEGateT(torch.nn.Module):
+
     def __init__(
         self,
         model_dim,
-        num_global_experts, # total number of experts in the model 
+        num_global_experts,  # total number of experts in the model
         fp32_gate: bool = False,
-        max_expert_num: int = 64, # upper bound if we want dynamic expert adding and removing (e.g. DynMoe) / currently not implemented
+        max_expert_num: int = 64,  # upper bound if we want dynamic expert adding and removing (e.g. DynMoe) / currently not implemented
         adaptive_experts: bool = False,
         init_t: float = 1.0,
-        gate_backward: str = "sign",  # 'sign' (original) or 'ste' 
+        gate_backward: str = "sign",  # 'sign' (original) or 'ste'
     ):
         super().__init__()
         self.expert_num = num_global_experts # total number of experts in the model 
@@ -558,6 +559,7 @@ class GAMoEGateT(torch.nn.Module):
             torch.nn.init.orthogonal_(torch.empty(max_expert_num, model_dim, dtype=torch.float32)).T.contiguous(),
             requires_grad=True,
         )
+        print(f"Using {gate_backward} for backpropgation of the expert binary choice")
         # LF: these are the "embeddings" for the experts - used to compute similarity between tokens and experts
         # self.register_parameter('sim_matrix', torch.nn.Parameter(torch.empty(max_expert_num, model_dim).T.contiguous(), requires_grad=True))
         self.gates = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=True)  # learnable threshold for each expert
@@ -585,7 +587,6 @@ class GAMoEGateT(torch.nn.Module):
             return GAMoEGateSignBackward.apply(scores)
         else:
             return GAMoEGateSTEBackward.apply(scores)
-        
 
     def forward(self, x: Tensor):
         if self.fp32_gate:
@@ -625,7 +626,6 @@ class GAMoEGateT(torch.nn.Module):
 # === end ===
 
 
-
 class TopKGate(Module):
     """Gate module which implements Top2Gating as described in Gshard_.
     ::
@@ -653,11 +653,12 @@ class TopKGate(Module):
                  drop_tokens: bool = True,
                  use_rts: bool = True,
                  ep_group: Union[torch.distributed.ProcessGroup, None] = None,
-                 top2_2nd_expert_sampling: bool = True) -> None:
+                 top2_2nd_expert_sampling: bool = True,
+                 gate_backward: str = "sign") -> None:
         super().__init__()
 
         if k == -1:
-            self.wg = GAMoEGateT(model_dim, num_experts, max_expert_num=num_experts,  fp32_gate=True, adaptive_experts=True, init_t=1.0)
+            self.wg = GAMoEGateT(model_dim, num_experts, max_expert_num=num_experts,  fp32_gate=True, adaptive_experts=True, init_t=1.0, gate_backward=gate_backward)
         else:
             self.wg = torch.nn.Linear(model_dim, num_experts, bias=False) # this is basically the routing network token -> experts 
         self.ep_group = ep_group
