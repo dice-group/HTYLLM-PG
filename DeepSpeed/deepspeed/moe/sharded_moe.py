@@ -456,7 +456,7 @@ class GAMoEGateSignBackward(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx: Any, scores: Tensor) -> Tensor:
-        signed_scores = torch.sign(scores) # yields 0 or 1 on the non-negative values (go to relu first)
+        signed_scores = torch.sign(scores) # yields 0 or 1 on the non-negative values (goes through relu first)
         return signed_scores
 
     @staticmethod
@@ -526,7 +526,7 @@ class GAMoEGateT(torch.nn.Module):
         allowed = {"sign", "ste"}
         if gate_backward not in allowed:
             raise ValueError(f"gate_backward must be one of {allowed}, got {gate_backward}")
-        self.gate_backward = self._apply_gate_backward(gate_backward) 
+        self.gate_backward = gate_backward
 
     def _apply_gate_backward(self, scores: Tensor) -> Tensor:
         """Dispatch to the requested backward strategy."""
