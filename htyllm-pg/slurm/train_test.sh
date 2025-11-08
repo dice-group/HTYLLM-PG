@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=moe-multinode
-#SBATCH --nodes=2                     # <--- change if you want more
+#SBATCH --nodes=2                    
 #SBATCH --ntasks-per-node=1           # 1 DeepSpeed launcher per node
 #SBATCH --cpus-per-task=4
 #SBATCH --time=00:30:00
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:h100:4             # 4 GPUs per node
+#SBATCH --gres=gpu:h100:2             # 4 GPUs per node
 #SBATCH --mem=32GB
 #SBATCH --account=hpc-prf-merlin
 
@@ -21,13 +21,17 @@ module load compiler/GCCcore/12.3.0
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 
 
+GPUS_PER_NODE=2   
+
 HOSTFILE="${SLURM_SUBMIT_DIR}/hostfile_${SLURM_JOB_ID}"
-scontrol show hostnames "${SLURM_JOB_NODELIST}" > "${HOSTFILE}"
+scontrol show hostnames "${SLURM_JOB_NODELIST}" | while read -r host; do
+  echo "${host} slots=${GPUS_PER_NODE}"
+done > "${HOSTFILE}"
 
 echo "Hostfile:"
 cat "${HOSTFILE}"
 
-MASTER_ADDR=$(head -n 1 "${HOSTFILE}")
+MASTER_ADDR=$(head -n 1 "${HOSTFILE}" | awk '{print $1}')
 MASTER_PORT=6000
 
 echo "MASTER_ADDR = ${MASTER_ADDR}"
