@@ -15,6 +15,7 @@ def get_args() -> argparse.Namespace :
     parser = argparse.ArgumentParser()
     parser.add_argument("--workers", default=8, type=int, help="Number of workers for the Dataloaders!")
     parser.add_argument("--epochs", default=1, type=int, help="Number of epochs of the training data!")
+    parser.add_argument("--batch-size", default=8, type=int, dest="batch_size", help="Batch size for training and testing!")
     parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate for AdamW optimizer!")
     parser.add_argument("--weight-decay", default=1e-4, type=float, dest="weight_decay")
     parser.add_argument("--local_rank", type=int, default=-1)
@@ -60,8 +61,8 @@ def main():
     train_dataset = DummyTextDataset(vocab_size=vocab_size, seq_len=seq_len, num_samples=8_000)
     test_dataset = DummyTextDataset(vocab_size=vocab_size, seq_len=seq_len, num_samples=2_000)
 
-    train_dataloader = DataLoader(train_dataset, shuffle=True, num_workers=args.workers, batch_size=8)
-    test_dataloader = DataLoader(test_dataset, shuffle=False, num_workers=args.workers, batch_size=8)
+    train_dataloader = DataLoader(train_dataset, shuffle=True, num_workers=args.workers, batch_size=args.batch_size)
+    test_dataloader = DataLoader(test_dataset, shuffle=False, num_workers=args.workers, batch_size=args.batch_size)
 
     # Lists to track losses for plotting
     train_losses = []
@@ -92,23 +93,34 @@ def main():
             if step % 100 == 0 and step != 0:
                 model.eval()
                 with torch.inference_mode():
-                    for input_ids, target in test_dataloader:
+                    test_loss_sum = 0
+                    num_test_batches = 5  
+                    
+                    for i, (input_ids, target) in enumerate(test_dataloader):
+                        if i >= num_test_batches:
+                            break
+                            
                         input_ids = input_ids.to(device)
                         target = target.to(device)
 
                         output, l_aux = model(input_ids)
                         test_loss = criterion(output.float().transpose(1,2), target) + 0.01 * l_aux
-                
-                # Track test loss
-                test_losses.append(test_loss.item())
-                test_steps.append(step)
-                
-                print(f"{'='*30}\nEpoch [{epoch+1}/{args.epochs}], Step [{step}], "
-                    f"Train Loss: {loss.item():.4f}\n"
-                    f"Test Loss: {test_loss.item():.4f}\n{'='*30}")
-                test_pred, _ = model(torch.arange(10).unsqueeze(0).to(device))
-                print(test_pred.shape)
-                print("Prediction for [0,...,9]:", torch.argmax(test_pred.squeeze()[9]))
+                        test_loss_sum += test_loss.item()
+                        
+                    avg_test_loss = test_loss_sum / num_test_batches
+                    
+                    # Track test loss
+                    test_losses.append(avg_test_loss)
+                    test_steps.append(step)
+                    
+                    print(f"{'='*30}\nEpoch [{epoch+1}/{args.epochs}], Step [{step}], "
+                        f"Train Loss: {loss.item():.4f}\n"
+                        f"Test Loss: {avg_test_loss:.4f}\n{'='*30}")
+                    
+                    # Test prediction 
+                    test_pred, _ = model(torch.arange(10).unsqueeze(0).to(device))
+                    print(test_pred.shape)
+                    print("Prediction for [0,...,9]:", torch.argmax(test_pred.squeeze()[9]))
                 
                 model.train()
 
