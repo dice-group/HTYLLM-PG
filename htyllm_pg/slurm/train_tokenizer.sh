@@ -10,8 +10,18 @@
 
 set -e
 
+echo "Job started at $(date)"
+echo "Running on node: $(hostname)"
+
 # ---------- Env ----------
 source ~/.bashrc
 conda activate moe
 
+echo "Conda environment activated"
+echo "Python version: $(python --version)"
+
+export PYTHONUNBUFFERED=1
+
 srun python htyllm_pg/train_tokenizer.py /scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/preprocessed_tokenizer_subset/
+
+echo "Job finished at $(date)"
