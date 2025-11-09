@@ -41,11 +41,11 @@ def _list_shards(shard_dir: Path) -> List[Path]:
     valid_suffixes = (".jsonl", ".jsonl.gz")
     shards = sorted(
         path
-        for path in shard_dir.iterdir()
-        if path.is_file() and path.name.startswith("shard_") and path.name.endswith(valid_suffixes)
+        for path in shard_dir.rglob("*")
+        if path.is_file() and any(path.name.endswith(sfx) for sfx in valid_suffixes)
     )
     if not shards:
-        raise RuntimeError(f"No shard_*.jsonl(.gz) files found in {shard_dir}")
+        raise RuntimeError(f"No .jsonl or .jsonl.gz files found under {shard_dir}")
     return shards
 
 
@@ -53,7 +53,7 @@ def _assign_shards(shards: List[Path], rank: int, world_size: int) -> List[Path]
     if world_size <= 1:
         return shards
     assigned = [path for idx, path in enumerate(shards) if idx % world_size == rank]
-    print(f"Rank {rank}: assigned {len(assigned)} shard files out of {len(shards)}")
+    print(f"Rank {rank}: assigned {len(assigned)} part files out of {len(shards)}")
     return assigned
 
 
@@ -106,7 +106,7 @@ def main(args):
             cache_dir=cache_dir,
         )
 
-        print(f"Rank {rank}: start tokenizing {len(assigned)} shard(s)")
+        print(f"Rank {rank}: start tokenizing {len(assigned)} part(s)")
         tokenized_dataset = raw_dataset.map(
             lambda batch: tokenize_fn(batch, tokenizer),
             batched=True,
@@ -123,8 +123,8 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Tokenize pre-sharded corpora.")
-    parser.add_argument("--shard_dir", type=str, required=True, help="Directory with shard_*.jsonl(.gz) files.")
+    parser = argparse.ArgumentParser(description="Tokenize pre-split corpus parts.")
+    parser.add_argument("--shard_dir", type=str, required=True, help="Directory containing <lang>_part_*.jsonl(.gz) files.")
     parser.add_argument("--save_tokenized_data_dir", type=str, required=True, help="Directory to save tokenized shards.")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.2-1B", help="Tokenizer model name or path.")
     parser.add_argument("--num_proc", type=int, default=1, help="Number of workers for tokenizer.map.")

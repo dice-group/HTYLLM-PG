@@ -40,8 +40,8 @@ def verify_counts(manifest_path: Path, dataset_dir: Path) -> None:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest", required=True, help="Path to shard_manifest.json produced during sharding.")
+    parser = argparse.ArgumentParser(description="Verify tokenized data counts against the split manifest.")
+    parser.add_argument("--manifest", required=True, help="Path to split_manifest.json produced during splitting.")
     parser.add_argument("--dataset_dir", required=True, help="Directory containing rank_*/ tokenized shards or a combined dataset.")
     return parser.parse_args()
 

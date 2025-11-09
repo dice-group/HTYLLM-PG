@@ -44,7 +44,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Combine rank tokenized shards into a single dataset.")
     parser.add_argument("--tokenized_dir", required=True, help="Directory containing rank_*/ shards.")
     parser.add_argument("--output_dir", required=True, help="Destination for the combined dataset.")
-    parser.add_argument("--manifest", default=None, help="Path to shard_manifest.json for verification.")
+    parser.add_argument("--manifest", default=None, help="Path to split_manifest.json for verification.")
     parser.add_argument("--overwrite", action="store_true", help="Allow replacing an existing output_dir.")
     return parser.parse_args()
 

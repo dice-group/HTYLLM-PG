@@ -13,7 +13,7 @@ set -euo pipefail
 
 TOKENIZED_DIR="/scratch/hpc-prf-merlin/joel/tokenized_fw"
 COMBINED_OUTPUT="/scratch/hpc-prf-merlin/joel/tokenized_fw_combined"
-MANIFEST_PATH="/scratch/hpc-prf-merlin/project_data/moe_study/fw_shards/shard_manifest.json"
+MANIFEST_PATH="/scratch/hpc-prf-merlin/project_data/moe_study/fw_split/split_manifest.json"
 
 mkdir -p "$(dirname "$COMBINED_OUTPUT")" logs
 
