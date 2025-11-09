@@ -14,4 +14,4 @@ set -e
 source ~/.bashrc
 conda activate moe
 
-python htyllm_pg/train_tokenizer.py /scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/preprocessed_tokenizer_subset/
+srun python htyllm_pg/train_tokenizer.py /scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/preprocessed_tokenizer_subset/
