@@ -560,6 +560,28 @@ class Linear(nn.Module, HydraLoraLayer):
 
         return output_tensor
 
+    def _adapter_delta(self, x: torch.Tensor, name: str) -> torch.Tensor:
+        """
+        Compute the HydraLoRA delta for a single adapter/expert.
+
+        HydraLoRA layout:
+          - lora_A[name]:      nn.Linear(in_features, r)
+          - lora_B[name]:      nn.ModuleList[nn.Linear(r, out_features)]
+          - lora_dropout[name]: nn.Dropout / nn.Identity
+        """
+        A = self.lora_A[name]              # nn.Linear
+        B_list = self.lora_B[name]         # ModuleList of nn.Linear
+        drop = self.lora_dropout[name]
+        scale = self.scaling[name]
+
+        # Match A's dtype to avoid mixed-precision issues
+        intermediate = drop(x.to(A.weight.dtype))  # [B, S, D_in]
+        a_dot_x = A(intermediate)                  # [B, S, r]
+
+        # Sum over the multiple B heads for this adapter
+        out = sum(B(a_dot_x) for B in B_list)      # [B, S, D_out]
+        return out * scale
+
     def __repr__(self) -> str:
         rep = super().__repr__()
         return "lora." + rep

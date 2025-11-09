@@ -405,7 +405,10 @@ class FinetuningArguments(
     cola_top_k: int = field(default=1, metadata={"help": "Top-k experts to select per token when mixture-of-experts is enabled."})
     cola_debug: bool = field(default=False, metadata={"help": "Enable verbose CoLA debugging output."})
 
-    
+    use_hydralora_experts: bool = field(default=False, metadata={"help": "Enable mixture-of-experts routing for HydraLoRA adapters."})
+    hydralora_num_experts: int = field(default=1, metadata={"help": "Number of experts per HydraLoRA layer when mixture-of-experts is enabled."})
+    hydralora_top_k: int = field(default=1, metadata={"help": "Top-k experts to select per token when mixture-of-experts is enabled."})
+    hydralora_debug: bool = field(default=False, metadata={"help": "Enable verbose HydraLoRA debugging output."})
 
     def __post_init__(self):
         def split_arg(arg):

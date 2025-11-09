@@ -722,6 +722,12 @@ def _setup_hydralora_tuning(
             "lora_alpha": finetuning_args.lora_alpha,
             "lora_dropout": finetuning_args.lora_dropout,
             "lora_num": finetuning_args.lora_num,
+
+            "use_hydralora_experts": finetuning_args.use_hydralora_experts,
+            "num_experts": finetuning_args.hydralora_num_experts,
+            "top_k": finetuning_args.hydralora_top_k,
+            "hydralora_debug": finetuning_args.hydralora_debug,
+
             "modules_to_save": finetuning_args.additional_target,
         }
 
@@ -741,11 +747,6 @@ def _setup_hydralora_tuning(
                 peft_type=PeftType.HYDRALORA,
                 inference_mode=False,
                 **peft_kwargs,
-
-                # NEW: MoE flags
-                use_hydralora_experts=finetuning_args.use_hydralora_experts,
-                num_experts=finetuning_args.hydralora_num_experts,
-                top_k=finetuning_args.hydralora_top_k,
             )
 
             model = get_peft_model(model, lora_config)
