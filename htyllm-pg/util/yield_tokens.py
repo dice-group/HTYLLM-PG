@@ -29,6 +29,6 @@ if __name__ == '__main__':
         if i >= 5:
             break
         print(f"Batch {i+1}: {len(batch)} texts")
-        print(f"First text preview: {batch[0][:100]}...")
+        print(f"First text preview: {batch[0][:10000]}...")
         print()
 
