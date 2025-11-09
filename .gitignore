@@ -87,3 +87,6 @@ logs/*
 evaluation_results/
 *.idx
 my-gpt2_text_document/
+
+# DeepSpeed - ignore all changes in DeepSpeed directory
+DeepSpeed/
