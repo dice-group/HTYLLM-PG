@@ -190,6 +190,12 @@ class HydraLoraModel(BaseTuner):
             "init_lora_weights": lora_config.init_lora_weights,
             "loaded_in_8bit": getattr(self.model, "is_loaded_in_8bit", False),
             "loaded_in_4bit": getattr(self.model, "is_loaded_in_4bit", False),
+
+            # Hydra hierarchical MoE settings
+            "use_hydralora_experts": lora_config.use_hydralora_experts,
+            "hydralora_num_experts": lora_config.num_experts,
+            "hydralora_top_k": lora_config.top_k,
+            "hydralora_debug": getattr(lora_config, "hydralora_debug", False),
         }
 
 
@@ -201,8 +207,8 @@ class HydraLoraModel(BaseTuner):
                 lora_dropout=lora_config.lora_dropout,
                 lora_num=lora_config.lora_num,
                 init_lora_weights=lora_config.init_lora_weights,
-                use_rslora=lora_config.use_rslora,
-                use_dora=lora_config.use_dora,
+                #use_rslora=lora_config.use_rslora,
+                #use_dora=lora_config.use_dora,
             )
         else:
             new_module = self._create_new_module(lora_config, adapter_name, target, **kwargs)

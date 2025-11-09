@@ -31,6 +31,10 @@ from peft.utils.other import transpose
 
 from .config import HydraLoraConfig
 
+import sys
+
+def debug(msg: str):
+    print(f"[DEBUG] {msg}", file=sys.stderr, flush=True)
 
 class HydraLoraLayer(BaseTunerLayer):
     # All names of layers that may contain (trainable) adapter weights
@@ -48,6 +52,11 @@ class HydraLoraLayer(BaseTunerLayer):
         self.lora_A = nn.ModuleDict({})
         self.lora_B = nn.ModuleDict({})
         self.lora_route = nn.ModuleDict({})
+
+        # Hierarchical / MoE bookkeeping
+        self._hydra_expert_parent: dict[str, str] = {}
+        self._hydra_parent_children: dict[str, list[str]] = {}
+
         # For Embedding layer
         self.lora_embedding_A = nn.ParameterDict({})
         self.lora_embedding_B = nn.ParameterDict({})
@@ -95,35 +104,60 @@ class HydraLoraLayer(BaseTunerLayer):
 
         # hierarchical design addition
         self.use_hydralora_experts = kwargs.pop("use_hydralora_experts", False)
-        self.num_experts = kwargs.pop("hydralora_num_experts", 4)
-        self.top_k = kwargs.pop("hydralora_top_k", 2)
+        self.num_experts = kwargs.pop("hydralora_num_experts", 1)
+        self.top_k = kwargs.pop("hydralora_top_k", 1)
+        self.hydralora_debug = kwargs.pop("hydralora_debug", False)
 
         if self.use_hydralora_experts:
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
+            if self.hydralora_debug:
+                debug(
+                    f"[HYDRA DEBUG] Initialized router in {self.__class__.__name__} "
+                    f"(in={self.in_features}, experts={self.num_experts}, top_k={self.top_k})"
+                )
 
 
     def update_layer(
         self, adapter_name, r, lora_alpha, lora_dropout, lora_num, init_lora_weights
     ):
-        if self.use_hydralora_experts and adapter_name == self._active_adapter:
+        # Hierarchical HydraLoRA
+        if self.use_hydralora_experts and adapter_name == getattr(self, "_active_adapter", adapter_name):
             self._active_adapters = []
+            adapter_children: list[str] = []
+
             for e in range(self.num_experts):
                 name = f"expert_{e}"
+                adapter_children.append(name)
+                self._hydra_expert_parent[name] = adapter_name
+
                 self.r[name] = r
                 self.lora_alpha[name] = lora_alpha
                 self.lora_num[name] = lora_num
                 self.lora_dropout[name] = nn.Dropout(lora_dropout) if lora_dropout > 0 else nn.Identity()
+                # Core Hydra concept: one A, multiple B per expert
                 self.lora_A[name] = nn.Linear(self.in_features, r, bias=False)
-                self.lora_B[name] = nn.ModuleList([nn.Linear(r, self.out_features, bias=False) for _ in range(lora_num)])
+                self.lora_B[name] = nn.ModuleList(
+                    [nn.Linear(r, self.out_features, bias=False) for _ in range(lora_num)]
+                )
                 self.lora_route[name] = nn.Linear(self.in_features, lora_num, bias=False)
                 self.scaling[name] = lora_alpha / r
 
-                # Reset the parameters for each expert
                 self.reset_lora_parameters(name, init_lora_weights)
+
                 self._move_adapter_to_device_of_base_layer(name)
                 self._active_adapters.append(name)
 
-            logger.info(f"[MoE-HydraLora] Created {self.num_experts} HydraLora experts (r={r}, lora_num={lora_num}, top_k={self.top_k})")
+            self._hydra_parent_children[adapter_name] = adapter_children
+
+            if self.hydralora_debug:
+                debug(
+                    f"[HYDRA DEBUG] Created {self.num_experts} HydraLoRA experts for parent '{adapter_name}' "
+                    f"(r={r}, lora_num={lora_num}, top_k={self.top_k})"
+                )
+                self._verify_hydralora_expert_init()
+
+            # Use the *parent* name for external API; children are stored in _hydra_parent_children
+            self.set_adapter(adapter_name)
             return
         
         # This code works for linear layers, override for other layer types
@@ -152,6 +186,36 @@ class HydraLoraLayer(BaseTunerLayer):
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
         self.set_adapter(self._active_adapters)
+
+    def set_adapter(self, adapter_names: Union[str, list[str]]) -> None:
+        """
+        Override BaseTunerLayer.set_adapter to support hierarchical Hydra experts:
+        - if a parent adapter is given, expand to its expert children.
+        - optionally enable/disable router grad based on whether any Hydra parent is active.
+        """
+        if isinstance(adapter_names, str):
+            adapter_names = [adapter_names]
+
+        expanded: list[str] = []
+        any_hydra_parent_active = False
+
+        for name in adapter_names:
+            # Parent: expand to its children
+            if self.use_hydralora_experts and name in self._hydra_parent_children:
+                expanded.extend(self._hydra_parent_children[name])
+                any_hydra_parent_active = True
+            else:
+                expanded.append(name)
+                # Also mark if an individual expert belonging to a Hydra parent is used
+                if self.use_hydralora_experts and name in self._hydra_expert_parent:
+                    any_hydra_parent_active = True
+
+        # Router grads only when Hydra hierarchy is actually in use
+        if self.use_hydralora_experts and hasattr(self, "router"):
+            self.router.requires_grad_(any_hydra_parent_active)
+
+        # Defer to BaseTunerLayer for actual bookkeeping
+        super().set_adapter(expanded)
 
     def reset_lora_parameters(self, adapter_name, init_lora_weights):
         if init_lora_weights is False:
@@ -261,6 +325,45 @@ class HydraLoraLayer(BaseTunerLayer):
 
         return result
 
+    def _verify_hydralora_expert_init(self) -> None:
+        """Debug helper similar to CoLA's _verify_cola_expert_init, but for HydraLoRA."""
+        if not getattr(self, "hydralora_debug", False):
+            return
+
+        debug(f"[HYDRA DEBUG] Verifying HydraLoRA experts in {self.__class__.__name__} ({self.num_experts} experts)")
+        for e in range(self.num_experts):
+            name = f"expert_{e}"
+            if name not in self.lora_A:
+                debug(f"  Expert {e} not found in lora_A; skipping")
+                continue
+            A = self.lora_A[name]
+            Bs = self.lora_B[name]
+            route = self.lora_route[name]
+            scale = self.scaling[name]
+
+            with torch.no_grad():
+                a_mean = A.weight.mean().item()
+                a_std = A.weight.std().item()
+                b_mean = torch.stack([b.weight.mean() for b in Bs]).mean().item()
+                b_std = torch.stack([b.weight.std() for b in Bs]).mean().item()
+                route_mean = route.weight.mean().item()
+                route_std = route.weight.std().item()
+
+            debug(
+                f"  Expert {e}: "
+                f"A.shape={tuple(A.weight.shape)}, "
+                f"num_B={len(Bs)}, "
+                f"B[0].shape={tuple(Bs[0].weight.shape)}, "
+                f"route.shape={tuple(route.weight.shape)}, "
+                f"scale={scale:.4f}"
+            )
+            debug(
+                f"    stats: A(mean={a_mean:.4e}, std={a_std:.4e}), "
+                f"B(mean={b_mean:.4e}, std={b_std:.4e}), "
+                f"route(mean={route_mean:.4e}, std={route_std:.4e})"
+            )
+        debug("[HYDRA DEBUG] Expert verification complete\n" + "=" * 60)    
+
 
 # Below code is based on https://github.com/microsoft/LoRA/blob/main/loralib/layers.py
 # and modified to work with PyTorch FSDP
@@ -339,6 +442,18 @@ class Linear(nn.Module, HydraLoraLayer):
                 logits = self.router(x.to(torch.float32)).to(x.dtype)
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
                 weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
+
+                if getattr(self, "hydralora_debug", False):
+                    with torch.no_grad():
+                        debug(
+                            f"[HYDRA DEBUG] Router in {self.__class__.__name__}: "
+                            f"logits_mean={logits.mean().item():.4e}, "
+                            f"logits_std={logits.std().item():.4e}"
+                        )
+                        # Show a single token’s top-k routing as a sample
+                        sample_w = weights[0, 0].detach().cpu().tolist()
+                        sample_i = topi[0, 0].detach().cpu().tolist()
+                        debug(f"[HYDRA DEBUG] Sample routing: indices={sample_i}, weights={sample_w}")
 
                 expert_outs = [self._adapter_delta(x, f"expert_{e}") for e in range(self.num_experts)]
                 expert_outs = torch.stack(expert_outs, dim=-1)  # [B, S, D_out, E]

@@ -107,9 +107,23 @@ class HydraLoraConfig(PeftConfig):
     lora_dropout: float = field(default=0.0, metadata={"help": "Lora dropout"})
     lora_num: int = field(default=1, metadata={"help": "Lora number"})
 
-    use_hydralora_experts: bool = False
-    num_experts: int = 4
-    top_k: int = 2
+    # Hierarchical HydraLoRA specific parameters
+    use_hydralora_experts: bool = field(
+        default=False,
+        metadata={"help": "Enable hierarchical HydraLoRA experts (router + experts)."},
+    )
+    num_experts: int = field(
+        default=4,
+        metadata={"help": "Number of HydraLoRA experts per adapted layer."},
+    )
+    top_k: int = field(
+        default=2,
+        metadata={"help": "Number of experts selected per token (top-k router gating)."},
+    )
+    hydralora_debug: bool = field(
+        default=False,
+        metadata={"help": "Enable additional HydraLoRA MoE debug diagnostics."},
+    )
 
 
     fan_in_fan_out: bool = field(
