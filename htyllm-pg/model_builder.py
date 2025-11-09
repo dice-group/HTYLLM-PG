@@ -57,7 +57,7 @@ class Attention(nn.Module):
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # compute dot product for each head and for each token pair (e.g. i, j)
                                                                  # i,e: score(i,j) = dot( q_i, k_j ) * scale <-> scale is for stability 
                                                                  # E.g. Head 0:
-                                                                #           Luke   likes   cats   (as *keys*)
+                                                                #           Luke   likes   cats   (as keys)
                                                                 # Luke    [ 1.2    0.1    0.5 ]
                                                                 # likes   [ 0.9    1.5    1.1 ]
                                                                 # cats    [ 0.2    0.3    1.8 ]

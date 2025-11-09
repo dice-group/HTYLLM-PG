@@ -3,6 +3,7 @@ from torch import nn
 import torch
 from torch.utils.data import DataLoader, Dataset
 import deepspeed
+from deepspeed import comm
 import argparse
 from model_builder import moe_builder
 from tqdm.auto import tqdm
@@ -22,7 +23,6 @@ def get_args() -> argparse.Namespace :
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
     return args
-
 
 
 def main():
@@ -54,6 +54,8 @@ def main():
         optimizer=optimizer,
         args=args,
     )
+
+    RANK = comm.get_rank()
 
     criterion = nn.CrossEntropyLoss().to(device)
     
@@ -113,15 +115,17 @@ def main():
                     test_losses.append(avg_test_loss)
                     test_steps.append(step)
                     
-                    print(f"{'='*30}\nEpoch [{epoch+1}/{args.epochs}], Step [{step}], "
-                        f"Train Loss: {loss.item():.4f}\n"
-                        f"Test Loss: {avg_test_loss:.4f}\n{'='*30}")
+                    if RANK == 0:
+                        print(f"Rank: {RANK}")
+                        print(f"{'='*30}\nEpoch [{epoch+1}/{args.epochs}], Step [{step}], "
+                            f"Train Loss: {loss.item():.4f}\n"
+                            f"Test Loss: {avg_test_loss:.4f}\n{'='*30}")
                     
-                    # Test prediction 
-                    test_pred, _ = model(torch.arange(10).unsqueeze(0).to(device))
-                    print(test_pred.shape)
-                    print("Prediction for [0,...,9]:", torch.argmax(test_pred.squeeze()[9]))
-                
+                        # Test prediction 
+                        test_pred, _ = model(torch.arange(10).unsqueeze(0).to(device))
+                        print(test_pred.shape)
+                        print("Prediction for [0,...,9]:", torch.argmax(test_pred.squeeze()[9]))
+                    
                 model.train()
 
     # Plot train and test loss

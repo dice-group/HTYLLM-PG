@@ -692,7 +692,6 @@ class TopKGate(Module):
             input_fp32 = multiplicative_jitter(input_fp32, device=input.device)
         if self.k == -1:
             logits, top_k = self.wg(input_fp32)
-            print(top_k)
         else:
             logits = torch.nn.functional.linear(input_fp32, weight=self.wg.weight.float(), bias=None)
 
