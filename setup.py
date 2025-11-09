@@ -15,5 +15,6 @@ setup(
         f'deepspeed @ file://{deepspeed_path.resolve()}',
         'matplotlib>=3.10.7',
         'tqdm>=4.67.1',
+        'tokenizers>=0.22.1',
     ],
 )
