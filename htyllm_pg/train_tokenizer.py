@@ -27,9 +27,10 @@ def train_tokenizer(folder_path, vocab_size=262_144, batch_size=1000):
     decoded = tokenizer.decode(encoded.ids)
     print(f"Roundtrip test - Original: {test_str}")
     print(f"Roundtrip test - Decoded:  {decoded}")
+    tokenizer.save("tokenizer.json")
+    
     assert test_str == decoded, "Encode-decode roundtrip failed!"
     
-    tokenizer.save("tokenizer.json")
 
 def test_tokenizer(tokenizer):
     test_sentences = {
