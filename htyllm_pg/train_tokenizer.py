@@ -12,7 +12,7 @@ def train_tokenizer(folder_path, vocab_size=262_144, batch_size=1000):
     ])
     tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
     
-    trainer = trainers.BpeTrainer(vocab_size=vocab_size, special_tokens="<|endoftext|>")
+    trainer = trainers.BpeTrainer(vocab_size=vocab_size, special_tokens=["<|endoftext|>"])
     
     print(f"Training tokenizer on data from: {folder_path}")
     tokenizer.train_from_iterator(
