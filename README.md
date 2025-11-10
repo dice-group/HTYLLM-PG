@@ -6,10 +6,22 @@
 pip install -e .
 ```
 
-## Run
+## Training
+
+### Local Training
 
 ```bash
-deepspeed htyllm-pg/model_builder.py
+deepspeed htyllm_pg/train.py --deepspeed_config ds_config.json
+
+# With custom hyperparameters
+deepspeed htyllm_pg/train.py --deepspeed_config ds_config.json \
+    --epochs 1 --batch-size 8 --lr 0.0001 --workers 8
+```
+
+### SLURM Multi-Node Training
+
+```bash
+sbatch htyllm_pg/slurm/train_test.sh
 ```
 
 ## Model Builder Usage
