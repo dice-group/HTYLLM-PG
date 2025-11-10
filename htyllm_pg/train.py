@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader, Dataset
 import deepspeed
 from deepspeed import comm
 import argparse
-from model_builder import moe_builder
+from htyllm_pg.model_builder import moe_builder
 from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 
