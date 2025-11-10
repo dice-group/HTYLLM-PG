@@ -44,14 +44,14 @@ def tokenize_and_save(input_folder, output_folder, tokenizer_path="tokenizer.jso
                 
                 if len(all_tokens) >= 100_000_000:
                     output_file = subfolder_output / f"tokens_{file_counter:05d}.npy"
-                    np.save(output_file, np.array(all_tokens, dtype=np.uint16))
+                    np.save(output_file, np.array(all_tokens, dtype=np.uint32))
                     print(f"  Saved {output_file.name} ({len(all_tokens)} tokens)")
                     all_tokens = []
                     file_counter += 1
         
         if all_tokens:
             output_file = subfolder_output / f"tokens_{file_counter:05d}.npy"
-            np.save(output_file, np.array(all_tokens, dtype=np.uint16))
+            np.save(output_file, np.array(all_tokens, dtype=np.uint32))
             print(f"  Saved {output_file.name} ({len(all_tokens)} tokens)")
         
         print(f"Completed {subfolder.name}\n")
