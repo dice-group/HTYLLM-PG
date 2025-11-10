@@ -1,5 +1,5 @@
 import argparse
-from htyllm_pg.util.yield_tokens import yield_tokens
+from htyllm_pg.util.yield_jsonl_gz import yield_jsonl_gz
 from tokenizers import models, normalizers, pre_tokenizers, trainers, Tokenizer, processors, decoders
 
 def train_tokenizer(folder_path, vocab_size=262_144, batch_size=1000):
@@ -16,7 +16,7 @@ def train_tokenizer(folder_path, vocab_size=262_144, batch_size=1000):
     
     print(f"Training tokenizer on data from: {folder_path}")
     tokenizer.train_from_iterator(
-        iterator=yield_tokens(folder_path, batch_size=batch_size),
+        iterator=yield_jsonl_gz(folder_path, batch_size=batch_size),
         trainer=trainer
     )
     tokenizer.post_processor = processors.ByteLevel(trim_offsets=False)

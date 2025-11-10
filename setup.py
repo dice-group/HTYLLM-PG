@@ -16,5 +16,6 @@ setup(
         'matplotlib>=3.10.7',
         'tqdm>=4.67.1',
         'tokenizers>=0.22.1',
+        'transformers>=4.57.1'
     ],
 )
