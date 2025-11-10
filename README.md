@@ -38,6 +38,6 @@ model = moe_builder(
 
 - **`k=-1`**: Enables dynamic routing from DynMoE (adaptive expert selection)
 - **`gate_backward`**: 
-  - `'ste'`: Straight-through estimator for binary gating (our approach)
-  - `'sing'`: DynMoE gradient computation method
+  - `'ste'`: Using sigmoid derivative for backprop in binary gating (our approach)
+  - `'sing'`: DynMoE gradient computation method (uses gradient = 1) 
 
