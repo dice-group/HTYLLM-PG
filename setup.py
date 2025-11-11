@@ -17,6 +17,7 @@ setup(
         'tqdm>=4.67.1',
         'tokenizers>=0.22.1',
         # 'lm_eval==0.4.8',     #uncomment if deepspeed reqs don't cover this, ATTENTION: deepspeed reqs mention 0.3.0, if problems arise
-        'transformers>=4.57.1'
+        'transformers>=4.57.1',
+        'numpy>=2.3.4'
     ],
 )
