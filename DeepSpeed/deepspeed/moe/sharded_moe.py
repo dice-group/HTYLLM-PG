@@ -563,13 +563,13 @@ class GAMoEGateT(torch.nn.Module):
         # LF: these are the "embeddings" for the experts - used to compute similarity between tokens and experts
         # self.register_parameter('sim_matrix', torch.nn.Parameter(torch.empty(max_expert_num, model_dim).T.contiguous(), requires_grad=True))
         self.gates = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=True)  # learnable threshold for each expert
-        self.experts_mask = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=False)  # non-learnable expert-mask
+        #self.experts_mask = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=False)  # non-learnable expert-mask
         self.temperature = torch.nn.Parameter(torch.log(torch.full([1], 1.0 / init_t, dtype=torch.float32)), requires_grad=False)
         # for init_t = 1.0 this will make temperature = 0
         self.clamp_max = torch.log(torch.tensor(1.0 / 0.01, dtype=torch.float32)).item()  # ~4.61
 
-        self.experts_mask.requires_grad_(False)  # FIX ME
-        self.experts_mask[:num_global_experts] = 1.0
+        #self.experts_mask.requires_grad_(False)  # FIX ME
+        #self.experts_mask[:num_global_experts] = 1.0
 
         self.fp32_gate = fp32_gate
         self.max_expert_num = max_expert_num
@@ -697,7 +697,8 @@ class TopKGate(Module):
 
         if self.k == -1:
             gate_output = topanygating_opt(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
-                                     self.min_capacity, top_k, self.wg.sim_matrix, self.wg.experts_mask, self.ep_group)
+                                     self.min_capacity, top_k, self.wg.sim_matrix, None #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn
+                                     , self.ep_group)
         elif self.k == 1:
             gate_output = top1gating(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
                                      self.min_capacity, used_token, self.noisy_gate_policy if self.training else None,
