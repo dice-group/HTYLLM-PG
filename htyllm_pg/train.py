@@ -20,7 +20,7 @@ def get_args() -> argparse.Namespace :
     parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate for AdamW optimizer!")
     parser.add_argument("--weight-decay", default=1e-4, type=float, dest="weight_decay")
     parser.add_argument("--checkpoint-dir", type=str, dest="checkpoint_dir", default="./checkpoints", help="Directory to save checkpoints")
-    parser.add_argument("--checkpoint-steps", type=int, dest="checkpoint_steps", default=1000, help="Save checkpoint every N steps")
+    parser.add_argument("--checkpoint-steps", type=int, dest="checkpoint_steps", default=10000, help="Save checkpoint every N steps")
     parser.add_argument("--load-checkpoint", type=int, dest="load_checkpoint", default=None, help="Checkpoint step to load, e.g. 1000")
     parser.add_argument("--local_rank", type=int, default=-1)
     parser = deepspeed.add_config_arguments(parser)
