@@ -210,7 +210,6 @@ def main():
             print(f"Final Test Loss: {avg_test_loss:.4f}")
             print(f"{'='*50}\n")
             wandb.log({"test_loss": avg_test_loss})
-        
             # Test prediction 
             test_pred, _ = model(torch.arange(10).unsqueeze(0).to(device))
             print(f"Test prediction shape: {test_pred.shape}")

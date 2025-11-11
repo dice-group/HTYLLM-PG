@@ -52,5 +52,6 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --deepspeed_config ds_config.json \
       --epochs 1 \
       --batch-size 8 \
-      --lr 1e-4
+      --lr 1e-4 \
+      --data-dir ../tokenized_data
 '
