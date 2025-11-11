@@ -9,7 +9,9 @@
 #SBATCH --output=logs/python_split-%j.out
 #SBATCH --error=logs/python_split-%j.err
 
-:"This takes all larges files (>512mb) and seperates them into different parts, for more efficient tokenization afterwards"
+# This takes all large files (>512 MB)
+# and separates them for efficient tokenization.
+# Takes ~10 min for 90 GB of compressed data with the compute resources above
 
 echo "Running Python-based parallel split with timing..."
 
