@@ -9,6 +9,24 @@ from typing import Iterator, List, Optional
 from datasets import Dataset
 from transformers import AutoTokenizer
 
+from language_subsets import (
+    five_representatives_mediods,
+    fourty_six_representatives_mediods,
+    hundred_ninty_nine_representatives_mediods,
+    ninty_five_representatives_mediods,
+    ten_representatives_mediods,
+    twenty_two_representatives_mediods,
+)
+
+LANGUAGE_SUBSET_MAP = {
+    "five_representatives_mediods": five_representatives_mediods,
+    "ten_representatives_mediods": ten_representatives_mediods,
+    "twenty_two_representatives_mediods": twenty_two_representatives_mediods,
+    "fourty_six_representatives_mediods": fourty_six_representatives_mediods,
+    "ninty_five_representatives_mediods": ninty_five_representatives_mediods,
+    "hundred_ninty_nine_representatives_mediods": hundred_ninty_nine_representatives_mediods,
+}
+
 
 def _resolve_rank_world(rank: Optional[int], world_size: Optional[int]) -> tuple[int, int]:
     if rank is not None:
@@ -37,13 +55,19 @@ def _resolve_rank_world(rank: Optional[int], world_size: Optional[int]) -> tuple
     return resolved_rank, max(1, resolved_world)
 
 
-def _list_shards(shard_dir: Path) -> List[Path]:
+def _list_shards(shard_dir: Path, languages: Optional[List[str]] = None) -> List[Path]:
     valid_suffixes = (".jsonl", ".jsonl.gz")
-    shards = sorted(
-        path
-        for path in shard_dir.rglob("*")
-        if path.is_file() and any(path.name.endswith(sfx) for sfx in valid_suffixes)
-    )
+    search_roots = [shard_dir] if not languages else [shard_dir / lang for lang in languages]
+    shards: List[Path] = []
+    for root in search_roots:
+        if not root.exists():
+            raise RuntimeError(f"Requested language directory is missing: {root}")
+        shards.extend(
+            path
+            for path in root.rglob("*")
+            if path.is_file() and any(path.name.endswith(sfx) for sfx in valid_suffixes)
+        )
+    shards.sort()
     if not shards:
         raise RuntimeError(f"No .jsonl or .jsonl.gz files found under {shard_dir}")
     return shards
@@ -88,6 +112,17 @@ def tokenize_fn(batch, tokenizer):
     return tokenized
 
 
+def _resolve_languages(explicit: Optional[List[str]], subset_name: Optional[str]) -> Optional[List[str]]:
+    if explicit and subset_name:
+        raise RuntimeError("Use either --languages or --language_subset, not both.")
+    if subset_name:
+        if subset_name not in LANGUAGE_SUBSET_MAP:
+            available = ", ".join(sorted(LANGUAGE_SUBSET_MAP))
+            raise RuntimeError(f"{subset_name} not found. Available subsets: {available}")
+        return LANGUAGE_SUBSET_MAP[subset_name]
+    return explicit
+
+
 def main(args):
     shard_dir = Path(args.shard_dir)
     print(f"Tokenizer used for tokenization: {args.model_name}")
@@ -95,7 +130,8 @@ def main(args):
     tokenizer.pad_token = tokenizer.eos_token
 
     rank, world_size = _resolve_rank_world(args.rank, args.world_size)
-    shards = _list_shards(shard_dir)
+    languages = _resolve_languages(args.languages, args.language_subset)
+    shards = _list_shards(shard_dir, languages)
     assigned = _assign_shards(shards, rank, world_size)
     if not assigned:
         raise RuntimeError(f"Rank {rank} received zero shard files. Check shard count vs. world size.")
@@ -129,6 +165,8 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.2-1B", help="Tokenizer model name or path.")
     parser.add_argument("--num_proc", type=int, default=1, help="Number of workers for tokenizer.map.")
     parser.add_argument("--rank", type=int, default=None, help="Rank override (defaults to SLURM env vars).")
+    parser.add_argument("--languages", nargs="+", default=None, help="Optional list of language directory names (e.g., eng_Latn deu_Latn).")
+    parser.add_argument("--language_subset", type=str, default=None, help="Name of a language list defined in language_subsets.py (e.g., twenty_two_representatives_mediods).")
     parser.add_argument("--world_size", type=int, default=None, help="World size override (defaults to SLURM env vars).")
     args = parser.parse_args()
     main(args)

@@ -20,6 +20,7 @@ PARTS_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/sharded_sam
 TOKENIZED_OUTPUT="/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/200_all_langs/llama_3.2-1B_256k_multilingual_tokenizer"
 TOKENIZER_NAME="/scratch/hpc-prf-merlin/project_data/moe_study/trained_multilingual_tokenizers/256k_vocab/llama-3.2-1B/"
 NUM_PROC=4
+LANGUAGE_SUBSET="fourty_six_representatives_mediods"
 
 mkdir -p "$TOKENIZED_OUTPUT" logs
 
@@ -29,4 +30,5 @@ srun python -u tokenize_slurm.py \
   --shard_dir "$PARTS_DIR" \
   --save_tokenized_data_dir "$TOKENIZED_OUTPUT" \
   --model_name "$TOKENIZER_NAME" \
-  --num_proc "$NUM_PROC"
+  --num_proc "$NUM_PROC" \
+  ${LANGUAGE_SUBSET:+--language_subset "$LANGUAGE_SUBSET"}
