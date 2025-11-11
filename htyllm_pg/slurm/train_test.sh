@@ -47,7 +47,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
     --node_rank=${SLURM_PROCID} \
     --master_addr="'${MASTER_ADDR}'" \
     --master_port="'${MASTER_PORT}'" \
-    htyllm-pg/train.py \
+    htyllm_pg/train.py \
       --deepspeed \
       --deepspeed_config ds_config.json \
       --epochs 1 \
