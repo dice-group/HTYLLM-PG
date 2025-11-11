@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader, Dataset
 import deepspeed
 from deepspeed import comm
 import argparse
+import wandb
 from htyllm_pg.model_builder import moe_builder
 from htyllm_pg.dataset import create_dataloaders
 from tqdm.auto import tqdm
@@ -22,6 +23,27 @@ def get_args() -> argparse.Namespace :
     parser.add_argument("--checkpoint-dir", type=str, dest="checkpoint_dir", default="./checkpoints", help="Directory to save checkpoints")
     parser.add_argument("--checkpoint-steps", type=int, dest="checkpoint_steps", default=10000, help="Save checkpoint every N steps")
     parser.add_argument("--load-checkpoint", type=int, dest="load_checkpoint", default=None, help="Checkpoint step to load, e.g. 1000")
+    
+    # Model architecture parameters
+    parser.add_argument("--vocab-size", type=int, dest="vocab_size", default=262144, help="Vocabulary size")
+    parser.add_argument("--max-seq-len", type=int, dest="max_seq_len", default=1000, help="Maximum sequence length")
+    parser.add_argument("--dim", type=int, default=768, help="Model dimension")
+    parser.add_argument("--depth", type=int, default=4, help="Number of transformer layers")
+    parser.add_argument("--heads", type=int, default=4, help="Number of attention heads")
+    parser.add_argument("--mlp-dim", type=int, dest="mlp_dim", default=512, help="MLP hidden dimension")
+    parser.add_argument("--dim-head", type=int, dest="dim_head", default=64, help="Dimension per attention head")
+    parser.add_argument("--dropout", type=float, default=0.0, help="Dropout rate")
+    parser.add_argument("--emb-dropout", type=float, dest="emb_dropout", default=0.0, help="Embedding dropout rate")
+    parser.add_argument("--moe-layers", type=int, nargs='+', dest="moe_layers", default=[0, 3], help="Which layers to use MoE")
+    parser.add_argument("--num-experts", type=int, dest="num_experts", default=4, help="Number of experts in MoE layers")
+    parser.add_argument("--k", type=int, default=-1, help="Top-k gating value")
+    parser.add_argument("--capacity-factor", type=float, dest="capacity_factor", default=1.5, help="Capacity factor for training")
+    parser.add_argument("--eval-capacity-factor", type=float, dest="eval_capacity_factor", default=2.0, help="Capacity factor for evaluation")
+    parser.add_argument("--min-capacity", type=float, dest="min_capacity", default=0.0, help="Minimum capacity for experts")
+    parser.add_argument("--use-residual", action="store_true", dest="use_residual", help="Use residual connection in MoE")
+    parser.add_argument("--gate-backward", type=str, dest="gate_backward", default="ste", help="Gate backward method")
+    parser.add_argument("--ep-size", type=int, dest="ep_size", default=1, help="Expert parallel size")
+    
     parser.add_argument("--local_rank", type=int, default=-1)
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
@@ -30,11 +52,28 @@ def get_args() -> argparse.Namespace :
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    vocab_size = 32_000
-    seq_len = 1_000
     args = get_args()
 
-    model_pytorch = moe_builder(vocab_size=vocab_size, max_seq_len=seq_len)
+    model_pytorch = moe_builder(
+        vocab_size=args.vocab_size,
+        max_seq_len=args.max_seq_len,
+        dim=args.dim,
+        depth=args.depth,
+        heads=args.heads,
+        mlp_dim=args.mlp_dim,
+        dim_head=args.dim_head,
+        dropout=args.dropout,
+        emb_dropout=args.emb_dropout,
+        moe_layers=args.moe_layers,
+        num_experts=args.num_experts,
+        k=args.k,
+        capacity_factor=args.capacity_factor,
+        eval_capacity_factor=args.eval_capacity_factor,
+        min_capacity=args.min_capacity,
+        use_residual=args.use_residual,
+        gate_backward=args.gate_backward,
+        ep_size=args.ep_size
+    )
 
     base_params = {
         "params": [p for p in model_pytorch.parameters() if p.requires_grad],
@@ -59,6 +98,36 @@ def main():
 
     RANK = comm.get_rank()
     
+    # Initialize wandb on rank 0
+    if RANK == 0:
+        wandb.init(
+            project="htyllm-pg",
+            config={
+                "vocab_size": args.vocab_size,
+                "max_seq_len": args.max_seq_len,
+                "dim": args.dim,
+                "depth": args.depth,
+                "heads": args.heads,
+                "mlp_dim": args.mlp_dim,
+                "dim_head": args.dim_head,
+                "dropout": args.dropout,
+                "emb_dropout": args.emb_dropout,
+                "moe_layers": args.moe_layers,
+                "num_experts": args.num_experts,
+                "k": args.k,
+                "capacity_factor": args.capacity_factor,
+                "eval_capacity_factor": args.eval_capacity_factor,
+                "min_capacity": args.min_capacity,
+                "use_residual": args.use_residual,
+                "gate_backward": args.gate_backward,
+                "ep_size": args.ep_size,
+                "lr": args.lr,
+                "weight_decay": args.weight_decay,
+                "batch_size": args.batch_size,
+                "epochs": args.epochs,
+            }
+        )
+    
     # Load checkpoint if specified
     global_step = 0
     if args.load_checkpoint:
@@ -74,13 +143,13 @@ def main():
     if args.data_dir:
         train_dataloader, train_sampler, test_dataloader, test_sampler = create_dataloaders(
             args.data_dir, 
-            seq_length=seq_len, 
+            seq_length=args.max_seq_len, 
             batch_size=args.batch_size, 
             num_workers=args.workers
         )
     else:
-        train_dataset = DummyTextDataset(vocab_size=vocab_size, seq_len=seq_len, num_samples=8_000)
-        test_dataset = DummyTextDataset(vocab_size=vocab_size, seq_len=seq_len, num_samples=2_000)
+        train_dataset = DummyTextDataset(vocab_size=args.vocab_size, seq_len=args.max_seq_len, num_samples=8_000)
+        test_dataset = DummyTextDataset(vocab_size=args.vocab_size, seq_len=args.max_seq_len, num_samples=2_000)
         train_dataloader = DataLoader(train_dataset, shuffle=True, num_workers=args.workers, batch_size=args.batch_size)
         test_dataloader = DataLoader(test_dataset, shuffle=False, num_workers=args.workers, batch_size=args.batch_size)
         train_sampler = None
@@ -104,8 +173,8 @@ def main():
             model.backward(loss)
             model.step()
             
-            if RANK == 0 and step % 100 == 0:
-                print(f"Epoch [{epoch+1}/{args.epochs}], Step [{step}], Train Loss: {loss.item():.4f}")
+            if RANK == 0:
+                wandb.log({"train_loss": loss.item(), "epoch": epoch, "step": global_step})
             
             # Save checkpoint periodically
             global_step += 1
@@ -140,6 +209,7 @@ def main():
             print(f"\n{'='*50}")
             print(f"Final Test Loss: {avg_test_loss:.4f}")
             print(f"{'='*50}\n")
+            wandb.log({"test_loss": avg_test_loss})
         
             # Test prediction 
             test_pred, _ = model(torch.arange(10).unsqueeze(0).to(device))
@@ -150,6 +220,7 @@ def main():
     # Save final model
     if RANK == 0:
         print("Saving final model...")
+        wandb.finish()
     model.save_checkpoint(args.checkpoint_dir, tag="final")
 
 class DummyTextDataset(Dataset):
