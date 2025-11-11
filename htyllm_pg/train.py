@@ -7,7 +7,6 @@ from deepspeed import comm
 import argparse
 from htyllm_pg.model_builder import moe_builder
 from tqdm.auto import tqdm
-import matplotlib.pyplot as plt
 
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 
@@ -66,12 +65,6 @@ def main():
     train_dataloader = DataLoader(train_dataset, shuffle=True, num_workers=args.workers, batch_size=args.batch_size)
     test_dataloader = DataLoader(test_dataset, shuffle=False, num_workers=args.workers, batch_size=args.batch_size)
 
-    # Lists to track losses for plotting
-    train_losses = []
-    test_losses = []
-    train_steps = []
-    test_steps = []
-
     for epoch in range(args.epochs): #normalerweise 1
 
         model.train()
@@ -88,59 +81,41 @@ def main():
             model.backward(loss)
             model.step()
             
-            # Track training loss
-            train_losses.append(loss.item())
-            train_steps.append(step)
+            if RANK == 0 and step % 100 == 0:
+                print(f"Epoch [{epoch+1}/{args.epochs}], Step [{step}], Train Loss: {loss.item():.4f}")
+
+    # Evaluation after training is complete
+    if RANK == 0:
+        print(f"\n{'='*50}")
+        print("Training complete! Starting evaluation...")
+        print(f"{'='*50}\n")
+    
+    model.eval()
+    with torch.inference_mode():
+        test_loss_sum = 0
+        num_test_batches = 0
+        
+        for input_ids, target in tqdm(test_dataloader, desc="Evaluating"):
+            input_ids = input_ids.to(device)
+            target = target.to(device)
+
+            output, l_aux = model(input_ids)
+            test_loss = criterion(output.float().transpose(1,2), target) + 0.01 * l_aux
+            test_loss_sum += test_loss.item()
+            num_test_batches += 1
             
-            if step % 100 == 0 and step != 0:
-                model.eval()
-                with torch.inference_mode():
-                    test_loss_sum = 0
-                    num_test_batches = 5  
-                    
-                    for i, (input_ids, target) in enumerate(test_dataloader):
-                        if i >= num_test_batches:
-                            break
-                            
-                        input_ids = input_ids.to(device)
-                        target = target.to(device)
-
-                        output, l_aux = model(input_ids)
-                        test_loss = criterion(output.float().transpose(1,2), target) + 0.01 * l_aux
-                        test_loss_sum += test_loss.item()
-                        
-                    avg_test_loss = test_loss_sum / num_test_batches
-                    
-                    # Track test loss
-                    test_losses.append(avg_test_loss)
-                    test_steps.append(step)
-                    
-                    if RANK == 0:
-                        print(f"Rank: {RANK}")
-                        print(f"{'='*30}\nEpoch [{epoch+1}/{args.epochs}], Step [{step}], "
-                            f"Train Loss: {loss.item():.4f}\n"
-                            f"Test Loss: {avg_test_loss:.4f}\n{'='*30}")
-                    
-                        # Test prediction 
-                        test_pred, _ = model(torch.arange(10).unsqueeze(0).to(device))
-                        print(test_pred.shape)
-                        print("Prediction for [0,...,9]:", torch.argmax(test_pred.squeeze()[9]))
-                    
-                model.train()
-
-    # Plot train and test loss
-    plt.figure(figsize=(10, 6))
-    plt.plot(train_steps, train_losses, label='Train Loss', alpha=0.7, linewidth=1)
-    plt.plot(test_steps, test_losses, label='Test Loss', marker='o', linewidth=2)
-    plt.xlabel('Training Step')
-    plt.ylabel('Loss')
-    plt.title('Training and Test Loss Over Time')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig('loss_plot_sign.png', dpi=150)
-    print(f"\nLoss plot saved as 'loss_plot.png'")
-    plt.show()
+        avg_test_loss = test_loss_sum / num_test_batches
+        
+        if RANK == 0:
+            print(f"\n{'='*50}")
+            print(f"Final Test Loss: {avg_test_loss:.4f}")
+            print(f"{'='*50}\n")
+        
+            # Test prediction 
+            test_pred, _ = model(torch.arange(10).unsqueeze(0).to(device))
+            print(f"Test prediction shape: {test_pred.shape}")
+            print(f"Prediction for [0,...,9]: {torch.argmax(test_pred.squeeze()[9])}")
+            print(f"{'='*50}\n")
 
 
 class DummyTextDataset(Dataset):
