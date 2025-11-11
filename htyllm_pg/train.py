@@ -21,6 +21,7 @@ def get_args() -> argparse.Namespace :
     parser.add_argument("--weight-decay", default=1e-4, type=float, dest="weight_decay")
     parser.add_argument("--checkpoint-dir", type=str, dest="checkpoint_dir", default="./checkpoints", help="Directory to save checkpoints")
     parser.add_argument("--checkpoint-steps", type=int, dest="checkpoint_steps", default=1000, help="Save checkpoint every N steps")
+    parser.add_argument("--load-checkpoint", type=int, dest="load_checkpoint", default=None, help="Checkpoint step to load, e.g. 1000")
     parser.add_argument("--local_rank", type=int, default=-1)
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
@@ -57,6 +58,15 @@ def main():
     )
 
     RANK = comm.get_rank()
+    
+    # Load checkpoint if specified
+    global_step = 0
+    if args.load_checkpoint:
+        tag = f"step_{args.load_checkpoint}"
+        _, client_state = model.load_checkpoint(args.checkpoint_dir, tag=tag)
+        global_step = int(args.load_checkpoint)
+        if RANK == 0:
+            print(f"Loaded checkpoint '{tag}', resuming from step {global_step}")
 
     criterion = nn.CrossEntropyLoss().to(device)
     
@@ -75,7 +85,6 @@ def main():
         test_dataloader = DataLoader(test_dataset, shuffle=False, num_workers=args.workers, batch_size=args.batch_size)
         train_sampler = None
 
-    global_step = 0
     for epoch in range(args.epochs): # normalerweise 1 
         # Set epoch for distributed sampler
         if train_sampler is not None:
