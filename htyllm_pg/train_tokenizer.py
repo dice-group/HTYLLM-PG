@@ -7,8 +7,8 @@ def train_tokenizer(folder_path, vocab_size=262_144, batch_size=1000):
     
     tokenizer.normalizer = normalizers.Sequence([
         normalizers.NFD(),
-        normalizers.Lowercase(),
-        normalizers.StripAccents()
+        # normalizers.Lowercase(),
+        # normalizers.StripAccents()
     ])
     tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
     
