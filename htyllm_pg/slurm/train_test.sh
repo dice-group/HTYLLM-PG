@@ -16,10 +16,6 @@ source ~/.bashrc
 
 conda activate moe
 
-export WANDB_API_KEY="your_api_key_here"
-wandb login --relogin
-
-
 module load system/CUDA/12.6.0
 module load compiler/GCCcore/12.3.0  
 

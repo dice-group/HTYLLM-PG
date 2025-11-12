@@ -100,6 +100,7 @@ def main():
     
     # Initialize wandb on rank 0
     if RANK == 0:
+        wandb.login(key="844fd819fc05b9e11ac9814b166ab940a5579dfb")
         wandb.init(
             project="htyllm-pg",
             config={
