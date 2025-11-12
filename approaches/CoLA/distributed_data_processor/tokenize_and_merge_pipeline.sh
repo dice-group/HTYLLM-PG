@@ -20,35 +20,13 @@ usage() {
   cat <<EOF
 Usage: $0 --shard-dir PATH --tokenizer NAME --output-root PATH [options]
 
-Required arguments:
-  --shard-dir PATH          Root directory that holds the per-language shard folders.
-  --tokenizer NAME          HF tokenizer name or path (passed to tokenize_slurm.py).
-  --output-root PATH        Final dataset location (e.g., /.../llama-3.2-1B_tokenizer/5_langs).
-
-Common options:
-  --language-subset NAME    Name defined in language_subsets.py (e.g., five_representatives_mediods).
-  --languages "A B C"       Explicit language folder list (mutually exclusive with --language-subset).
-  --num-ranks INT           Number of SLURM array tasks/ranks to launch (default: ${NUM_RANKS}).
-  --num-proc INT            Value for --num_proc passed to tokenize_slurm.py (default: ${NUM_PROC}).
-  --cpus-per-task INT       CPUs per SLURM task for tokenization (default: ${CPUS_PER_TASK}).
-  --mem MEM                 Memory per task for tokenization (default: ${MEM_PER_TASK}).
-  --time HH:MM:SS           Time limit per tokenization task (default: ${TIME_LIMIT}).
-  --partition NAME          SLURM partition to use (default: ${PARTITION}).
-  --merge-cpus INT          CPUs for merge job (default: ${MERGE_CPUS}).
-  --merge-mem MEM           Memory for merge job (default: ${MERGE_MEM}).
-  --merge-time HH:MM:SS     Time limit for merge job (default: ${MERGE_TIME}).
-  --merge-workers INT       --max_workers passed to merge_tokenized_ranks.py (default: ${MERGE_CPUS}).
-  --job-prefix STR          Prefix for SLURM job names (default: ${JOB_PREFIX}).
-  --log-root PATH           Directory to store log files (default: <output-root>_logs).
-  --trans-offline {0,1}     Set TRANSFORMERS_OFFLINE env flag (default: ${TRANSFORMERS_OFFLINE}).
-
-Example:
-  $0 --shard-dir /scratch/.../sharded_samples \\
-     --tokenizer meta-llama/Llama-3.2-1B \\
-     --language-subset five_representatives_mediods \\
-     --num-ranks 64 \\
-     --num-proc 4 \\
-     --output-root /scratch/.../hierarchical_adapter/llama-3.2-1B_tokenizer/5_langs
+Key options:
+  --language-subset NAME    Use a subset from language_subsets.py.
+  --languages "L1 L2"       Explicit language directories (mutually exclusive).
+  --num-ranks INT           SLURM array size (overrides subset defaults below).
+  --num-proc INT            Workers passed to tokenize_slurm.py --num_proc.
+  --cpus-per-task INT       CPUs per tokenization task.
+  --merge-workers INT       Worker count for merge_tokenized_ranks.py.
 EOF
 }
 
@@ -94,6 +72,22 @@ fi
 if [[ -n "${LANGUAGE_SUBSET}" && -n "${LANGUAGES}" ]]; then
   echo "Use either --language-subset or --languages, not both." >&2
   exit 1
+fi
+
+if [[ -n "${LANGUAGE_SUBSET}" ]]; then
+  preset_ranks=""
+  case "${LANGUAGE_SUBSET}" in
+    five_representatives_mediods) preset_ranks=5 ;;
+    ten_representatives_mediods) preset_ranks=10 ;;
+    twenty_two_representatives_mediods) preset_ranks=22 ;;
+    fourty_six_representatives_mediods) preset_ranks=46 ;;
+    ninty_five_representatives_mediods) preset_ranks=95 ;;
+    hundred_ninty_nine_representatives_mediods) preset_ranks=100 ;;  # cap at 100 slots
+  esac
+  if [[ -n "${preset_ranks}" ]]; then
+    NUM_RANKS="${preset_ranks}"
+    echo "Using ${NUM_RANKS} SLURM ranks for subset ${LANGUAGE_SUBSET}."
+  fi
 fi
 
 if [[ "${NUM_RANKS}" -lt 1 ]]; then
