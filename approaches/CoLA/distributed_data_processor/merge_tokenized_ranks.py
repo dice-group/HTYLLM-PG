@@ -1,47 +1,76 @@
 import argparse
 import shutil
+import tempfile
 from pathlib import Path
-
-from datasets import concatenate_datasets, load_from_disk
-
-
-def _discover_rank_dirs(root: Path) -> list[Path]:
-    rank_dirs = sorted(path for path in root.iterdir() if path.is_dir() and path.name.startswith("rank_"))
-    if not rank_dirs:
-        dataset_marker = root / "dataset_info.json"
-        if dataset_marker.exists():
-            return [root]
-        raise RuntimeError(f"No rank_* directories or dataset found under {root}. Nothing to merge.")
-    return rank_dirs
+from concurrent.futures import ProcessPoolExecutor
+from datasets import load_from_disk, concatenate_datasets
 
 
-def merge_ranks(input_root: Path, output_path: Path, overwrite: bool) -> None:
-    if output_path.exists():
+def merge_pair(args):
+    a, b, out = args
+    da = load_from_disk(str(a))
+    db = load_from_disk(str(b))
+    merged = concatenate_datasets([da, db])
+    merged.save_to_disk(str(out))
+    return out
+
+
+def discover_rank_dirs(root: Path) -> list[Path]:
+    ranks = sorted(p for p in root.iterdir() if p.is_dir() and p.name.startswith("rank_"))
+    if not ranks:
+        raise RuntimeError("No rank_* dirs found")
+    return ranks
+
+
+def pairwise_merge_concurrent(dirs: list[Path], tmp_root: Path, max_workers: int = 4) -> Path:
+    current = dirs
+
+    while len(current) > 1:
+        tasks = []
+        next_round = []
+
+        for i in range(0, len(current), 2):
+            if i + 1 == len(current):
+                next_round.append(current[i])
+                break
+
+            a, b = current[i], current[i + 1]
+            out = tmp_root / f"{a.name}__{b.name}"
+            tasks.append((a, b, out))
+
+        with ProcessPoolExecutor(max_workers=max_workers) as ex:
+            for out_dir in ex.map(merge_pair, tasks):
+                next_round.append(out_dir)
+
+        current = next_round
+
+    return current[0]
+
+
+def merge_ranks(root: Path, output: Path, overwrite: bool, workers: int):
+    if output.exists():
         if not overwrite:
-            raise RuntimeError(f"{output_path} already exists. Pass --overwrite to replace it.")
-        shutil.rmtree(output_path)
+            raise RuntimeError(f"{output} exists. Use --overwrite.")
+        shutil.rmtree(output)
 
-    rank_dirs = _discover_rank_dirs(input_root)
-    datasets = []
-    for rank_dir in rank_dirs:
-        print(f"Loading dataset from {rank_dir}")
-        datasets.append(load_from_disk(str(rank_dir)))
+    ranks = discover_rank_dirs(root)
 
-    print(f"Concatenating {len(datasets)} rank datasets")
-    combined = datasets[0] if len(datasets) == 1 else concatenate_datasets(datasets)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    combined.save_to_disk(str(output_path))
-    print(f"Combined dataset saved to {output_path}")
+    with tempfile.TemporaryDirectory() as tmp:
+        final_dir = pairwise_merge_concurrent(ranks, Path(tmp), workers)
+        shutil.copytree(final_dir, output)
+
+    print(f"Merged dataset saved to {output}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Merge tokenized rank_* datasets into one Dataset.")
-    parser.add_argument("--tokenized_root", type=Path, required=True, help="Directory containing rank_* subdirectories.")
-    parser.add_argument("--output_path", type=Path, required=True, help="Directory to save the merged dataset.")
-    parser.add_argument("--overwrite", action="store_true", help="Allow existing output_path to be overwritten.")
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--tokenized_root", type=Path, required=True)
+    ap.add_argument("--output_path", type=Path, required=True)
+    ap.add_argument("--overwrite", action="store_true")
+    ap.add_argument("--workers", type=int, default=4)
+    args = ap.parse_args()
 
-    merge_ranks(args.tokenized_root, args.output_path, args.overwrite)
+    merge_ranks(args.tokenized_root, args.output_path, args.overwrite, args.workers)
 
 
 if __name__ == "__main__":
