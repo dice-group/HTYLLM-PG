@@ -53,5 +53,10 @@ model = moe_builder(
   - `'ste'`: Using sigmoid derivative for backprop in binary gating (our approach)
   - `'sing'`: DynMoE gradient computation method (uses gradient = 1) 
 
-# Useful
+### Useful
 - `tail -f slurm-xxxxxx.out | stdbuf -oL tr '\r' '\n'`
+
+### Tokenizers
+
+- tokenizer_norm.json applies normalizers.Lowercase() and normalizers.StripAccents() which might not be a good idea since some languages rely on this (at least the second one)
+- tokenizer.json does not do this anymore (and hopefully is better) :v
