@@ -53,3 +53,5 @@ model = moe_builder(
   - `'ste'`: Using sigmoid derivative for backprop in binary gating (our approach)
   - `'sing'`: DynMoE gradient computation method (uses gradient = 1) 
 
+# Useful
+- `tail -f slurm-xxxxxx.out | stdbuf -oL tr '\r' '\n'`

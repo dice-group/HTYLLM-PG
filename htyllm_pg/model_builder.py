@@ -82,12 +82,48 @@ class Attention(nn.Module):
 
         return self.to_out(out) # project from inner_dim back to dim (get embeddings back)
 
+class FlashAttention(nn.Module):
+    """Flash Attention using PyTorch's scaled_dot_product_attention"""
+    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
+        super().__init__()
+        inner_dim = dim_head * heads
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads
+        self.dim_head = dim_head
+
+        self.norm = nn.LayerNorm(dim)
+        self.dropout_p = dropout
+
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+        
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        ) if project_out else nn.Identity()
+
+    def forward(self, x):
+        x = self.norm(x)
+        
+        qkv = self.to_qkv(x).chunk(3, dim = -1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
+        
+        # Use PyTorch's Flash Attention implementation
+        out = torch.nn.functional.scaled_dot_product_attention(
+            q, k, v, 
+            dropout_p=self.dropout_p if self.training else 0.0,
+            is_causal=False
+        )
+        
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)
+
 from deepspeed.moe.layer import MoE
 class Transformer(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., moe_layers:List[int]=[], 
                  num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
                  min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1, 
-                 topany_gating_impl='opt_mem'):
+                 topany_gating_impl='opt_mem', use_flash_attention=False):
         for moe in moe_layers:
             assert moe >= 0, "MOE layers must be greater than or equal to 0"
             assert moe < depth, "MOE layers must be less than the depth of the transformer"
@@ -96,9 +132,12 @@ class Transformer(nn.Module):
         self.layers = nn.ModuleList([])
         self.moe_losses = []
 
+        # Choose attention implementation
+        AttentionClass = FlashAttention if use_flash_attention else Attention
+
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout),
+                AttentionClass(dim, heads = heads, dim_head = dim_head, dropout = dropout),
                 FeedForward(dim, mlp_dim, dropout = dropout)
             ]))
 
@@ -139,7 +178,7 @@ class MoE_Transformer(nn.Module):
     def __init__(self, vocab_size, max_seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0., moe_layers: List[int] = [],
                  num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
                  min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1, 
-                 topany_gating_impl='opt_mem'):
+                 topany_gating_impl='opt_mem', use_flash_attention=False):
         super().__init__()
 
         self.token_embedding = nn.Embedding(vocab_size, dim) # lookup table for token_id -> embedding (shape: [vocab_size, dim], 
@@ -153,7 +192,7 @@ class MoE_Transformer(nn.Module):
                                       num_experts=num_experts, k=k, capacity_factor=capacity_factor,
                                       eval_capacity_factor=eval_capacity_factor, min_capacity=min_capacity,
                                       use_residual=use_residual, gate_backward=gate_backward, ep_size=ep_size,
-                                      topany_gating_impl=topany_gating_impl)
+                                      topany_gating_impl=topany_gating_impl, use_flash_attention=use_flash_attention)
 
         self.mlp_head = nn.Linear(dim, vocab_size)
 
@@ -172,7 +211,7 @@ def moe_builder(vocab_size: int, max_seq_len: int, dim=768, depth=4, heads=4, ml
                 dim_head=64, dropout=0., emb_dropout=0., moe_layers=[0, 3],
                 num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0,
                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1,
-                topany_gating_impl='opt_mem'):
+                topany_gating_impl='opt_mem', use_flash_attention=False):
     model = MoE_Transformer(
         vocab_size=vocab_size,
         max_seq_len=max_seq_len,
@@ -192,7 +231,8 @@ def moe_builder(vocab_size: int, max_seq_len: int, dim=768, depth=4, heads=4, ml
         use_residual=use_residual,
         gate_backward=gate_backward,
         ep_size=ep_size,
-        topany_gating_impl=topany_gating_impl
+        topany_gating_impl=topany_gating_impl,
+        use_flash_attention=use_flash_attention
     )
 
     return model
