@@ -75,6 +75,12 @@ def main():
         ep_size=args.ep_size
     )
 
+    pytorch_total_params = sum(p.numel() for p in model_pytorch.parameters() if p.requires_grad)
+
+    if RANK == 0:
+        print(f"Total parameters: {pytorch_total_params}")
+
+
     base_params = {
         "params": [p for p in model_pytorch.parameters() if p.requires_grad],
         "name": "parameters",
@@ -126,6 +132,7 @@ def main():
                 "weight_decay": args.weight_decay,
                 "batch_size": args.batch_size,
                 "epochs": args.epochs,
+                "total_trainable_params": pytorch_total_params,
             }
         )
     
