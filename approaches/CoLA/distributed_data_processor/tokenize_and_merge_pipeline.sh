@@ -9,12 +9,10 @@ NUM_PROC=1
 CPUS_PER_TASK=4
 MEM_PER_TASK=32G
 TIME_LIMIT=02:00:00
-PARTITION=normal
 MERGE_CPUS=4
 MERGE_MEM=64G
 MERGE_TIME=04:00:00
 JOB_PREFIX="tok"
-TRANSFORMERS_OFFLINE=1
 
 usage() {
   cat <<EOF
@@ -50,14 +48,12 @@ while [[ $# -gt 0 ]]; do
     --cpus-per-task) CPUS_PER_TASK="$2"; shift 2 ;;
     --mem) MEM_PER_TASK="$2"; shift 2 ;;
     --time) TIME_LIMIT="$2"; shift 2 ;;
-    --partition) PARTITION="$2"; shift 2 ;;
     --merge-cpus) MERGE_CPUS="$2"; shift 2 ;;
     --merge-mem) MERGE_MEM="$2"; shift 2 ;;
     --merge-time) MERGE_TIME="$2"; shift 2 ;;
     --merge-workers) MERGE_WORKERS="$2"; shift 2 ;;
     --job-prefix) JOB_PREFIX="$2"; shift 2 ;;
     --log-root) LOG_ROOT="$2"; shift 2 ;;
-    --trans-offline) TRANSFORMERS_OFFLINE="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
@@ -115,13 +111,12 @@ TOKEN_JOB_ID=$(
     --job-name="${JOB_PREFIX}_tok" \
     --nodes=1 \
     --ntasks=1 \
-    --cpus-per-task="${CPUS_PER_TASK}" \
-    --mem="${MEM_PER_TASK}" \
-    --time="${TIME_LIMIT}" \
-    --partition="${PARTITION}" \
-    --export=ALL,TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE}" \
-    --output="${LOG_ROOT}/tokenize_%A_%a.out" \
-    --error="${LOG_ROOT}/tokenize_%A_%a.err" \
+    --cpus-per-task=4 \
+    --mem=32G \
+    --time=01:00:00 \
+    --partition=normal \
+    --export=ALL \
+    --output="${LOG_ROOT}/tokenize_%A_%a.log" \
     --wrap "${TOKEN_CMD}"
 )
 
@@ -137,10 +132,9 @@ MERGE_JOB_ID=$(
     --cpus-per-task="${MERGE_CPUS}" \
     --mem="${MERGE_MEM}" \
     --time="${MERGE_TIME}" \
-    --partition="${PARTITION}" \
-    --export=ALL,TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE}" \
-    --output="${LOG_ROOT}/merge_%j.out" \
-    --error="${LOG_ROOT}/merge_%j.err" \
+    --partition=normal \
+    --export=ALL \
+    --output="${LOG_ROOT}/merge_%j.log" \
     --wrap "${MERGE_CMD}"
 )
 

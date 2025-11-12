@@ -5,8 +5,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --time=2:00:00
 #SBATCH --mem=16G
-#SBATCH --output=logs/tok_simple_%A_%a.out
-#SBATCH --error=logs/tok_simple_%A_%a.err
+#SBATCH --array=0-3
+#SBATCH --output=logs/tok_simple_%A_%a.log
 #SBATCH --partition=normal
 
 # Input a dir which includes shards in the same size
