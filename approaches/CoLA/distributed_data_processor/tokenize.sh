@@ -4,7 +4,6 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --time=2:00:00
-#SBATCH --array=0-199
 #SBATCH --mem=16G
 #SBATCH --output=logs/tok_simple_%A_%a.out
 #SBATCH --error=logs/tok_simple_%A_%a.err
@@ -17,10 +16,10 @@
 set -euo pipefail
 
 PARTS_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/sharded_samples"
-TOKENIZED_OUTPUT="/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/200_all_langs/llama_3.2-1B_256k_multilingual_tokenizer"
-TOKENIZER_NAME="/scratch/hpc-prf-merlin/project_data/moe_study/trained_multilingual_tokenizers/256k_vocab/llama-3.2-1B/"
+TOKENIZED_OUTPUT="/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter/llama-3.1-8B_tokenizer/5_langs"
+TOKENIZER_NAME="meta-llama/Llama-3.1-8B"
 NUM_PROC=4
-LANGUAGE_SUBSET="fourty_six_representatives_mediods"
+LANGUAGE_SUBSET="five_representatives_mediods"
 
 mkdir -p "$TOKENIZED_OUTPUT" logs
 
