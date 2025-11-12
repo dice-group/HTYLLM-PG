@@ -3,7 +3,7 @@
 #SBATCH --nodes=1      
 #SBATCH --ntasks-per-node=1           # 1 DeepSpeed launcher per node
 #SBATCH --cpus-per-task=4
-#SBATCH --time=05:30:00
+#SBATCH --time=18:00:00
 #SBATCH --partition=normal
 #SBATCH --mem=32GB
 #SBATCH --account=hpc-prf-merlin
