@@ -17,7 +17,7 @@ def get_args() -> argparse.Namespace :
     parser.add_argument("--data-dir", type=str, dest="data_dir", help="Path to tokenized data directory")
     parser.add_argument("--workers", default=8, type=int, help="Number of workers for the Dataloaders!")
     parser.add_argument("--epochs", default=1, type=int, help="Number of epochs of the training data!")
-    parser.add_argument("--batch-size", default=8, type=int, dest="batch_size", help="Batch size for training and testing!")
+    parser.add_argument("--batch-size", default=224, type=int, dest="batch_size", help="Batch size for training and testing!")
     parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate for AdamW optimizer!")
     parser.add_argument("--weight-decay", default=1e-4, type=float, dest="weight_decay")
     parser.add_argument("--checkpoint-dir", type=str, dest="checkpoint_dir", default="./checkpoints", help="Directory to save checkpoints")
@@ -26,16 +26,16 @@ def get_args() -> argparse.Namespace :
     
     # Model architecture parameters
     parser.add_argument("--vocab-size", type=int, dest="vocab_size", default=262144, help="Vocabulary size")
-    parser.add_argument("--max-seq-len", type=int, dest="max_seq_len", default=1000, help="Maximum sequence length")
-    parser.add_argument("--dim", type=int, default=768, help="Model dimension")
-    parser.add_argument("--depth", type=int, default=4, help="Number of transformer layers")
-    parser.add_argument("--heads", type=int, default=4, help="Number of attention heads")
-    parser.add_argument("--mlp-dim", type=int, dest="mlp_dim", default=512, help="MLP hidden dimension")
+    parser.add_argument("--max-seq-len", type=int, dest="max_seq_len", default=2048, help="Maximum sequence length")
+    parser.add_argument("--dim", type=int, default=512, help="Model dimension")
+    parser.add_argument("--depth", type=int, default=12, help="Number of transformer layers")
+    parser.add_argument("--heads", type=int, default=12, help="Number of attention heads")
+    parser.add_argument("--mlp-dim", type=int, dest="mlp_dim", default=2048, help="MLP hidden dimension")
     parser.add_argument("--dim-head", type=int, dest="dim_head", default=64, help="Dimension per attention head")
     parser.add_argument("--dropout", type=float, default=0.0, help="Dropout rate")
     parser.add_argument("--emb-dropout", type=float, dest="emb_dropout", default=0.0, help="Embedding dropout rate")
-    parser.add_argument("--moe-layers", type=int, nargs='+', dest="moe_layers", default=[0, 3], help="Which layers to use MoE")
-    parser.add_argument("--num-experts", type=int, dest="num_experts", default=4, help="Number of experts in MoE layers")
+    parser.add_argument("--moe-layers", type=int, nargs='+', dest="moe_layers", default=[0, 3, 6, 9], help="Which layers to use MoE")
+    parser.add_argument("--num-experts", type=int, dest="num_experts", default=8, help="Number of experts in MoE layers")
     parser.add_argument("--k", type=int, default=-1, help="Top-k gating value")
     parser.add_argument("--capacity-factor", type=float, dest="capacity_factor", default=1.5, help="Capacity factor for training")
     parser.add_argument("--eval-capacity-factor", type=float, dest="eval_capacity_factor", default=2.0, help="Capacity factor for evaluation")
@@ -77,10 +77,6 @@ def main():
 
     pytorch_total_params = sum(p.numel() for p in model_pytorch.parameters() if p.requires_grad)
 
-    if RANK == 0:
-        print(f"Total parameters: {pytorch_total_params}")
-
-
     base_params = {
         "params": [p for p in model_pytorch.parameters() if p.requires_grad],
         "name": "parameters",
@@ -103,9 +99,9 @@ def main():
     )
 
     RANK = comm.get_rank()
-    
     # Initialize wandb on rank 0
     if RANK == 0:
+        print(f"Total parameters: {pytorch_total_params:_}")
         wandb.login(key="844fd819fc05b9e11ac9814b166ab940a5579dfb")
         wandb.init(
             project="htyllm-pg",
