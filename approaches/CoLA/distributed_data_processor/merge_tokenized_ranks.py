@@ -38,9 +38,15 @@ def pairwise_merge_concurrent(dirs: list[Path], tmp_root: Path, max_workers: int
             out = tmp_root / f"{a.name}__{b.name}"
             tasks.append((a, b, out))
 
-        with ProcessPoolExecutor(max_workers=max_workers) as ex:
-            for out_dir in ex.map(merge_pair, tasks):
-                next_round.append(out_dir)
+        if tasks:
+            if max_workers <= 1:
+                for task in tasks:
+                    out_dir = merge_pair(task)
+                    next_round.append(out_dir)
+            else:
+                with ProcessPoolExecutor(max_workers=max_workers) as ex:
+                    for out_dir in ex.map(merge_pair, tasks):
+                        next_round.append(out_dir)
 
         current = next_round
 
