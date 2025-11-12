@@ -90,3 +90,6 @@ my-gpt2_text_document/
 
 
 *.egg-info/
+
+wandb/
+checkpoints/

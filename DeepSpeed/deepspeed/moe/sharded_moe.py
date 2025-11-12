@@ -499,6 +499,69 @@ def topanygating_opt(logits: Tensor, capacity_factor: float, min_capacity: int, 
 
     return l_aux, combine_weights, dispatch_mask, exp_counts
 
+# ==== OURs ======
+
+def topanygating_opt_mem(
+    logits: Tensor,
+    capacity_factor: float,
+    min_capacity: int,
+    K: Tensor,
+    gate_tensor=None,
+    expert_mask=None,
+    ep_group=None,
+) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    """Implements Top-Any Gating on already-binarized `logits` ∈ {0,1}."""
+
+    gates = logits                                   # [T, E] (binary)
+    mask = gates.bool()                              # [T, E] (bool)
+    exp_counts = mask.sum(dim=0)                     # [E] on device
+
+    # global capacity = max tokens per expert across all ranks
+    new_capacity = exp_counts.max()
+    dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.get_world_group())
+    capacity = torch.clamp(new_capacity, min=1)       # ensure at least 1 to avoid zero-sized tensors
+
+    num_experts = int(gates.shape[1])
+
+    # l_aux 
+    if gate_tensor is None or expert_mask is None:
+        me = gates.float().mean(dim=0)
+        ce = mask.float().mean(dim=0)
+        l_aux = torch.mean(me * ce) * num_experts * num_experts
+    else:
+        non_zero_mask = gates.sum(dim=1) > 0
+        if non_zero_mask.any():
+            normalized_gates = gates[non_zero_mask]
+            normalized_gates = normalized_gates / (normalized_gates.sum(dim=1, keepdim=True))
+            me = normalized_gates.mean(dim=0)
+            ce = mask[non_zero_mask].float().mean(dim=0)
+            load_balance_loss = torch.mean(me * ce) * num_experts * num_experts
+        else:
+            load_balance_loss = gates.new_zeros(())
+        efficiency_loss = gates.float().mean()
+        l_aux = diverse_and_simple_gate_loss(gate_tensor, expert_mask) + load_balance_loss + efficiency_loss
+
+    # Scatter-based routing (replaces one-hot + einsum) 
+    # per-(token,expert) slot index (0..capacity-1) for selected pairs
+    cumsum = torch.cumsum(mask.to(torch.int32), dim=0)       # [T, E]
+    idx = torch.where(mask, cumsum - 1, torch.zeros_like(cumsum)).clamp_min(0)
+
+    # per-(token,expert) weight split by K 
+    gate_weights = gates / torch.clamp(K, 1).unsqueeze(1)    # [T, E]
+
+    cap_int = int(capacity.item())
+    combine_weights = torch.zeros(
+        (gates.shape[0], gates.shape[1], cap_int),
+        device=logits.device,
+        dtype=logits.dtype,
+    )
+    src = (gate_weights * mask).unsqueeze(-1)                # [T, E, 1]
+    combine_weights.scatter_(2, idx.unsqueeze(-1), src)      # [T, E, C]
+
+    dispatch_mask = combine_weights.ne(0)                    # [T, E, C] bool
+    return l_aux, combine_weights, dispatch_mask, exp_counts.to('cpu')
+
+
 
 class GAMoEGateSignBackward(torch.autograd.Function):
     """Original DynMoe behaviour: use torch.sign in forward and straight-through (identity) in backward.
@@ -654,7 +717,8 @@ class TopKGate(Module):
                  use_rts: bool = True,
                  ep_group: Union[torch.distributed.ProcessGroup, None] = None,
                  top2_2nd_expert_sampling: bool = True,
-                 gate_backward: str = "sign") -> None:
+                 gate_backward: str = "sign",
+                 topany_gating_impl: str = "opt_mem") -> None:
         super().__init__()
 
         if k == -1:
@@ -673,6 +737,7 @@ class TopKGate(Module):
         self.drop_tokens = drop_tokens
         self.use_rts = use_rts
         self.top2_2nd_expert_sampling = top2_2nd_expert_sampling
+        self.topany_gating_impl = topany_gating_impl
 
     def _set_ep_group(self, ep_group):
         assert self.ep_group is None, 'Attempting to override an existing ep_group'
@@ -696,9 +761,16 @@ class TopKGate(Module):
             logits = torch.nn.functional.linear(input_fp32, weight=self.wg.weight.float(), bias=None)
 
         if self.k == -1:
-            gate_output = topanygating_opt(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
-                                     self.min_capacity, top_k, self.wg.sim_matrix, None #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn
-                                     , self.ep_group)
+            if self.topany_gating_impl == "opt_mem":
+                gate_output = topanygating_opt_mem(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
+                                         self.min_capacity, top_k, self.wg.sim_matrix, None #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn
+                                         , self.ep_group)
+            elif self.topany_gating_impl == "opt":
+                gate_output = topanygating_opt(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
+                                         self.min_capacity, top_k, self.wg.sim_matrix, None #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn
+                                         , self.ep_group)
+            else:
+                raise ValueError(f"Invalid topany_gating_impl: {self.topany_gating_impl}. Must be 'opt' or 'opt_mem'.")
         elif self.k == 1:
             gate_output = top1gating(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
                                      self.min_capacity, used_token, self.noisy_gate_policy if self.training else None,

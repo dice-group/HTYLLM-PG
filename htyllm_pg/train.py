@@ -43,6 +43,7 @@ def get_args() -> argparse.Namespace :
     parser.add_argument("--use-residual", action="store_true", dest="use_residual", help="Use residual connection in MoE")
     parser.add_argument("--gate-backward", type=str, dest="gate_backward", default="ste", help="Gate backward method")
     parser.add_argument("--ep-size", type=int, dest="ep_size", default=1, help="Expert parallel size")
+    parser.add_argument("--topany-gating-impl", type=str, dest="topany_gating_impl", default="opt_mem", help="Top-any gating implementation: 'opt' or 'opt_mem'")
     
     parser.add_argument("--local_rank", type=int, default=-1)
     parser = deepspeed.add_config_arguments(parser)
@@ -72,7 +73,8 @@ def main():
         min_capacity=args.min_capacity,
         use_residual=args.use_residual,
         gate_backward=args.gate_backward,
-        ep_size=args.ep_size
+        ep_size=args.ep_size,
+        topany_gating_impl=args.topany_gating_impl
     )
 
     pytorch_total_params = sum(p.numel() for p in model_pytorch.parameters() if p.requires_grad)
@@ -124,6 +126,7 @@ def main():
                 "use_residual": args.use_residual,
                 "gate_backward": args.gate_backward,
                 "ep_size": args.ep_size,
+                "topany_gating_impl": args.topany_gating_impl,
                 "lr": args.lr,
                 "weight_decay": args.weight_decay,
                 "batch_size": args.batch_size,
