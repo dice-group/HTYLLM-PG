@@ -72,17 +72,49 @@ fi
 
 if [[ -n "${LANGUAGE_SUBSET}" ]]; then
   preset_ranks=""
+  preset_merge_mem=""
+  preset_merge_time=""
   case "${LANGUAGE_SUBSET}" in
-    five_representatives_mediods) preset_ranks=5 ;;
-    ten_representatives_mediods) preset_ranks=10 ;;
-    twenty_two_representatives_mediods) preset_ranks=22 ;;
-    fourty_six_representatives_mediods) preset_ranks=46 ;;
-    ninty_five_representatives_mediods) preset_ranks=95 ;;
-    hundred_ninty_nine_representatives_mediods) preset_ranks=100 ;;  # cap at 100 slots
+    five_representatives_mediods)
+      preset_ranks=5
+      preset_merge_mem=64G
+      preset_merge_time=02:00:00
+      ;;
+    ten_representatives_mediods)
+      preset_ranks=10
+      preset_merge_mem=80G
+      preset_merge_time=03:00:00
+      ;;
+    twenty_two_representatives_mediods)
+      preset_ranks=22
+      preset_merge_mem=96G
+      preset_merge_time=04:00:00
+      ;;
+    fourty_six_representatives_mediods)
+      preset_ranks=46
+      preset_merge_mem=128G
+      preset_merge_time=06:00:00
+      ;;
+    ninty_five_representatives_mediods)
+      preset_ranks=95
+      preset_merge_mem=160G
+      preset_merge_time=08:00:00
+      ;;
+    hundred_ninty_nine_representatives_mediods)
+      preset_ranks=100
+      preset_merge_mem=192G
+      preset_merge_time=10:00:00
+      ;;
   esac
   if [[ -n "${preset_ranks}" ]]; then
     NUM_RANKS="${preset_ranks}"
     echo "Using ${NUM_RANKS} SLURM ranks for subset ${LANGUAGE_SUBSET}."
+  fi
+  if [[ -n "${preset_merge_mem}" ]]; then
+    MERGE_MEM="${preset_merge_mem}"
+  fi
+  if [[ -n "${preset_merge_time}" ]]; then
+    MERGE_TIME="${preset_merge_time}"
   fi
 fi
 
