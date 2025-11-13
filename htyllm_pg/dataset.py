@@ -8,6 +8,7 @@ class MultiLangTokenDataset(Dataset):
         self.seq_length = seq_length
         self.files = []
         self.cumulative_sizes = [0]
+        self._memmaps = {}
         
         # Collect all .npy files from all language directories
         for lang_dir in sorted(self.root_dir.iterdir()):
@@ -36,7 +37,10 @@ class MultiLangTokenDataset(Dataset):
         
         # Load the file and extract sequence
         filepath, _ = self.files[file_idx]
-        tokens = np.load(filepath, mmap_mode='r')
+        # cache memmaps
+        if filepath not in self._memmaps:
+            self._memmaps[filepath] = np.load(filepath, mmap_mode='r')
+        tokens = self._memmaps[filepath]
         
         start = local_idx * self.seq_length
         end = start + self.seq_length

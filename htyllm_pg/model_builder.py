@@ -198,7 +198,7 @@ class MoE_Transformer(nn.Module):
                                       use_residual=use_residual, gate_backward=gate_backward, ep_size=ep_size,
                                       topany_gating_impl=topany_gating_impl, use_flash_attention=use_flash_attention)
 
-        self.mlp_head = nn.Linear(dim, vocab_size)
+        self.output_projection = nn.Linear(dim, vocab_size)
 
     def forward(self, tokens):
         x = self.token_embedding(tokens)
@@ -208,7 +208,9 @@ class MoE_Transformer(nn.Module):
         x = self.dropout(x)
 
         x, l_aux = self.transformer(x)
-        return self.mlp_head(x), l_aux
+        # for [B, T, dim]  output_projection treats B, T as batch dimensions and dim as feature dimension
+        # maps each token to its vocab distribution (what comes after this token)
+        return self.output_projection(x), l_aux
 
 
 def moe_builder(vocab_size: int, max_seq_len: int, dim=768, depth=4, heads=4, mlp_dim=512, 
