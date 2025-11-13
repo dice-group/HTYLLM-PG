@@ -1,70 +1,110 @@
-## Distributed Tokenization Pipeline
+# Distributed Data Processor
 
-purpose. tokenization in three phases so workloads stay balanced across large multilingual corpora
+Tools for two simple steps: (1) load each sharded language file and tokenize it, (2) merge all tokenized shards into one Hugging Face dataset. Once the flow works for a single language subset + tokenizer, the same scripts repeat it for every subset/tokenizer combination you need.
 
-### 1. Shard the raw corpus
+## What you need
 
-```
-sbatch shard.sh
-```
+- SLURM with `sbatch`.
+- Shards laid out like `/scratch/.../sharded_samples/<lang>/*.jsonl.gz`.
+- Tokenizers available locally (HF cache or on disk).
 
-`shard_corpus.py` walks every language sub-directory, streams the underlying `.jsonl` / `.jsonl.gz` files, and writes uniformly sized shards (`shard_000000.jsonl.gz`, …) plus `shard_manifest.json` with sample counts. Adjust `SOURCE_DIR`, `SHARD_DIR`, and `TARGET_SHARD_BYTES` inside `shard.sh`
-
-### 2. Tokenize shards via SLURM array
+## Where the data lives
 
 ```
-sbatch tokenize.sh
+/scratch/hpc-prf-merlin/project_data/moe_study/
+├── fw_samples/
+│   └── sharded_samples/
+│       ├── eng_Latn/00000.jsonl_part_00000.jsonl.gz
+│       ├── rus_Cyrl/...
+│       └── ...
+└── tokenized/
+    └── hierarchical_adapter/
+        └── <tokenizer_name>/<subset>/
 ```
 
-Update `SHARD_DIR`, `TOKENIZED_OUTPUT`, `TOKENIZER_NAME`, and `NUM_PROC` in `tokenize.sh`. 
-This launches an slurm array, each task loads its slice of the shard list and writes to `TOKENIZED_OUTPUT/rank_XXXXX`. Because shards are equal in size, runtimes per rank shouldnt vary that much
+1. Tokenization jobs read the shards under `fw_samples/sharded_samples/<lang>/...`.
+2. Each SLURM rank writes its tokenized Hugging Face dataset to `<output-root>_ranks/rank_<id>/`.
+3. The merge job concatenates those rank datasets and saves the final dataset to `<output-root>/`.
 
-### 3. Combine & verify
-
-```
-sbatch combine.sh
-python verify_tokenization.py \
-  --manifest /path/to/shard_manifest.json \
-  --dataset_dir /path/to/tokenized_fw_combined
-```
-
-`combine_tokenized.py` loads every `rank_*/` dataset, concatenates them, and saves a single `load_from_disk` artifact. It also checks counts against the sharding manifest. Run `verify_tokenization.py` on either the combined dataset or the per-rank directory to double-check no samples were lost.
-
-Adjust the paths in `combine.sh` and the verification command for your environment. All scripts default to UTF-8 streaming with minimal memory overhead, so they can run on standard CPU partitions while the tokenizer itself uses Hugging Face datasets for batching.
-
----
-## Data layout on Merlin
-
-Tokenized datasets are at Otus cluster here: `/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter/`. 
-Each tokenizer gets its own directory, and each tokenizer directory contains the same language-pack buckets. Reference layout:
+Example for `--output-root /scratch/.../tokenized/hierarchical_adapter/llama-3.2-1B_tokenizer/5_langs`:
 
 ```
-/scratch/.../hierarchical_adapter
-├── llama-3.1-8B_tokenizer
-│   ├── 5_langs
-│   ├── 10_langs
-│   ├── 46_langs
-│   ├── 95_langs
-│   └── 199_langs
-├── llama-3.2-1B_tokenizer
-│   ├── 5_langs
-│   ├── 10_langs
-│   ├── 46_langs
-│   ├── 95_langs
-│   └── 199_langs
-└── llama-3.2-3B_tokenizer
-    ├── 5_langs
-    ├── 10_langs
-    ├── 46_langs
-    ├── 95_langs
-    └── 199_langs
+/scratch/.../llama-3.2-1B_tokenizer/5_langs_ranks/
+├── rank_00000/
+├── rank_00001/
+└── ...
+/scratch/.../llama-3.2-1B_tokenizer/5_langs/
+├── data-00000-of-00001.arrow
+├── dataset_info.json
+└── state.json
 ```
 
-Use these directories when pointing scripts at shards, copying tokenized ranks, or staging combined datasets for training.
-Use for ablations also
+## Quick smoke test
 
-### Helper
-original data sample from Nikit
+Run a single tokenizer + subset via:
+
+```bash
+bash tokenize_and_merge_pipeline.sh \
+  --shard-dir /scratch/.../fw_samples/sharded_samples \
+  --tokenizer meta-llama/Llama-3.2-1B \
+  --language-subset five_representatives_mediods \
+  --num-proc 4 \
+  --merge-cpus 6 \
+  --merge-mem 96G \
+  --merge-time 03:00:00 \
+  --merge-workers 4 \
+  --output-root /scratch/.../tokenized/hierarchical_adapter/llama-3.2-1B_tokenizer/5_langs_smoke \
+  --log-root logs/smoke_llama32b \
+  --job-prefix smoke_llama32b
+```
+
+This submits the tokenization array and its merge job. Check `logs/smoke_llama32b/` for progress.
+
+## Full run
+
+`bash main.sh` launches every tokenizer/subset combo and writes to:
+
+```
+/scratch/.../tokenized/hierarchical_adapter/
+├── llama-3.1-8B_tokenizer/{5,10,46,95,199}_langs
+├── llama-3.2-1B_tokenizer/{...}
+└── llama-3.2-3B_tokenizer/{...}
+```
+
+## Resources
+
+- Tokenization ranks always use 4 CPU / 32 GB / 1 h on `normal`.
+- Merge jobs auto-scale per subset:
+
+| Subset                      | Ranks | Merge Mem | Merge Time |
+|-----------------------------|-------|-----------|------------|
+| five_representatives...     | 5     | 64 GB     | 02:00      |
+| ten_representatives...      | 10    | 80 GB     | 03:00      |
+| twenty_two_representatives… | 22    | 96 GB     | 04:00      |
+| fourty_six_representatives… | 46    | 128 GB    | 06:00      |
+| ninty_five_representatives… | 95    | 160 GB    | 08:00      |
+| hundred_ninty_nine_representatives… | 100 | 192 GB | 10:00 |
+
+Override with `--merge-mem`, `--merge-time`, or `--merge-cpus` if needed.
+
+## Logs & outputs
+
+- Logs land in `logs/<job-prefix>/tokenize_%A_%a.log` and `logs/<job-prefix>/merge_%j.log`.
+- Rank outputs go to `<output-root>_ranks/`.
+- Final merged dataset saves to `<output-root>/`.
+
+## Scripts
+
+- `tokenize_and_merge_pipeline.sh` — runs one tokenizer/subset job.
+- `tokenize_all_tokenizers.sh` — loops over all combos.
+- `merge_tokenized_ranks.py` — merges `rank_*` datasets with progress logs.
+- `main.sh` — runs the full sweep.
+
+--- 
+
+--- 
+### Helper, trash, note section
+original data sample
 /scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/samples/
 
 /scratch/hpc-prf-merlin/joel
