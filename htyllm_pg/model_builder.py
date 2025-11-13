@@ -62,9 +62,10 @@ class Attention(nn.Module):
                                                                 # likes   [ 0.9    1.5    1.1 ]
                                                                 # cats    [ 0.2    0.3    1.8 ]
                                                                 #  ^ as queries
+        # make attention causal
         seq_len = dots.shape[-1]
-        mask = torch.triu(torch.ones(seq_len, seq_len, device=dots.device), diagonal=1).bool()
-        dots = dots.masked_fill(mask, float('-inf'))
+        mask = torch.triu(torch.ones(seq_len, seq_len, device=dots.device), diagonal=1).bool() # build triangular mask to prevent tokens from attending to future tokens 
+        dots = dots.masked_fill(mask, float('-inf')) # fill the upper triangle with -inf 
         attn = self.attend(dots) # This is than turned into probabilites:
                                     # Luke-row after softmax:  [0.60, 0.15, 0.25]
                                     # likes-row after softmax: [0.30, 0.40, 0.30]
