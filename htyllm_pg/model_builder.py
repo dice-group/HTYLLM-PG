@@ -22,7 +22,6 @@ class FeedForward(nn.Module):
         return self.net(x)
 
 class Attention(nn.Module):
-    # TODO: Implement causal attention -> right now this is not causal 
     def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
         super().__init__()
         inner_dim = dim_head *  heads
@@ -63,6 +62,9 @@ class Attention(nn.Module):
                                                                 # likes   [ 0.9    1.5    1.1 ]
                                                                 # cats    [ 0.2    0.3    1.8 ]
                                                                 #  ^ as queries
+        seq_len = dots.shape[-1]
+        mask = torch.triu(torch.ones(seq_len, seq_len, device=dots.device), diagonal=1).bool()
+        dots = dots.masked_fill(mask, float('-inf'))
         attn = self.attend(dots) # This is than turned into probabilites:
                                     # Luke-row after softmax:  [0.60, 0.15, 0.25]
                                     # likes-row after softmax: [0.30, 0.40, 0.30]
