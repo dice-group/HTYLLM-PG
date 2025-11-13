@@ -1,3 +1,5 @@
+# NOTE: english not contained in here
+
 five_representatives_mediods = [
     "wbm_Latn",
     "tel_Telu",
@@ -393,9 +395,3 @@ hundred_ninty_nine_representatives_mediods = [
     "ben_Latn",
 ]
 
-print("5 reps:", len(five_representatives_mediods))
-print("10 reps:", len(ten_representatives_mediods))
-print("22 reps:", len(twenty_two_representatives_mediods))
-print("46 reps:", len(fourty_six_representatives_mediods))
-print("95 reps:", len(ninty_five_representatives_mediods))
-print("199 reps:", len(hundred_ninty_nine_representatives_mediods))
