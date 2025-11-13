@@ -24,8 +24,10 @@ def discover_rank_dirs(root: Path) -> list[Path]:
 
 def pairwise_merge_concurrent(dirs: list[Path], tmp_root: Path, max_workers: int = 4) -> Path:
     current = dirs
+    stage = 0
 
     while len(current) > 1:
+        stage += 1
         tasks = []
         next_round = []
 
@@ -39,16 +41,21 @@ def pairwise_merge_concurrent(dirs: list[Path], tmp_root: Path, max_workers: int
             tasks.append((a, b, out))
 
         if tasks:
+            print(f"[merge][stage {stage}] starting {len(tasks)} pair(s); {len(current)} dataset(s) in queue.")
+        if tasks:
             if max_workers <= 1:
                 for task in tasks:
                     out_dir = merge_pair(task)
+                    print(f"[merge][stage {stage}] finished {Path(out_dir).name}")
                     next_round.append(out_dir)
             else:
                 with ProcessPoolExecutor(max_workers=max_workers) as ex:
                     for out_dir in ex.map(merge_pair, tasks):
+                        print(f"[merge][stage {stage}] finished {Path(out_dir).name}")
                         next_round.append(out_dir)
 
         current = next_round
+        print(f"[merge][stage {stage}] complete; {len(current)} dataset(s) remain.")
 
     return current[0]
 
