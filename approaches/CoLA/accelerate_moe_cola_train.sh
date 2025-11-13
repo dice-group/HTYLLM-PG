@@ -6,7 +6,7 @@
 #SBATCH --gres=gpu:h100:4
 #SBATCH --time=12:00:00
 #SBATCH --mem=256G
-#SBATCH --output=logs/train_moe_cola_acc_%j.out
+#SBATCH --output=logs/train_acc_moe_cola_%j.log
 #SBATCH --partition=gpu
 
 set -euo pipefail
@@ -18,15 +18,14 @@ module load lib/NCCL/2.22.3-GCCcore-13.3.0-CUDA-12.6.0
 source /opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3/etc/profile.d/conda.sh
 conda activate cola_llama_factory
 export CUDA_DEVICE_ORDER=PCI_BUS_ID
-export CUDA_VISIBLE_DEVICES=${SLURM_JOB_GPUS:-0,1,2,3}
+export CUDA_VISIBLE_DEVICES=${SLURM_JOB_GPUS:-0}
 python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count());"
 
 export WANDB_PROJECT="llama3.1-8b_moe_cola_training_accelerate"
 
 DATASET_DIR=./LLaMA-Factory/data
 OUTPUT_DIR=/scratch/hpc-prf-merlin/project_data/moe_study/saves/cola_moe_llama31_8b_acc
-MODEL_NAME_OR_PATH=/data/project_data/moe_study/models/llama-3.1-8B
-TRAIN_LOG=logs/train_moe_cola_acc_${SLURM_JOB_ID:-manual}.log
+MODEL_NAME_OR_PATH=meta-llama/Llama-3.1-8B
 ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml
 
 LM_EVAL_TASKS=belebele
@@ -37,8 +36,6 @@ LM_EVAL_WANDB_PREFIX=cola_moe_acc
 LM_EVAL_VISIBLE_GPUS=
 LM_EVAL_EXTRA_ARGS=
 TOKENIZED_PATH=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter/llama-3.1-8B_tokenizer/46_langs
-
-mkdir -p "${OUTPUT_DIR}" "$(dirname "$TRAIN_LOG")" "$LM_EVAL_OUTPUT_DIR"
 
 if [[ ! -f "$ACCEL_CONFIG" ]]; then
   echo "[ERROR] Accelerate config $ACCEL_CONFIG not found." >&2
@@ -63,7 +60,6 @@ srun accelerate launch \
   --stage sft \
   --do_train \
   --model_name_or_path "${MODEL_NAME_OR_PATH}" \
-  --resize_vocab true \
   --dataset c4 \
   --dataset_dir "${DATASET_DIR}" \
   --template llama3 \
@@ -83,7 +79,7 @@ srun accelerate launch \
   --bf16 True \
   --fp16 False \
   --cola_debug \
-  "${TOKENIZED_ARGS[@]}" 2>&1 | tee "$TRAIN_LOG"
+  "${TOKENIZED_ARGS[@]}"
 
 echo "[INFO] Training finished at $(date)"
 
