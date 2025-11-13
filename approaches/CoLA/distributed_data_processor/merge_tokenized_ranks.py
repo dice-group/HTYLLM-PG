@@ -22,10 +22,21 @@ def discover_rank_dirs(root: Path) -> list[Path]:
     return ranks
 
 
+def _count_stages(total: int) -> int:
+    count = 0
+    current = total
+    while current > 1:
+        count += 1
+        current = (current // 2) + (current % 2)
+    return max(count, 0)
+
+
 def pairwise_merge_concurrent(dirs: list[Path], tmp_root: Path, max_workers: int = 4) -> Path:
     current = dirs
     stage = 0
+    total_stages = _count_stages(len(current))
 
+    total_initial = len(current)
     while len(current) > 1:
         stage += 1
         tasks = []
@@ -43,22 +54,30 @@ def pairwise_merge_concurrent(dirs: list[Path], tmp_root: Path, max_workers: int
             out = stage_dir / f"pair_{pair_idx:05d}"
             tasks.append((a, b, out))
 
+        remaining_pct = (len(current) / total_initial) * 100
         if tasks:
-            print(f"[merge][stage {stage}] starting {len(tasks)} pair(s); {len(current)} dataset(s) in queue.")
+            print(f"[merge][stage {stage}/{total_stages}] start: {len(tasks)} pairs, {len(current)} datasets ({remaining_pct:.1f}%).")
+        completed = 0
+        total_pairs = len(tasks)
         if tasks:
             if max_workers <= 1:
                 for task in tasks:
                     out_dir = merge_pair(task)
-                    print(f"[merge][stage {stage}] finished {Path(out_dir).name}")
+                    completed += 1
+                    pct_pairs = (completed / total_pairs) * 100 if total_pairs else 100
+                    print(f"[merge][stage {stage}/{total_stages}] pair {completed}/{total_pairs} done ({pct_pairs:.1f}%).")
                     next_round.append(out_dir)
             else:
                 with ProcessPoolExecutor(max_workers=max_workers) as ex:
                     for out_dir in ex.map(merge_pair, tasks):
-                        print(f"[merge][stage {stage}] finished {Path(out_dir).name}")
+                        completed += 1
+                        pct_pairs = (completed / total_pairs) * 100 if total_pairs else 100
+                        print(f"[merge][stage {stage}/{total_stages}] pair {completed}/{total_pairs} done ({pct_pairs:.1f}%).")
                         next_round.append(out_dir)
 
         current = next_round
-        print(f"[merge][stage {stage}] complete; {len(current)} dataset(s) remain.")
+        remaining_pct = (len(current) / total_initial) * 100 if total_initial else 0
+        print(f"[merge][stage {stage}/{total_stages}] end: {len(current)} datasets remain ({remaining_pct:.1f}%).")
 
     return current[0]
 
