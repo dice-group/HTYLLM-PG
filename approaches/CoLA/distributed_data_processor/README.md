@@ -2,6 +2,20 @@
 
 Tools for two simple steps: (1) load each sharded language file and tokenize it, (2) merge all tokenized shards into one Hugging Face dataset. Once the flow works for a single language subset + tokenizer, the same scripts repeat it for every subset/tokenizer combination you need.
 
+```
+Sharded JSONL(.gz) per language
+          │
+          ▼
+tokenize_and_merge_pipeline.sh
+          │
+          ├── Tokenization array → <output>_ranks/rank_*
+          ▼
+  merge_tokenized_ranks.py
+          │
+          ▼
+ Final HF dataset @ <output>
+```
+
 ## What you need
 
 - SLURM with `sbatch`.
