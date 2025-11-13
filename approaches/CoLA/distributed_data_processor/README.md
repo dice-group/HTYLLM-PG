@@ -93,6 +93,16 @@ Override with `--merge-mem`, `--merge-time`, or `--merge-cpus` if needed.
 - Rank outputs go to `<output-root>_ranks/`.
 - Final merged dataset saves to `<output-root>/`.
 
+## Verify outputs
+
+Edit the constants at the top of `verify_tokenized_outputs.py` (output base path, report path, etc.), then run:
+
+```bash
+python verify_tokenized_outputs.py
+```
+
+The script scans every `<tokenizer>/<subset>` dataset, gathers sample/token counts, and writes a Markdown summary (default `logs/dataset_report.md`) with collapsible sections per tokenizer.
+
 ## Scripts
 
 - `tokenize_and_merge_pipeline.sh` — runs one tokenizer/subset job.
