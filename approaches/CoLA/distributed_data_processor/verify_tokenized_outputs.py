@@ -1,22 +1,21 @@
-#!/usr/bin/env python
-"""
-Scan the tokenized output tree, load each Hugging Face dataset, and dump basic stats.
-"""
-
 from __future__ import annotations
-
 import json
 import os
+
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
-
 from datasets import load_from_disk
 
+"""
+Scan the tokenized output tree, load each Hugging Face dataset, and dump basic stats.
+TODO: this can be paralellized to get exact stat quickly, but ig estimating should be enough and is simplest, but extend if necessary with more stats
+"""
+
 OUTPUT_BASE = Path("/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter")
-REPORT_PATH = Path("logs/dataset_report.md")
-MAX_TOKEN_SAMPLES = 0  # 0 = use whole dataset, otherwise sample this many rows to estimate tokens
+REPORT_PATH = Path("dataset_stats.md")
+MAX_TOKEN_SAMPLES = 1000  # 0 = use whole dataset, otherwise sample this many rows to estimate tokens
 VERBOSE = True
 
 
