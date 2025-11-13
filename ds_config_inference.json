@@ -1,0 +1,11 @@
+{
+  "train_batch_size": 1,
+  "train_micro_batch_size_per_gpu": 1,
+  "fp16": {
+    "enabled": true
+  },
+  "checkpoint": {
+    "load_dir": "./checkpoints"
+  }
+}
+
