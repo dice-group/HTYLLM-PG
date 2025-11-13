@@ -22,6 +22,7 @@ class FeedForward(nn.Module):
         return self.net(x)
 
 class Attention(nn.Module):
+    # TODO: Implement causal attention -> right now this is not causal 
     def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
         super().__init__()
         inner_dim = dim_head *  heads
@@ -112,7 +113,7 @@ class FlashAttention(nn.Module):
         out = torch.nn.functional.scaled_dot_product_attention(
             q, k, v, 
             dropout_p=self.dropout_p if self.training else 0.0,
-            is_causal=False
+            is_causal=True
         )
         
         out = rearrange(out, 'b h n d -> b n (h d)')
