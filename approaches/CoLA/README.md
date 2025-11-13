@@ -18,25 +18,7 @@ For reproducibility, we open-source our data and code; the open-source list is a
 - The training and testing datasets after Fineval translation into English (`LLaMA-Factory/data/fineval_train-en.json` and `LLaMA-Factory/evaluation/fineval/test/*.csv`)
 - Baseline code for single-domain (peft, please place it in your own conda environment, e.g., `/home/root/miniconda3/envs/llama_factory/lib/python3.10/site-packages/peft`). Due to inconsistencies across multiple modified Transformers repositories, please refer to the corresponding paper repositories for multi-domain baselines.
 - Complete fine-tuning code (`LLaMA-Factory`)
-
-## HTYLLM addition
-After setting up the Conda environment using environment.yaml, uninstall llamafactory and peft, then reinstall them in editable mode from this repository.
-
-### Use extended tokenizer with llamafactory
-since we use extended tokenizer, llamafactory doesnt allow flag to give separate tokenizer -> workaround is to creata a new modle folder including the extended tokenizer and the original model
-
-e.g like this 
-```
-export BASE_SNAPSHOT=/data/shared_home_cache/hub/models--meta-llama--Llama-3.2-1B/snapshots/4e20de362430cd3b72f300e6b0f18e50e7166e08
-export NEW_TOKENIZER=/data/project_data/moe_study/trained_multilingual_tokenizers/256k_vocab/llama-3.2-1B
-export TARGET_DIR=/data/project_data/moe_study/models/llama-3.2-1B-multilingual
-
-mkdir -p "$TARGET_DIR"
-rsync -a "$BASE_SNAPSHOT"/ "$TARGET_DIR"/
-rsync -a "$NEW_TOKENIZER"/ "$TARGET_DIR"/
- ```
-adapt this, its bc i tried with symlink before which didnt work
-
+- 
 
 ## 🚀Download & Installation
 

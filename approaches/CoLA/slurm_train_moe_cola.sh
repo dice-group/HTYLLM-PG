@@ -58,7 +58,6 @@ srun llamafactory-cli train \
   --stage sft \
   --do_train \
   --model_name_or_path "${MODEL_NAME_OR_PATH}" \
-  --resize_vocab true \
   --dataset c4 \
   --dataset_dir "${DATASET_DIR}" \
   --template llama3 \
