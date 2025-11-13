@@ -30,6 +30,8 @@ def pairwise_merge_concurrent(dirs: list[Path], tmp_root: Path, max_workers: int
         stage += 1
         tasks = []
         next_round = []
+        stage_dir = tmp_root / f"stage_{stage:03d}"
+        stage_dir.mkdir(parents=True, exist_ok=True)
 
         for i in range(0, len(current), 2):
             if i + 1 == len(current):
@@ -37,7 +39,8 @@ def pairwise_merge_concurrent(dirs: list[Path], tmp_root: Path, max_workers: int
                 break
 
             a, b = current[i], current[i + 1]
-            out = tmp_root / f"{a.name}__{b.name}"
+            pair_idx = i // 2
+            out = stage_dir / f"pair_{pair_idx:05d}"
             tasks.append((a, b, out))
 
         if tasks:

@@ -110,9 +110,9 @@ The script scans every `<tokenizer>/<subset>` dataset, gathers sample/token coun
 - `merge_tokenized_ranks.py` — merges `rank_*` datasets with progress logs.
 - `main.sh` — runs the full sweep.
 
---- 
+---
 
---- 
+---
 ### Helper, trash, note section
 original data sample
 /scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/samples/
@@ -130,3 +130,28 @@ five_representatives_mediods
 meta-llama/Llama-3.1-8B
 meta-llama/Llama-3.2-3B
 meta-llama/Llama-3.2-1B
+
+#### Cleanup helper
+
+for clean up everythign if necessary: 
+
+```bash
+BASE=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter
+TOKENIZERS=(llama-3.1-8B_tokenizer llama-3.2-1B_tokenizer llama-3.2-3B_tokenizer)
+SUBSETS=(5_langs 10_langs 46_langs 95_langs 199_langs)
+for tok in "${TOKENIZERS[@]}"; do
+  for subset in "${SUBSETS[@]}"; do
+    TARGET="${BASE}/${tok}/${subset}"
+    echo "Resetting ${TARGET}"
+    rm -rf "${TARGET}" "${TARGET}_ranks"
+    mkdir -p "${TARGET}"
+  done
+done
+```
+verify 
+```bash
+tree /scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter
+```
+```
+rm -rf logs/full_tok_llama-3.*
+```
