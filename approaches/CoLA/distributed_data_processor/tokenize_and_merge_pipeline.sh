@@ -92,7 +92,7 @@ if [[ "${NUM_RANKS}" -lt 1 ]]; then
 fi
 
 MERGE_WORKERS="${MERGE_WORKERS:-${MERGE_CPUS}}"
-LOG_ROOT="${LOG_ROOT:-${OUTPUT_ROOT}_logs}"
+LOG_ROOT="${LOG_ROOT:-logs/${JOB_PREFIX}}"
 RANK_OUTPUT_DIR="${OUTPUT_ROOT}_ranks"
 mkdir -p "${LOG_ROOT}" "${RANK_OUTPUT_DIR}"
 
