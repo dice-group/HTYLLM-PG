@@ -98,24 +98,23 @@ srun accelerate launch \
   --num_train_epochs 1 \
   --per_device_train_batch_size 1 \
   --per_device_eval_batch_size 1 \
-  --num_A 1 \
-  --num_B 1 \
+  --num_A 2 \
+  --num_B 4 \
   --lora_rank 4 \
   --lora_alpha 8 \
   --use_cola_experts \
-  --cola_num_experts 2 \
+  --cola_num_experts 4 \
   --cola_top_k 2 \
   --bf16 True \
   --fp16 False \
   --cola_debug \
+  --report_to wandb \
   "${TOKENIZED_ARGS[@]}"
 
-#--do_eval \
-  #--evaluation_strategy steps \
-  #--eval_steps 500 \
-  #--report_to wandb \
 echo "[INFO] Training finished at $(date)"
-
+  #--do_eval \
+  #--evaluation_strategy steps \
+  #--eval_steps 500  \
 echo "[INFO] Collecting checkpoints for evaluation..."
 mapfile -t CHECKPOINTS < <(find "${OUTPUT_DIR}" -maxdepth 1 -type d -name 'checkpoint-*' | sort -V)
 
