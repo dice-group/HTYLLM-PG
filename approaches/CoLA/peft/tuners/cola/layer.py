@@ -277,12 +277,19 @@ class ColaLayer(BaseTunerLayer):
                 "Please initialize PiSSA under float32, float16, or bfloat16. "
                 "Subsequently, re-quantize the residual model to help minimize quantization errors."
             )
+        rank, world_size = self._distributed_rank_world()
+        nan_count = torch.isnan(weight).sum().item()
+        inf_count = torch.isinf(weight).sum().item()
+        print(
+            f"[PiSSA-DEBUG] rank={rank}/{world_size} layer={self.get_base_layer().__class__.__name__} "
+            f"shape={tuple(weight.shape)} nan={nan_count} inf={inf_count}",
+            flush=True,
+        )
         if not torch.isfinite(weight).all():
             raise ValueError(
                 "Encountered non-finite values in base weight while running PiSSA init. "
                 "Ensure FSDP/ZeRO shards are materialized before initialization."
             )
-        rank, world_size = self._distributed_rank_world()
         weight_fp32 = weight.to(torch.float32)  # run SVD under higher precision for stability
         compute_device = self._preferred_svd_device(weight_fp32)
         weight_fp32 = weight_fp32.to(compute_device)
@@ -333,12 +340,19 @@ class ColaLayer(BaseTunerLayer):
                 "Please initialize PiSSA under float32, float16, or bfloat16. "
                 "Subsequently, re-quantize the residual model to help minimize quantization errors."
             )
+        rank, world_size = self._distributed_rank_world()
+        nan_count = torch.isnan(weight).sum().item()
+        inf_count = torch.isinf(weight).sum().item()
+        print(
+            f"[PiSSA-DEBUG] rank={rank}/{world_size} layer={self.get_base_layer().__class__.__name__} "
+            f"shape={tuple(weight.shape)} nan={nan_count} inf={inf_count}",
+            flush=True,
+        )
         if not torch.isfinite(weight).all():
             raise ValueError(
                 "Encountered non-finite values in base weight while running shared PiSSA init. "
                 "Ensure FSDP/ZeRO shards are materialized before initialization."
             )
-        rank, world_size = self._distributed_rank_world()
         weight_fp32 = weight.to(torch.float32)  # work on dense fp32 copy undependant of original dtype
         compute_device = self._preferred_svd_device(weight_fp32)
         weight_fp32 = weight_fp32.to(compute_device)
