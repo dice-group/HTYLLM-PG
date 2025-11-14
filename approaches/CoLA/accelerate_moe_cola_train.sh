@@ -32,11 +32,40 @@ python -c "import torch; print('CUDA available:', torch.cuda.is_available()); pr
 
 export WANDB_RUN_GROUP="grid_lr${LR}_bs${BATCH_SIZE}"
 export WANDB_PROJECT="llama3.1-8b_moe_cola_training_accelerate"
+export WANDB_RUN_GROUP="cola_moe_accelerate"
 
 DATASET_DIR=./LLaMA-Factory/data
 OUTPUT_DIR=/scratch/hpc-prf-merlin/project_data/moe_study/saves/cola_moe_llama31_8b_acc
 MODEL_NAME_OR_PATH=meta-llama/Llama-3.1-8B
 ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml
+TOKENIZED_PATH=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter/llama-3.1-8B_tokenizer/5_langs
+
+NUM_LANGS=$(echo "${TOKENIZED_PATH}" | sed -n 's#.*/\([0-9]\+\)_langs.*#\1#p')
+NUM_LANGS=${NUM_LANGS:-all}
+
+RUN_NAME="cola_moe_acc_${NUM_LANGS}langs_$(date +%Y%m%d_%H%M%S)"
+WANDB_TAGS="cola,moe,accelerate,bf16"
+WANDB_CONFIG_JSON=$(cat <<JSON
+{
+  "model_name_or_path": "${MODEL_NAME_OR_PATH}",
+  "tokenized_path": "${TOKENIZED_PATH}",
+  "finetuning_type": "cola",
+  "dataset": "c4",
+  "num_A": 1,
+  "num_B": 1,
+  "lora_rank": 4,
+  "lora_alpha": 8,
+  "cola_num_experts": 2,
+  "cola_top_k": 2,
+  "per_device_train_batch_size": 1,
+  "gradient_accumulation": 8,
+  "eval_fraction_per_language": 0.05,
+  "num_langs": "${NUM_LANGS}"
+}
+JSON
+)
+export WANDB_TAGS
+export WANDB_CONFIG_JSON
 
 LM_EVAL_TASKS=belebele
 LM_EVAL_BATCH_SIZE=auto
@@ -45,7 +74,6 @@ LM_EVAL_WANDB_PROJECT=llama31_multilingual_eval_belebele
 LM_EVAL_WANDB_PREFIX=cola_moe_acc
 LM_EVAL_VISIBLE_GPUS=
 LM_EVAL_EXTRA_ARGS=
-TOKENIZED_PATH=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter/llama-3.1-8B_tokenizer/46_langs
 
 if [[ ! -f "$ACCEL_CONFIG" ]]; then
   echo "[ERROR] Accelerate config $ACCEL_CONFIG not found." >&2
@@ -69,6 +97,7 @@ srun accelerate launch \
   ./LLaMA-Factory/src/train.py \
   --stage sft \
   --do_train \
+  --run_name "${RUN_NAME}" \
   --model_name_or_path "${MODEL_NAME_OR_PATH}" \
   --dataset c4 \
   --dataset_dir "${DATASET_DIR}" \
@@ -81,20 +110,23 @@ srun accelerate launch \
   --per_device_train_batch_size $BATCH_SIZE \
   --per_device_eval_batch_size 1 \
   --seed $SEED \
-  --num_A 1 \
-  --num_B 1 \
+  --num_A 2 \
+  --num_B 4 \
   --lora_rank 4 \
   --lora_alpha 8 \
   --use_cola_experts \
-  --cola_num_experts 2 \
+  --cola_num_experts 4 \
   --cola_top_k 2 \
   --bf16 True \
   --fp16 False \
   --cola_debug \
+  --report_to wandb \
   "${TOKENIZED_ARGS[@]}"
 
 echo "[INFO] Training finished at $(date)"
-
+  #--do_eval \
+  #--evaluation_strategy steps \
+  #--eval_steps 500  \
 echo "[INFO] Collecting checkpoints for evaluation..."
 mapfile -t CHECKPOINTS < <(find "${OUTPUT_DIR}" -maxdepth 1 -type d -name 'checkpoint-*' | sort -V)
 
