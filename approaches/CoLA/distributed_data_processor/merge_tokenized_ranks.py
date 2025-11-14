@@ -111,6 +111,10 @@ def merge_ranks(root: Path, output: Path, overwrite: bool, workers: int, split_f
         if split_fraction > 0:
             merged_dataset = load_from_disk(str(final_dir))
             dataset_dict = _build_dataset_dict(merged_dataset, split_fraction, split_seed)
+            for split_name, split_dataset in dataset_dict.items():
+                cols = [col for col in ["language", "split"] if col in split_dataset.column_names]
+                if cols:
+                    dataset_dict[split_name] = split_dataset.remove_columns(cols)
             dataset_dict.save_to_disk(str(output))
             print(f"Merged dataset with validation split saved to {output}")
         else:
