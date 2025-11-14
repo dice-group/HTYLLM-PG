@@ -1,4 +1,14 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# -------------------------------------------------
+# accelerate_moe_cola_train.sh
+# -------------------------------------------------
+set -euo pipefail
+
+# ---- user‑supplied hyper‑parameters (with defaults) ----
+LR=${LR:-5e-5}
+BATCH_SIZE=${BATCH_SIZE:-16}
+SEED=${SEED:-42}
+
 #SBATCH --job-name=cola-moe-accelerate
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -9,7 +19,6 @@
 #SBATCH --output=logs/train_acc_moe_cola_%j.log
 #SBATCH --partition=gpu
 
-set -euo pipefail
 module purge
 module load toolchain/foss/2024a
 module load system/CUDA/12.6.0
@@ -21,6 +30,7 @@ export CUDA_DEVICE_ORDER=PCI_BUS_ID
 export CUDA_VISIBLE_DEVICES=${SLURM_JOB_GPUS:-0}
 python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count());"
 
+export WANDB_RUN_GROUP="grid_lr${LR}_bs${BATCH_SIZE}"
 export WANDB_PROJECT="llama3.1-8b_moe_cola_training_accelerate"
 
 DATASET_DIR=./LLaMA-Factory/data
@@ -66,9 +76,11 @@ srun accelerate launch \
   --finetuning_type cola \
   --output_dir "${OUTPUT_DIR}" \
   --overwrite_output_dir \
+  --learning_rate $LR \
   --num_train_epochs 1 \
-  --per_device_train_batch_size 1 \
+  --per_device_train_batch_size $BATCH_SIZE \
   --per_device_eval_batch_size 1 \
+  --seed $SEED \
   --num_A 1 \
   --num_B 1 \
   --lora_rank 4 \
