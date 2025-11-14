@@ -20,6 +20,10 @@ MERGE_MEM=64G
 MERGE_TIME=04:00:00
 MERGE_WORKERS=""
 TRANSFORMERS_OFFLINE=1
+EVAL_FRACTION=0.05
+EVAL_SEED=42
+MERGE_SPLIT_FRACTION=0.05
+MERGE_SPLIT_SEED=42
 
 usage() {
   cat <<EOF
@@ -40,6 +44,10 @@ Options (propagated to tokenize_and_merge_pipeline.sh):
   --merge-time HH:MM:SS Time limit for merge job (default: ${MERGE_TIME}).
   --merge-workers INT   --max_workers for merge_tokenized_ranks.py (default: match --merge-cpus).
   --trans-offline {0,1} Set TRANSFORMERS_OFFLINE flag (default: ${TRANSFORMERS_OFFLINE}).
+  --eval-fraction FLOAT Validation fraction per language during tokenization (default: ${EVAL_FRACTION}).
+  --eval-seed INT       Seed for eval hashing (default: ${EVAL_SEED}).
+  --merge-split-fraction FLOAT Validation fraction reserved during merge (default: ${MERGE_SPLIT_FRACTION}).
+  --merge-split-seed INT Seed used if merge falls back to random split (default: ${MERGE_SPLIT_SEED}).
   --job-prefix STR      Prefix for SBATCH job names (default derived per combo).
   -h, --help            Show this help message.
 EOF
@@ -62,7 +70,12 @@ while [[ $# -gt 0 ]]; do
     --merge-mem) MERGE_MEM="$2"; shift 2 ;;
     --merge-time) MERGE_TIME="$2"; shift 2 ;;
     --merge-workers) MERGE_WORKERS="$2"; shift 2 ;;
+    --trans-offline) TRANSFORMERS_OFFLINE="$2"; shift 2 ;;
     --job-prefix) JOB_PREFIX_BASE="$2"; shift 2 ;;
+    --eval-fraction) EVAL_FRACTION="$2"; shift 2 ;;
+    --eval-seed) EVAL_SEED="$2"; shift 2 ;;
+    --merge-split-fraction) MERGE_SPLIT_FRACTION="$2"; shift 2 ;;
+    --merge-split-seed) MERGE_SPLIT_SEED="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
@@ -110,6 +123,10 @@ for tok_entry in "${TOKENIZERS[@]}"; do
       --merge-mem "${MERGE_MEM}" \
       --merge-time "${MERGE_TIME}" \
       --merge-workers "${MERGE_WORKERS}" \
+      --eval-fraction "${EVAL_FRACTION}" \
+      --eval-seed "${EVAL_SEED}" \
+      --merge-split-fraction "${MERGE_SPLIT_FRACTION}" \
+      --merge-split-seed "${MERGE_SPLIT_SEED}" \
       --job-prefix "${job_prefix}" \
       --output-root "${output_dir}"
   done

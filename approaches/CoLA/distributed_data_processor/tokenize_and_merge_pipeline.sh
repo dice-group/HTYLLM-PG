@@ -13,6 +13,10 @@ MERGE_CPUS=4
 MERGE_MEM=64G
 MERGE_TIME=04:00:00
 JOB_PREFIX="tok"
+EVAL_FRACTION=0.05
+EVAL_SEED=42
+MERGE_SPLIT_FRACTION=0.05
+MERGE_SPLIT_SEED=42
 
 usage() {
   cat <<EOF
@@ -25,6 +29,10 @@ Key options:
   --num-proc INT            Workers passed to tokenize_slurm.py --num_proc.
   --cpus-per-task INT       CPUs per tokenization task.
   --merge-workers INT       Worker count for merge_tokenized_ranks.py.
+  --eval-fraction FLOAT     Fraction per language for validation tagging during tokenization (default: ${EVAL_FRACTION}).
+  --eval-seed INT           Seed for eval hashing (default: ${EVAL_SEED}).
+  --merge-split-fraction FLOAT  Fraction to reserve for validation when saving merged dataset (default: ${MERGE_SPLIT_FRACTION}).
+  --merge-split-seed INT    Seed used if merge performs fallback split (default: ${MERGE_SPLIT_SEED}).
 EOF
 }
 
@@ -53,6 +61,10 @@ while [[ $# -gt 0 ]]; do
     --merge-time) MERGE_TIME="$2"; shift 2 ;;
     --merge-workers) MERGE_WORKERS="$2"; shift 2 ;;
     --job-prefix) JOB_PREFIX="$2"; shift 2 ;;
+    --eval-fraction) EVAL_FRACTION="$2"; shift 2 ;;
+    --eval-seed) EVAL_SEED="$2"; shift 2 ;;
+    --merge-split-fraction) MERGE_SPLIT_FRACTION="$2"; shift 2 ;;
+    --merge-split-seed) MERGE_SPLIT_SEED="$2"; shift 2 ;;
     --log-root) LOG_ROOT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
@@ -128,8 +140,8 @@ LOG_ROOT="${LOG_ROOT:-logs/${JOB_PREFIX}}"
 RANK_OUTPUT_DIR="${OUTPUT_ROOT}_ranks"
 mkdir -p "${LOG_ROOT}" "${RANK_OUTPUT_DIR}"
 
-printf -v TOKEN_CMD 'python -u %q/tokenize_slurm.py --shard_dir %q --save_tokenized_data_dir %q --model_name %q --num_proc %q' \
-  "${SCRIPT_DIR}" "${SHARD_DIR}" "${RANK_OUTPUT_DIR}" "${TOKENIZER}" "${NUM_PROC}"
+printf -v TOKEN_CMD 'python -u %q/tokenize_slurm.py --shard_dir %q --save_tokenized_data_dir %q --model_name %q --num_proc %q --eval_fraction %q --eval_seed %q' \
+  "${SCRIPT_DIR}" "${SHARD_DIR}" "${RANK_OUTPUT_DIR}" "${TOKENIZER}" "${NUM_PROC}" "${EVAL_FRACTION}" "${EVAL_SEED}"
 
 if [[ -n "${LANGUAGE_SUBSET}" ]]; then
   printf -v TOKEN_CMD '%s --language_subset %q' "${TOKEN_CMD}" "${LANGUAGE_SUBSET}"
@@ -152,8 +164,8 @@ TOKEN_JOB_ID=$(
     --wrap "${TOKEN_CMD}"
 )
 
-printf -v MERGE_CMD 'python -u %q/merge_tokenized_ranks.py --tokenized_root %q --output_path %q --overwrite --workers %q' \
-  "${SCRIPT_DIR}" "${RANK_OUTPUT_DIR}" "${OUTPUT_ROOT}" "${MERGE_WORKERS}"
+printf -v MERGE_CMD 'python -u %q/merge_tokenized_ranks.py --tokenized_root %q --output_path %q --overwrite --workers %q --split_fraction %q --split_seed %q' \
+  "${SCRIPT_DIR}" "${RANK_OUTPUT_DIR}" "${OUTPUT_ROOT}" "${MERGE_WORKERS}" "${MERGE_SPLIT_FRACTION}" "${MERGE_SPLIT_SEED}"
 
 MERGE_JOB_ID=$(
   sbatch --parsable \

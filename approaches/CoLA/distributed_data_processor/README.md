@@ -3,6 +3,15 @@
 Tools for two simple steps: (1) load each sharded language file and tokenize it, (2) merge all tokenized shards into one Hugging Face dataset. Once the flow works for a single language subset + tokenizer, the same scripts repeat it for every subset/tokenizer combination you need.
 
 ```
+/scratch/.../tokenized/hierarchical_adapter/
+├── llama-3.1-8B_tokenizer/{5,10,46,95,199}_langs
+├── llama-3.2-1B_tokenizer/{...}
+└── llama-3.2-3B_tokenizer/{...}
+```
+
+Each tokenized example keeps a `language` column (derived from the source shard) and a deterministic `split` label. During merging we build a `DatasetDict(train, validation)` where the validation slice contains roughly 5 % of every language (configurable via `merge_tokenized_ranks.py --split_fraction`). Point any training job at the merged path and both splits are already present.
+
+```
 Sharded JSONL(.gz) per language
           │
           ▼
@@ -13,7 +22,7 @@ tokenize_and_merge_pipeline.sh
   merge_tokenized_ranks.py
           │
           ▼
- Final HF dataset @ <output>
+ Final HF dataset @ <output>/ (DatasetDict with train + validation)
 ```
 
 ## What you need
@@ -78,12 +87,7 @@ This submits the tokenization array and its merge job. Check `logs/smoke_llama32
 
 `bash main.sh` launches every tokenizer/subset combo and writes to:
 
-```
-/scratch/.../tokenized/hierarchical_adapter/
-├── llama-3.1-8B_tokenizer/{5,10,46,95,199}_langs
-├── llama-3.2-1B_tokenizer/{...}
-└── llama-3.2-3B_tokenizer/{...}
-```
+See the `language_subsets.py` lists for the exact language mixes per subset.
 
 ## Resources
 
