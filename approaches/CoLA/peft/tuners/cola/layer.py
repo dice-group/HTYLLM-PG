@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import math
+import os
 import warnings
 import logging
 logger = logging.getLogger(__name__)
@@ -143,6 +144,23 @@ class ColaLayer(BaseTunerLayer):
             return dist.get_rank(), dist.get_world_size()
         return 0, 1
 
+    def _preferred_svd_device(self, tensor: torch.Tensor) -> torch.device:
+        """
+        Determine which device to run SVD/broadcast buffers on.
+        Prefer the tensor's current device; otherwise fall back to the local GPU if available.
+        """
+        device = tensor.device
+        if device.type == "cuda":
+            return device
+        if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+            try:
+                local_rank = int(os.environ.get("LOCAL_RANK", os.environ.get("RANK", 0)))
+            except (TypeError, ValueError):
+                local_rank = 0
+            local_rank = local_rank % torch.cuda.device_count()
+            return torch.device("cuda", local_rank)
+        return device
+
     def update_layer(self, adapter_name, r, lora_alpha, lora_dropout, num_A, num_B, init_lora_weights):
         if self.use_cola_experts and adapter_name == self._active_adapter:
             self._active_adapters = []
@@ -266,12 +284,14 @@ class ColaLayer(BaseTunerLayer):
             )
         rank, world_size = self._distributed_rank_world()
         weight_fp32 = weight.to(torch.float32)  # run SVD under higher precision for stability
+        compute_device = self._preferred_svd_device(weight_fp32)
+        weight_fp32 = weight_fp32.to(compute_device)
 
         r = self.r[adapter_name]
         out_features, in_features = weight_fp32.shape
-        lora_A = torch.empty((r, in_features), dtype=torch.float32, device=weight_fp32.device)
-        lora_B = torch.empty((out_features, r), dtype=torch.float32, device=weight_fp32.device)
-        updated_weight = torch.empty_like(weight_fp32)
+        lora_A = torch.empty((r, in_features), dtype=torch.float32, device=compute_device)
+        lora_B = torch.empty((out_features, r), dtype=torch.float32, device=compute_device)
+        updated_weight = torch.empty_like(weight_fp32, device=compute_device)
 
         if rank == 0:
             V, S, Uh = torch.linalg.svd(weight_fp32, full_matrices=False)
@@ -297,12 +317,12 @@ class ColaLayer(BaseTunerLayer):
             dist.broadcast(updated_weight, src=0)
 
         for i in range(self.num_A[adapter_name]):
-            target_dtype = self.lora_A[adapter_name][i].weight.dtype
-            self.lora_A[adapter_name][i].weight.data.copy_(lora_A.to(target_dtype))
+            target = self.lora_A[adapter_name][i].weight
+            target.data.copy_(lora_A.to(dtype=target.dtype, device=target.device))
 
         for i in range(self.num_B[adapter_name]):
-            target_dtype = self.lora_B[adapter_name][i].weight.dtype
-            self.lora_B[adapter_name][i].weight.data.copy_(lora_B.to(target_dtype))
+            target = self.lora_B[adapter_name][i].weight
+            target.data.copy_(lora_B.to(dtype=target.dtype, device=target.device))
 
         self._write_base_weight(updated_weight, dtype)
 
@@ -320,14 +340,16 @@ class ColaLayer(BaseTunerLayer):
             )
         rank, world_size = self._distributed_rank_world()
         weight_fp32 = weight.to(torch.float32)  # work on dense fp32 copy undependant of original dtype
+        compute_device = self._preferred_svd_device(weight_fp32)
+        weight_fp32 = weight_fp32.to(compute_device)
 
         ref = adapter_names[0]
 
         r = self.r[ref]
         out_features, in_features = weight_fp32.shape
-        lora_A = torch.empty((r, in_features), dtype=torch.float32, device=weight_fp32.device)
-        lora_B = torch.empty((out_features, r), dtype=torch.float32, device=weight_fp32.device)
-        updated_weight = torch.empty_like(weight_fp32)
+        lora_A = torch.empty((r, in_features), dtype=torch.float32, device=compute_device)
+        lora_B = torch.empty((out_features, r), dtype=torch.float32, device=compute_device)
+        updated_weight = torch.empty_like(weight_fp32, device=compute_device)
 
         if rank == 0:
             V, S, Uh = torch.linalg.svd(weight_fp32, full_matrices=False)
@@ -355,11 +377,11 @@ class ColaLayer(BaseTunerLayer):
         # assign same init to all experts
         for name in adapter_names:
             for i in range(self.num_A[name]):
-                target_dtype = self.lora_A[name][i].weight.dtype
-                self.lora_A[name][i].weight.data.copy_(lora_A.to(target_dtype))
+                target = self.lora_A[name][i].weight
+                target.data.copy_(lora_A.to(dtype=target.dtype, device=target.device))
             for i in range(self.num_B[name]):
-                target_dtype = self.lora_B[name][i].weight.dtype
-                self.lora_B[name][i].weight.data.copy_(lora_B.to(target_dtype))
+                target = self.lora_B[name][i].weight
+                target.data.copy_(lora_B.to(dtype=target.dtype, device=target.device))
 
         # residualize base weight only once
         self._write_base_weight(updated_weight, dtype)
