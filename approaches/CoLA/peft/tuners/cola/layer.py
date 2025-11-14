@@ -137,6 +137,12 @@ class ColaLayer(BaseTunerLayer):
         with self._summon_base_weight(writeback=True) as weight_param:
             weight_param.data.copy_(updated_weight.to(dtype).to(weight_param.device))
 
+    def _distributed_rank_world(self) -> tuple[int, int]:
+        """Utility to fetch (rank, world_size) even when torch.distributed is unused."""
+        if dist.is_available() and dist.is_initialized():
+            return dist.get_rank(), dist.get_world_size()
+        return 0, 1
+
     def update_layer(self, adapter_name, r, lora_alpha, lora_dropout, num_A, num_B, init_lora_weights):
         if self.use_cola_experts and adapter_name == self._active_adapter:
             self._active_adapters = []
@@ -258,18 +264,38 @@ class ColaLayer(BaseTunerLayer):
                 "Encountered non-finite values in base weight while running PiSSA init. "
                 "Ensure FSDP/ZeRO shards are materialized before initialization."
             )
+        rank, world_size = self._distributed_rank_world()
         weight_fp32 = weight.to(torch.float32)  # run SVD under higher precision for stability
-        V, S, Uh = torch.linalg.svd(weight_fp32, full_matrices=False)
 
-        Vr = V[:, : self.r[adapter_name]]
-        Sr = S[: self.r[adapter_name]]
-        Sr /= self.scaling[adapter_name]
-        Uhr = Uh[: self.r[adapter_name]]
+        r = self.r[adapter_name]
+        out_features, in_features = weight_fp32.shape
+        lora_A = torch.empty((r, in_features), dtype=torch.float32, device=weight_fp32.device)
+        lora_B = torch.empty((out_features, r), dtype=torch.float32, device=weight_fp32.device)
+        updated_weight = torch.empty_like(weight_fp32)
 
-        lora_A = (torch.diag(torch.sqrt(Sr)) @ Uhr) / (self.num_A[adapter_name])
-        lora_B = (Vr @ torch.diag(torch.sqrt(Sr))) / (self.num_B[adapter_name])
+        if rank == 0:
+            V, S, Uh = torch.linalg.svd(weight_fp32, full_matrices=False)
 
-        
+            Vr = V[:, :r]
+            Sr = S[:r]
+            Sr /= self.scaling[adapter_name]
+            Uhr = Uh[:r]
+
+            lora_A_tmp = (torch.diag(torch.sqrt(Sr)) @ Uhr) / self.num_A[adapter_name]
+            lora_B_tmp = (Vr @ torch.diag(torch.sqrt(Sr))) / self.num_B[adapter_name]
+            updated_weight_tmp = weight_fp32 - self.scaling[adapter_name] * (
+                (lora_B_tmp * self.num_B[adapter_name]) @ (lora_A_tmp * self.num_A[adapter_name])
+            )
+
+            lora_A.copy_(lora_A_tmp)
+            lora_B.copy_(lora_B_tmp)
+            updated_weight.copy_(updated_weight_tmp)
+
+        if world_size > 1:
+            dist.broadcast(lora_A, src=0)
+            dist.broadcast(lora_B, src=0)
+            dist.broadcast(updated_weight, src=0)
+
         for i in range(self.num_A[adapter_name]):
             target_dtype = self.lora_A[adapter_name][i].weight.dtype
             self.lora_A[adapter_name][i].weight.data.copy_(lora_A.to(target_dtype))
@@ -278,10 +304,6 @@ class ColaLayer(BaseTunerLayer):
             target_dtype = self.lora_B[adapter_name][i].weight.dtype
             self.lora_B[adapter_name][i].weight.data.copy_(lora_B.to(target_dtype))
 
-
-        updated_weight = weight_fp32 - self.scaling[adapter_name] * (
-            (lora_B * self.num_B[adapter_name]) @ (lora_A * self.num_A[adapter_name])
-        )  # subtract low-rank reconstruction once so residual model is not changesd
         self._write_base_weight(updated_weight, dtype)
 
     def shared_pissa_init(self, adapter_names):
@@ -296,18 +318,39 @@ class ColaLayer(BaseTunerLayer):
                 "Encountered non-finite values in base weight while running shared PiSSA init. "
                 "Ensure FSDP/ZeRO shards are materialized before initialization."
             )
+        rank, world_size = self._distributed_rank_world()
         weight_fp32 = weight.to(torch.float32)  # work on dense fp32 copy undependant of original dtype
-        V, S, Uh = torch.linalg.svd(weight_fp32, full_matrices=False)
 
         ref = adapter_names[0]
 
-        Vr = V[:, : self.r[ref]]
-        Sr = S[: self.r[ref]]
-        Sr /= self.scaling[ref]
-        Uhr = Uh[: self.r[ref]]
+        r = self.r[ref]
+        out_features, in_features = weight_fp32.shape
+        lora_A = torch.empty((r, in_features), dtype=torch.float32, device=weight_fp32.device)
+        lora_B = torch.empty((out_features, r), dtype=torch.float32, device=weight_fp32.device)
+        updated_weight = torch.empty_like(weight_fp32)
 
-        lora_A = (torch.diag(torch.sqrt(Sr)) @ Uhr) / self.num_A[ref]
-        lora_B = (Vr @ torch.diag(torch.sqrt(Sr))) / self.num_B[ref]
+        if rank == 0:
+            V, S, Uh = torch.linalg.svd(weight_fp32, full_matrices=False)
+
+            Vr = V[:, :r]
+            Sr = S[:r]
+            Sr /= self.scaling[ref]
+            Uhr = Uh[:r]
+
+            lora_A_tmp = (torch.diag(torch.sqrt(Sr)) @ Uhr) / self.num_A[ref]
+            lora_B_tmp = (Vr @ torch.diag(torch.sqrt(Sr))) / self.num_B[ref]
+            updated_weight_tmp = weight_fp32 - self.scaling[ref] * (
+                (lora_B_tmp * self.num_B[ref]) @ (lora_A_tmp * self.num_A[ref])
+            )
+
+            lora_A.copy_(lora_A_tmp)
+            lora_B.copy_(lora_B_tmp)
+            updated_weight.copy_(updated_weight_tmp)
+
+        if world_size > 1:
+            dist.broadcast(lora_A, src=0)
+            dist.broadcast(lora_B, src=0)
+            dist.broadcast(updated_weight, src=0)
 
         # assign same init to all experts
         for name in adapter_names:
@@ -319,9 +362,6 @@ class ColaLayer(BaseTunerLayer):
                 self.lora_B[name][i].weight.data.copy_(lora_B.to(target_dtype))
 
         # residualize base weight only once
-        updated_weight = weight_fp32 - self.scaling[ref] * (
-            (lora_B * self.num_B[ref]) @ (lora_A * self.num_A[ref])
-        )  # residualize base weight once even though experts are duplicated
         self._write_base_weight(updated_weight, dtype)
 
     def _cache_store(self, key: str, value: Any) -> None:
