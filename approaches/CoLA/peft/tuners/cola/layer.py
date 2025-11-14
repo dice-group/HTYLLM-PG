@@ -18,6 +18,7 @@ import os
 import warnings
 import logging
 logger = logging.getLogger(__name__)
+
 from typing import Any, Optional, Union
 from contextlib import contextmanager
 
@@ -37,6 +38,7 @@ try:
     from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 except ImportError:
     FSDP = None  # FSDP not always available (e.g. single-GPU runs)
+
 
 def debug(msg: str):
     print(f"[DEBUG] {msg}", file=sys.stderr, flush=True)
@@ -111,7 +113,6 @@ class ColaLayer(BaseTunerLayer):
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
 
 
-
     def _fsdp_summon_is_active(self) -> bool:
         """Check whether we can safely summon full params (FSDP world + initialized dist) whoich we need for sharded weights."""
         return FSDP is not None and dist.is_available() and dist.is_initialized()
@@ -128,9 +129,21 @@ class ColaLayer(BaseTunerLayer):
 
     def _clone_base_weight(self) -> tuple[torch.Tensor, torch.dtype]:
         """Return a detached clone of the (possibly sharded) base weight and its original dtype."""
+        rank, world_size = self._distributed_rank_world()
         with self._summon_base_weight(writeback=False) as weight_param:
-            weight = weight_param.data.detach().clone()
             dtype = weight_param.dtype
+            orig_device = weight_param.device
+            bcast_device = self._preferred_svd_device(weight_param.data)
+            if rank == 0:
+                weight = weight_param.data.detach().clone().to(bcast_device)
+            else:
+                weight = torch.empty(weight_param.data.shape, device=bcast_device, dtype=weight_param.dtype)
+
+        if world_size > 1:
+            dist.broadcast(weight, src=0)
+
+        weight = weight.to(orig_device)
+
         return weight, dtype
 
     def _write_base_weight(self, updated_weight: torch.Tensor, dtype: torch.dtype) -> None:
@@ -201,7 +214,7 @@ class ColaLayer(BaseTunerLayer):
         # This code works for linear layers, override for other layer types
         if r <= 0:
             raise ValueError(f"`r` should be a positive integer value but the value passed is {r}")
-        
+
         self.r[adapter_name] = r
         self.lora_alpha[adapter_name] = lora_alpha
         self.num_A[adapter_name] = num_A
@@ -216,7 +229,6 @@ class ColaLayer(BaseTunerLayer):
         self.lora_A[adapter_name] = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(num_A)])
         self.lora_B[adapter_name] = nn.ModuleList([nn.Linear(r, self.out_features, bias=False) for _ in range(num_B)])
         self.scaling[adapter_name] = lora_alpha / r
-        
         # self.reset_lora_parameters(adapter_name, init_lora_weights)
 
         self.pissa_init(adapter_name)
@@ -311,7 +323,7 @@ class ColaLayer(BaseTunerLayer):
             lora_A_tmp = (torch.diag(torch.sqrt(Sr)) @ Uhr) / self.num_A[adapter_name]
             lora_B_tmp = (Vr @ torch.diag(torch.sqrt(Sr))) / self.num_B[adapter_name]
             updated_weight_tmp = weight_fp32 - self.scaling[adapter_name] * (
-                (lora_B_tmp * self.num_B[adapter_name]) @ (lora_A_tmp * self.num_A[adapter_name])
+                    (lora_B_tmp * self.num_B[adapter_name]) @ (lora_A_tmp * self.num_A[adapter_name])
             )
 
             lora_A.copy_(lora_A_tmp)
@@ -376,7 +388,7 @@ class ColaLayer(BaseTunerLayer):
             lora_A_tmp = (torch.diag(torch.sqrt(Sr)) @ Uhr) / self.num_A[ref]
             lora_B_tmp = (Vr @ torch.diag(torch.sqrt(Sr))) / self.num_B[ref]
             updated_weight_tmp = weight_fp32 - self.scaling[ref] * (
-                (lora_B_tmp * self.num_B[ref]) @ (lora_A_tmp * self.num_A[ref])
+                    (lora_B_tmp * self.num_B[ref]) @ (lora_A_tmp * self.num_A[ref])
             )
 
             lora_A.copy_(lora_A_tmp)
@@ -453,7 +465,7 @@ class ColaLayer(BaseTunerLayer):
             raise ValueError(msg)
 
     def _mixed_batch_forward(
-        self, x: torch.Tensor, *args: Any, adapter_names: list[str], **kwargs: Any
+            self, x: torch.Tensor, *args: Any, adapter_names: list[str], **kwargs: Any
     ) -> torch.Tensor:
         # This is a special method that handles the case when users pass the argument `adapter_names`. This is an
         # extra argument that allows mixing different adapters in the same batch at inference time.
@@ -539,18 +551,19 @@ class ColaExpert(nn.Module):
 class Linear(nn.Module, ColaLayer):
     # Lora implemented in a dense layer
     def __init__(
-        self,
-        base_layer,
-        adapter_name: str,
-        r: int = 0,
-        lora_alpha: int = 1,
-        lora_dropout: float = 0.0,
-        num_A: int = 1,
-        num_B: int = 1,
-        fan_in_fan_out: bool = False,  # Set this to True if the layer to replace stores weight like (fan_in, fan_out)
-        is_target_conv_1d_layer: bool = False,
-        init_lora_weights: Union[bool, str] = True,
-        **kwargs,
+            self,
+            base_layer,
+            adapter_name: str,
+            r: int = 0,
+            lora_alpha: int = 1,
+            lora_dropout: float = 0.0,
+            num_A: int = 1,
+            num_B: int = 1,
+            fan_in_fan_out: bool = False,
+            # Set this to True if the layer to replace stores weight like (fan_in, fan_out)
+            is_target_conv_1d_layer: bool = False,
+            init_lora_weights: Union[bool, str] = True,
+            **kwargs,
     ) -> None:
         super().__init__()
 
@@ -569,7 +582,7 @@ class Linear(nn.Module, ColaLayer):
         self.is_target_conv_1d_layer = is_target_conv_1d_layer
 
     def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
-        
+
         self._check_forward_args(x, *args, **kwargs)
         adapter_names = kwargs.pop("adapter_names", None)
         if self.disable_adapters:
@@ -583,7 +596,7 @@ class Linear(nn.Module, ColaLayer):
         else:
             # base_dtype = self.base_layer.weight.dtype   # get dtype of base layers weight
             # x = x.to(base_dtype)                        # match dtype due to mixed precision errors
-            result = self.base_layer(x, *args, **kwargs) # base output
+            result = self.base_layer(x, *args, **kwargs)  # base output
             torch_result_dtype = result.dtype
 
             if not getattr(self, "use_cola_experts", False):
@@ -637,7 +650,7 @@ class Linear(nn.Module, ColaLayer):
                 moe_out = (gathered * weights_expanded).sum(dim=-1)
 
                 result = result + moe_out
-            #return result.to(self.base_layer.weight.dtype)
+            # return result.to(self.base_layer.weight.dtype)
             return result.to(torch_result_dtype)
 
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
@@ -657,7 +670,6 @@ class Linear(nn.Module, ColaLayer):
         if not adapter_names:
             # no adapter to merge
             return
-
 
         for active_adapter in adapter_names:
             if active_adapter in self.lora_A.keys():
@@ -756,14 +768,14 @@ class Linear(nn.Module, ColaLayer):
 class Embedding(nn.Module, ColaLayer):
     # LoRA implemented in a Embedding layer
     def __init__(
-        self,
-        base_layer: nn.Module,
-        adapter_name: str,
-        r: int = 0,
-        lora_alpha: int = 1,
-        lora_dropout: float = 0.0,
-        init_lora_weights: Union[bool, str] = True,
-        **kwargs,
+            self,
+            base_layer: nn.Module,
+            adapter_name: str,
+            r: int = 0,
+            lora_alpha: int = 1,
+            lora_dropout: float = 0.0,
+            init_lora_weights: Union[bool, str] = True,
+            **kwargs,
     ) -> None:
         super().__init__()
         ColaLayer.__init__(self, base_layer)
@@ -886,7 +898,7 @@ class Embedding(nn.Module, ColaLayer):
         return output_tensor
 
     def _mixed_batch_forward(
-        self, x: torch.Tensor, *args: Any, adapter_names: list[str], **kwargs: Any
+            self, x: torch.Tensor, *args: Any, adapter_names: list[str], **kwargs: Any
     ) -> torch.Tensor:
         # This is a special method that handles the case when users pass the argument `adapter_names`. This is an
         # extra argument that allows mixing different adapters in the same batch at inference time.
@@ -963,14 +975,14 @@ class Embedding(nn.Module, ColaLayer):
 class Conv2d(nn.Module, ColaLayer):
     # Lora implemented in a conv2d layer
     def __init__(
-        self,
-        base_layer: nn.Module,
-        adapter_name: str,
-        r: int = 0,
-        lora_alpha: int = 1,
-        lora_dropout: float = 0.0,
-        init_lora_weights: Union[bool, str] = True,
-        **kwargs,
+            self,
+            base_layer: nn.Module,
+            adapter_name: str,
+            r: int = 0,
+            lora_alpha: int = 1,
+            lora_dropout: float = 0.0,
+            init_lora_weights: Union[bool, str] = True,
+            **kwargs,
     ) -> None:
         super().__init__()
         ColaLayer.__init__(self, base_layer)
@@ -1011,7 +1023,6 @@ class Conv2d(nn.Module, ColaLayer):
         # call this before dora_init
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
-
         self.set_adapter(self._active_adapters)
 
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
@@ -1050,7 +1061,7 @@ class Conv2d(nn.Module, ColaLayer):
                 else:
                     delta_weight = self.get_delta_weight(active_adapter)
                     base_layer.weight.data += delta_weight
-                   
+
                 self.merged_adapters.append(active_adapter)
 
     def unmerge(self) -> None:
@@ -1066,7 +1077,6 @@ class Conv2d(nn.Module, ColaLayer):
                 weight = self.get_base_layer().weight
                 delta_weight = self.get_delta_weight(active_adapter)
                 weight.data -= delta_weight
-                
 
     def get_delta_weight(self, adapter) -> torch.Tensor:
         """
@@ -1100,11 +1110,11 @@ class Conv2d(nn.Module, ColaLayer):
         else:
             # conv2d 3x3
             output_tensor = (
-                F.conv2d(
-                    weight_A.permute(1, 0, 2, 3),
-                    weight_B,
-                ).permute(1, 0, 2, 3)
-                * self.scaling[adapter]
+                    F.conv2d(
+                        weight_A.permute(1, 0, 2, 3),
+                        weight_B,
+                    ).permute(1, 0, 2, 3)
+                    * self.scaling[adapter]
             )
 
         if cast_to_fp32:
@@ -1152,10 +1162,10 @@ class Conv2d(nn.Module, ColaLayer):
 
 
 def dispatch_default(
-    target: torch.nn.Module,
-    adapter_name: str,
-    lora_config: ColaConfig,
-    **kwargs,
+        target: torch.nn.Module,
+        adapter_name: str,
+        lora_config: ColaConfig,
+        **kwargs,
 ) -> Optional[torch.nn.Module]:
     """
     target: Linear(in_features=3072, out_features=3072, bias=False)
