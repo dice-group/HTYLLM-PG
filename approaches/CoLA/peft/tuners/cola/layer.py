@@ -18,10 +18,12 @@ import warnings
 import logging
 logger = logging.getLogger(__name__)
 from typing import Any, Optional, Union
+from contextlib import contextmanager
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.distributed as dist
 from transformers.pytorch_utils import Conv1D
 
 from peft.tuners.tuners_utils import BaseTunerLayer, check_adapters_to_merge
@@ -29,6 +31,11 @@ from peft.utils.other import transpose
 
 from .config import ColaConfig
 import sys
+
+try:
+    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+except ImportError:
+    FSDP = None  # FSDP not always available (e.g. single-GPU runs)
 
 def debug(msg: str):
     print(f"[DEBUG] {msg}", file=sys.stderr, flush=True)
@@ -103,6 +110,32 @@ class ColaLayer(BaseTunerLayer):
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
 
 
+
+    def _fsdp_summon_is_active(self) -> bool:
+        """Check whether we can safely summon full params (FSDP world + initialized dist) whoich we need for sharded weights."""
+        return FSDP is not None and dist.is_available() and dist.is_initialized()
+
+    @contextmanager
+    def _summon_base_weight(self, writeback: bool = False):
+        """Temporarily materialize the full base weight tensor if it is FSDP-sharded for shared pissa init"""
+        base_layer = self.get_base_layer()
+        if self._fsdp_summon_is_active():
+            with FSDP.summon_full_params(base_layer, recurse=False, writeback=writeback):
+                yield base_layer.weight
+                return
+        yield base_layer.weight
+
+    def _clone_base_weight(self) -> tuple[torch.Tensor, torch.dtype]:
+        """Return a detached clone of the (possibly sharded) base weight and its original dtype."""
+        with self._summon_base_weight(writeback=False) as weight_param:
+            weight = weight_param.data.detach().clone()
+            dtype = weight_param.dtype
+        return weight, dtype
+
+    def _write_base_weight(self, updated_weight: torch.Tensor, dtype: torch.dtype) -> None:
+        """Write an updated dense weight tensor back into the sharded parameter."""
+        with self._summon_base_weight(writeback=True) as weight_param:
+            weight_param.data.copy_(updated_weight.to(dtype).to(weight_param.device))
 
     def update_layer(self, adapter_name, r, lora_alpha, lora_dropout, num_A, num_B, init_lora_weights):
         if self.use_cola_experts and adapter_name == self._active_adapter:
@@ -214,15 +247,19 @@ class ColaLayer(BaseTunerLayer):
             nn.init.normal_(self.lora_embedding_B[adapter_name])
 
     def pissa_init(self, adapter_name):
-        weight = self.get_base_layer().weight
-        dtype = weight.dtype
+        weight, dtype = self._clone_base_weight()
         if dtype not in [torch.float32, torch.float16, torch.bfloat16]:
             raise TypeError(
                 "Please initialize PiSSA under float32, float16, or bfloat16. "
                 "Subsequently, re-quantize the residual model to help minimize quantization errors."
             )
-        weight = weight.to(torch.float32)
-        V, S, Uh = torch.linalg.svd(weight.data, full_matrices=False)
+        if not torch.isfinite(weight).all():
+            raise ValueError(
+                "Encountered non-finite values in base weight while running PiSSA init. "
+                "Ensure FSDP/ZeRO shards are materialized before initialization."
+            )
+        weight_fp32 = weight.to(torch.float32)  # run SVD under higher precision for stability
+        V, S, Uh = torch.linalg.svd(weight_fp32, full_matrices=False)
 
         Vr = V[:, : self.r[adapter_name]]
         Sr = S[: self.r[adapter_name]]
@@ -234,27 +271,33 @@ class ColaLayer(BaseTunerLayer):
 
         
         for i in range(self.num_A[adapter_name]):
-            self.lora_A[adapter_name][i].weight.data = lora_A
+            target_dtype = self.lora_A[adapter_name][i].weight.dtype
+            self.lora_A[adapter_name][i].weight.data.copy_(lora_A.to(target_dtype))
 
         for i in range(self.num_B[adapter_name]):
-            self.lora_B[adapter_name][i].weight.data = lora_B
+            target_dtype = self.lora_B[adapter_name][i].weight.dtype
+            self.lora_B[adapter_name][i].weight.data.copy_(lora_B.to(target_dtype))
 
 
-        weight = weight.data - self.scaling[adapter_name] * ((lora_B * self.num_B[adapter_name]) @ (lora_A * self.num_A[adapter_name]))
-
-        weight = weight.to(dtype)
-        self.get_base_layer().weight.data = weight
+        updated_weight = weight_fp32 - self.scaling[adapter_name] * (
+            (lora_B * self.num_B[adapter_name]) @ (lora_A * self.num_A[adapter_name])
+        )  # subtract low-rank reconstruction once so residual model is not changesd
+        self._write_base_weight(updated_weight, dtype)
 
     def shared_pissa_init(self, adapter_names):
-        weight = self.get_base_layer().weight
-        dtype = weight.dtype
+        weight, dtype = self._clone_base_weight()
         if dtype not in [torch.float32, torch.float16, torch.bfloat16]:
             raise TypeError(
                 "Please initialize PiSSA under float32, float16, or bfloat16. "
                 "Subsequently, re-quantize the residual model to help minimize quantization errors."
             )
-        weight = weight.to(torch.float32)
-        V, S, Uh = torch.linalg.svd(weight.data, full_matrices=False)
+        if not torch.isfinite(weight).all():
+            raise ValueError(
+                "Encountered non-finite values in base weight while running shared PiSSA init. "
+                "Ensure FSDP/ZeRO shards are materialized before initialization."
+            )
+        weight_fp32 = weight.to(torch.float32)  # work on dense fp32 copy undependant of original dtype
+        V, S, Uh = torch.linalg.svd(weight_fp32, full_matrices=False)
 
         ref = adapter_names[0]
 
@@ -269,16 +312,17 @@ class ColaLayer(BaseTunerLayer):
         # assign same init to all experts
         for name in adapter_names:
             for i in range(self.num_A[name]):
-                self.lora_A[name][i].weight.data = lora_A
+                target_dtype = self.lora_A[name][i].weight.dtype
+                self.lora_A[name][i].weight.data.copy_(lora_A.to(target_dtype))
             for i in range(self.num_B[name]):
-                self.lora_B[name][i].weight.data = lora_B
+                target_dtype = self.lora_B[name][i].weight.dtype
+                self.lora_B[name][i].weight.data.copy_(lora_B.to(target_dtype))
 
         # residualize base weight only once
-        weight = weight.data - self.scaling[ref] * (
-                (lora_B * self.num_B[ref]) @ (lora_A * self.num_A[ref])
-        )
-        weight = weight.to(dtype)
-        self.get_base_layer().weight.data = weight
+        updated_weight = weight_fp32 - self.scaling[ref] * (
+            (lora_B * self.num_B[ref]) @ (lora_A * self.num_A[ref])
+        )  # residualize base weight once even though experts are duplicated
+        self._write_base_weight(updated_weight, dtype)
 
     def _cache_store(self, key: str, value: Any) -> None:
         self._caches[key] = value
