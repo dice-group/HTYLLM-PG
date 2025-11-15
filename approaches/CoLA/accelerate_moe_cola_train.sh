@@ -34,6 +34,15 @@ MODEL_NAME_OR_PATH=meta-llama/Llama-3.1-8B
 #ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml
 ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/ddp_4gpu_config.yaml
 TOKENIZED_PATH=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter/llama-3.1-8B_tokenizer/5_langs
+LM_EVAL_TASKS=${LM_EVAL_TASKS:-belebele}
+LM_EVAL_BATCH_SIZE=${LM_EVAL_BATCH_SIZE:-auto}
+LM_EVAL_WANDB_PROJECT=${LM_EVAL_WANDB_PROJECT:-llama31_multilingual_eval_belebele}
+LM_EVAL_WANDB_PREFIX=${LM_EVAL_WANDB_PREFIX:-cola_moe_acc}
+LM_EVAL_EXTRA_ARGS=${LM_EVAL_EXTRA_ARGS:-}
+LM_EVAL_POLL_INTERVAL=${LM_EVAL_POLL_INTERVAL:-120}
+ENABLE_LM_EVAL_LISTENER=${ENABLE_LM_EVAL_LISTENER:-1}
+CHECKPOINT_LISTENER_SCRIPT=./checkpoint_listener.sh
+LM_EVAL_SCRIPT=./lm_eval_checkpoint.sh
 
 ############ Training hyperparameters ############
 NUM_TRAIN_EPOCHS=1
@@ -104,6 +113,30 @@ if [[ ! -f "$ACCEL_CONFIG" ]]; then
   exit 1
 fi
 
+mkdir -p "${OUTPUT_DIR}"
+
+LISTENER_PID=""
+# Temporarily disable checkpoint listener during debugging.
+# if [[ "${ENABLE_LM_EVAL_LISTENER}" != "0" ]]; then
+#   if [[ -x "${CHECKPOINT_LISTENER_SCRIPT}" && -x "${LM_EVAL_SCRIPT}" ]]; then
+#     bash "${CHECKPOINT_LISTENER_SCRIPT}" \
+#       --watch-dir "${OUTPUT_DIR}" \
+#       --eval-script "${LM_EVAL_SCRIPT}" \
+#       --tasks "${LM_EVAL_TASKS}" \
+#       --batch-size "${LM_EVAL_BATCH_SIZE}" \
+#       --poll-interval "${LM_EVAL_POLL_INTERVAL}" \
+#       --wandb-project "${LM_EVAL_WANDB_PROJECT}" \
+#       --wandb-prefix "${LM_EVAL_WANDB_PREFIX}" \
+#       --extra-args "${LM_EVAL_EXTRA_ARGS}" &
+#     LISTENER_PID=$!
+#     echo "[INFO] Started checkpoint listener (PID ${LISTENER_PID})"
+#   else
+#     echo "[WARN] Listener or eval script missing/executable bit not set; skipping checkpoint evaluation listener."
+#   fi
+# else
+#   echo "[INFO] LM evaluation listener disabled."
+# fi
+
 TOKENIZED_ARGS=()
 if [[ -n "$TOKENIZED_PATH" ]]; then
   if [[ ! -d "$TOKENIZED_PATH" ]]; then
@@ -157,3 +190,9 @@ accelerate launch \
   "${TOKENIZED_ARGS[@]}"
 
 echo "[INFO] Training finished at $(date)"
+touch "${OUTPUT_DIR}/.training_complete"
+echo "[INFO] Wrote completion marker to ${OUTPUT_DIR}/.training_complete"
+if [[ -n "$LISTENER_PID" ]]; then
+  echo "[INFO] Waiting for checkpoint listener (PID ${LISTENER_PID}) to finish scheduling evaluations..."
+  wait "$LISTENER_PID"
+fi
