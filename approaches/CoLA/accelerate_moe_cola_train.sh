@@ -1,14 +1,4 @@
-#!/usr/bin/env bash
-# -------------------------------------------------
-# accelerate_moe_cola_train.sh
-# -------------------------------------------------
-set -euo pipefail
-
-# ---- user‑supplied hyper‑parameters (with defaults) ----
-LR=${LR:-5e-5}
-BATCH_SIZE=${BATCH_SIZE:-16}
-SEED=${SEED:-42}
-
+#!/bin/bash
 #SBATCH --job-name=cola-moe-accelerate
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -19,6 +9,7 @@ SEED=${SEED:-42}
 #SBATCH --output=logs/train_acc_moe_cola_%j.log
 #SBATCH --partition=gpu
 
+set -euo pipefail
 module purge
 module load toolchain/foss/2024a
 module load system/CUDA/12.6.0
@@ -27,10 +18,10 @@ module load lib/NCCL/2.22.3-GCCcore-13.3.0-CUDA-12.6.0
 source /opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3/etc/profile.d/conda.sh
 conda activate cola_llama_factory
 export CUDA_DEVICE_ORDER=PCI_BUS_ID
+export ACCELERATE_USE_FSDP=1
 export CUDA_VISIBLE_DEVICES=${SLURM_JOB_GPUS:-0}
 python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count());"
 
-export WANDB_RUN_GROUP="grid_lr${LR}_bs${BATCH_SIZE}"
 export WANDB_PROJECT="llama3.1-8b_moe_cola_training_accelerate"
 export WANDB_RUN_GROUP="cola_moe_accelerate"
 
@@ -89,7 +80,10 @@ if [[ -n "$TOKENIZED_PATH" ]]; then
   TOKENIZED_ARGS+=(--tokenized_path "${TOKENIZED_PATH}")
 fi
 
-export ACCELERATE_USE_FSDP=1
+
+# Note:  we only specify c4 here but we dont really need it, since we give in tokenized data dir
+# llamafactory will load train and validation dataset from tokenized_path (see data/loader.py lines 239ff.)
+# reasoning for hyperparams: lr + cosine -> 5e-5 used by CoLA / MoE-LPR
 
 echo "[INFO] Starting Accelerate-backed MoE CoLA training at $(date)"
 srun accelerate launch \
@@ -97,26 +91,32 @@ srun accelerate launch \
   ./LLaMA-Factory/src/train.py \
   --stage sft \
   --do_train \
+  --do_eval \
+  --evaluation_strategy steps \
+  --eval_steps 20 \
   --run_name "${RUN_NAME}" \
   --model_name_or_path "${MODEL_NAME_OR_PATH}" \
   --dataset c4 \
+  --eval_dataset c4 \
   --dataset_dir "${DATASET_DIR}" \
   --template llama3 \
   --finetuning_type cola \
   --output_dir "${OUTPUT_DIR}" \
   --overwrite_output_dir \
-  --learning_rate $LR \
+  --learning_rate 5e-5 \
+  --lr_scheduler_type cosine \
+  --warmup_ratio 0.06 \
   --num_train_epochs 1 \
-  --per_device_train_batch_size $BATCH_SIZE \
-  --per_device_eval_batch_size 1 \
-  --seed $SEED \
+  --per_device_train_batch_size 32 \
+  --per_device_eval_batch_size 32 \
+  --seed 42 \
   --num_A 2 \
   --num_B 4 \
   --lora_rank 4 \
   --lora_alpha 8 \
   --use_cola_experts \
   --cola_num_experts 4 \
-  --cola_top_k 2 \
+  --cola_top_k 1 \
   --bf16 True \
   --fp16 False \
   --cola_debug \
@@ -124,9 +124,6 @@ srun accelerate launch \
   "${TOKENIZED_ARGS[@]}"
 
 echo "[INFO] Training finished at $(date)"
-  #--do_eval \
-  #--evaluation_strategy steps \
-  #--eval_steps 500  \
 echo "[INFO] Collecting checkpoints for evaluation..."
 mapfile -t CHECKPOINTS < <(find "${OUTPUT_DIR}" -maxdepth 1 -type d -name 'checkpoint-*' | sort -V)
 
