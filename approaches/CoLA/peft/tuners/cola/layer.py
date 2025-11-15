@@ -111,6 +111,7 @@ class ColaLayer(BaseTunerLayer):
 
         if self.use_cola_experts:
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
+            self._move_router_to_device_of_base_layer()
 
 
     def _fsdp_summon_is_active(self) -> bool:
@@ -263,6 +264,7 @@ class ColaLayer(BaseTunerLayer):
                     cola_parent_active = True
 
         if self.use_cola_experts and hasattr(self, "router"):
+            self._move_router_to_device_of_base_layer()
             self.router.requires_grad_(cola_parent_active)
 
         super().set_adapter(expanded)
@@ -430,6 +432,15 @@ class ColaLayer(BaseTunerLayer):
     def _cache_pop(self, key: str) -> Any:
         value = self._caches.pop(key)
         return value
+
+    def _move_router_to_device_of_base_layer(self) -> None:
+        if not hasattr(self, "router") or self.router is None:
+            return
+        base_layer = self.get_base_layer()
+        weight = getattr(base_layer, "weight", None)
+        if weight is None:
+            return
+        self.router.to(weight.device, dtype=weight.dtype)
 
     def set_scale(self, adapter, scale):
         if adapter not in self.scaling:
