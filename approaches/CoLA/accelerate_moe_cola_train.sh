@@ -66,6 +66,7 @@ DISABLE_TQDM=False
 BF16=True
 FP16=False
 USE_COLA_EXPERTS=True
+USE_REENTRANT_GC=False
 
 # Note:  we only specify c4 here but we dont really need it, since we give in tokenized_path dir
 # llamafactory will load train and validation dataset from tokenized_path (see data/loader.py lines 239ff.)
@@ -185,8 +186,8 @@ accelerate launch \
   --logging_steps ${LOGGING_STEPS} \
   --logging_first_step ${LOGGING_FIRST_STEP} \
   --cola_debug \
+  --use_reentrant_gc ${USE_REENTRANT_GC} \
   --report_to wandb \
-  --gradient_checkpointing False \
   "${TOKENIZED_ARGS[@]}"
 
 echo "[INFO] Training finished at $(date)"
