@@ -18,7 +18,7 @@ module load lib/NCCL/2.22.3-GCCcore-13.3.0-CUDA-12.6.0
 source /opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3/etc/profile.d/conda.sh
 conda activate cola_llama_factory
 export CUDA_DEVICE_ORDER=PCI_BUS_ID
-export ACCELERATE_USE_FSDP=1
+#export ACCELERATE_USE_FSDP=1
 export PYTHONUNBUFFERED=1
 export CUDA_VISIBLE_DEVICES=${SLURM_JOB_GPUS:-0}
 python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count());"
@@ -31,7 +31,8 @@ DATASET_NAME=c4
 FINETUNING_TYPE=cola
 OUTPUT_DIR=/scratch/hpc-prf-merlin/project_data/moe_study/saves/cola_moe_llama31_8b_acc
 MODEL_NAME_OR_PATH=meta-llama/Llama-3.1-8B
-ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml
+#ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml
+ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/ddp_4gpu_config.yaml
 TOKENIZED_PATH=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter/llama-3.1-8B_tokenizer/5_langs
 
 ############ Training hyperparameters ############
@@ -39,8 +40,8 @@ NUM_TRAIN_EPOCHS=1
 LEARNING_RATE=5e-5
 LR_SCHEDULER_TYPE=cosine
 WARMUP_RATIO=0.06
-PER_DEVICE_TRAIN_BATCH_SIZE=30
-PER_DEVICE_EVAL_BATCH_SIZE=30
+PER_DEVICE_TRAIN_BATCH_SIZE=16
+PER_DEVICE_EVAL_BATCH_SIZE=16
 GRADIENT_ACCUMULATION_STEPS=1
 NUM_A=2
 NUM_B=4
@@ -48,7 +49,7 @@ LORA_RANK=4
 LORA_ALPHA=8
 COLA_NUM_EXPERTS=4
 COLA_TOP_K=1
-EVAL_STEPS=20
+EVAL_STEPS=200
 SEED=42
 LOGGING_STEPS=10
 LOGGING_FIRST_STEP=True
@@ -152,6 +153,7 @@ accelerate launch \
   --logging_first_step ${LOGGING_FIRST_STEP} \
   --cola_debug \
   --report_to wandb \
+  --gradient_checkpointing False \
   "${TOKENIZED_ARGS[@]}"
 
 echo "[INFO] Training finished at $(date)"
