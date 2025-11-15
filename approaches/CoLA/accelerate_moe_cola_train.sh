@@ -98,14 +98,6 @@ JSON
 export WANDB_TAGS
 export WANDB_CONFIG_JSON
 
-LM_EVAL_TASKS=belebele
-LM_EVAL_BATCH_SIZE=auto
-LM_EVAL_OUTPUT_DIR=${OUTPUT_DIR}/lm_eval
-LM_EVAL_WANDB_PROJECT=llama31_multilingual_eval_belebele
-LM_EVAL_WANDB_PREFIX=cola_moe_acc
-LM_EVAL_VISIBLE_GPUS=
-LM_EVAL_EXTRA_ARGS=
-
 if [[ ! -f "$ACCEL_CONFIG" ]]; then
   echo "[ERROR] Accelerate config $ACCEL_CONFIG not found." >&2
   exit 1
@@ -163,28 +155,3 @@ accelerate launch \
   "${TOKENIZED_ARGS[@]}"
 
 echo "[INFO] Training finished at $(date)"
-echo "[INFO] Collecting checkpoints for evaluation..."
-mapfile -t CHECKPOINTS < <(find "${OUTPUT_DIR}" -maxdepth 1 -type d -name 'checkpoint-*' | sort -V)
-
-if [[ ${#CHECKPOINTS[@]} -eq 0 ]]; then
-  CHECKPOINTS=("${OUTPUT_DIR}")
-fi
-
-for checkpoint in "${CHECKPOINTS[@]}"; do
-  ckpt_name=$(basename "$checkpoint")
-  ckpt_label=${ckpt_name:-final}
-  out_file="${LM_EVAL_OUTPUT_DIR}/${ckpt_label}_lm_eval.jsonl"
-  wandb_name="${LM_EVAL_WANDB_PREFIX}_${ckpt_label}"
-
-  echo "[INFO] Running lm-eval on ${ckpt_label}, writing to ${out_file}"
-  lm_eval \
-    --model hf \
-    --model_args "pretrained=${checkpoint},tokenizer=${checkpoint}" \
-    --tasks "${LM_EVAL_TASKS}" \
-    --batch_size "${LM_EVAL_BATCH_SIZE}" \
-    --output_path "${out_file}" \
-    --wandb_args "project=${LM_EVAL_WANDB_PROJECT},name=${wandb_name}" \
-    ${LM_EVAL_EXTRA_ARGS}
-done
-
-echo "[INFO] Accelerate workflow finished at $(date)"
