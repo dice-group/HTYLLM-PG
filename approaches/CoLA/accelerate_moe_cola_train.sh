@@ -18,7 +18,6 @@ module load lib/NCCL/2.22.3-GCCcore-13.3.0-CUDA-12.6.0
 source /opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3/etc/profile.d/conda.sh
 conda activate cola_llama_factory
 export CUDA_DEVICE_ORDER=PCI_BUS_ID
-#export ACCELERATE_USE_FSDP=1
 export PYTHONUNBUFFERED=1
 export CUDA_VISIBLE_DEVICES=${SLURM_JOB_GPUS:-0}
 python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count());"
@@ -31,8 +30,9 @@ DATASET_NAME=c4
 FINETUNING_TYPE=cola
 OUTPUT_DIR=/scratch/hpc-prf-merlin/project_data/moe_study/saves/cola_moe_llama31_8b_acc
 MODEL_NAME_OR_PATH=meta-llama/Llama-3.1-8B
-#ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml
-ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/ddp_4gpu_config.yaml
+ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml
+export ACCELERATE_USE_FSDP=1
+#ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/ddp_4gpu_config.yaml
 TOKENIZED_PATH=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter/llama-3.1-8B_tokenizer/5_langs
 LM_EVAL_TASKS=${LM_EVAL_TASKS:-belebele}
 LM_EVAL_BATCH_SIZE=${LM_EVAL_BATCH_SIZE:-auto}
@@ -67,6 +67,15 @@ BF16=True
 FP16=False
 USE_COLA_EXPERTS=True
 USE_REENTRANT_GC=False
+USE_COLA_PISSA_INIT=${USE_COLA_PISSA_INIT:-True}
+COLA_INIT_LORA_WEIGHTS=${COLA_INIT_LORA_WEIGHTS:-}
+if [[ -z "${PURE_BF16:-}" ]]; then
+  if [[ "${ACCEL_CONFIG}" == *"fsdp"* ]]; then
+    PURE_BF16=True
+  else
+    PURE_BF16=False
+  fi
+fi
 
 # Note:  we only specify c4 here but we dont really need it, since we give in tokenized_path dir
 # llamafactory will load train and validation dataset from tokenized_path (see data/loader.py lines 239ff.)
@@ -98,10 +107,13 @@ WANDB_CONFIG_JSON=$(cat <<JSON
   "warmup_ratio": ${WARMUP_RATIO},
   "num_train_epochs": ${NUM_TRAIN_EPOCHS},
   "use_cola_experts": $(echo "${USE_COLA_EXPERTS}" | tr '[:upper:]' '[:lower:]'),
+  "use_cola_pissa_init": $(echo "${USE_COLA_PISSA_INIT}" | tr '[:upper:]' '[:lower:]'),
+  "cola_init_lora_weights": "${COLA_INIT_LORA_WEIGHTS}",
   "bf16": $(echo "${BF16}" | tr '[:upper:]' '[:lower:]'),
   "fp16": $(echo "${FP16}" | tr '[:upper:]' '[:lower:]'),
   "seed": ${SEED},
   "logging_steps": ${LOGGING_STEPS},
+  "pure_bf16": $(echo "${PURE_BF16}" | tr '[:upper:]' '[:lower:]'),
   "num_langs": "${NUM_LANGS}"
 }
 JSON
@@ -146,6 +158,10 @@ if [[ -n "$TOKENIZED_PATH" ]]; then
   fi
   TOKENIZED_ARGS+=(--tokenized_path "${TOKENIZED_PATH}")
 fi
+COLA_INIT_ARGS=()
+if [[ -n "${COLA_INIT_LORA_WEIGHTS}" ]]; then
+  COLA_INIT_ARGS+=(--cola_init_lora_weights "${COLA_INIT_LORA_WEIGHTS}")
+fi
 
 echo "[INFO] Starting Accelerate-backed MoE CoLA training at $(date)"
 accelerate launch \
@@ -180,14 +196,19 @@ accelerate launch \
   --use_cola_experts ${USE_COLA_EXPERTS} \
   --cola_num_experts ${COLA_NUM_EXPERTS} \
   --cola_top_k ${COLA_TOP_K} \
-  --bf16 ${BF16} \
-  --fp16 ${FP16} \
+  --use_cola_pissa_init ${USE_COLA_PISSA_INIT} \
+  "${COLA_INIT_ARGS[@]}" \
+  --bf16 $(echo "${BF16}" | tr '[:upper:]' '[:lower:]') \
+  --fp16 $(echo "${FP16}" | tr '[:upper:]' '[:lower:]') \
+  --pure_bf16 $(echo "${PURE_BF16}" | tr '[:upper:]' '[:lower:]') \
   --disable_tqdm ${DISABLE_TQDM} \
   --logging_steps ${LOGGING_STEPS} \
   --logging_first_step ${LOGGING_FIRST_STEP} \
   --cola_debug \
-  --use_reentrant_gc ${USE_REENTRANT_GC} \
+  --dataloader_num_workers 8 \
+  --preprocessing_num_workers 16 \
   --report_to wandb \
+  --ddp_find_unused_parameters False \
   "${TOKENIZED_ARGS[@]}"
 
 echo "[INFO] Training finished at $(date)"

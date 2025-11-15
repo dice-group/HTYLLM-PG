@@ -256,6 +256,10 @@ def _setup_lora_tuning(
     if is_trainable and cast_trainable_params_to_fp32:
         for param in filter(lambda p: p.requires_grad, model.parameters()):
             param.data = param.data.to(torch.float32)
+    elif is_trainable and getattr(finetuning_args, "pure_bf16", False):
+        # Ensure trainable adapter weights (routers, LoRA matrices, etc.) match the bf16 compute dtype.
+        for param in filter(lambda p: p.requires_grad, model.parameters()):
+            param.data = param.data.to(torch.bfloat16)
 
     return model
 
@@ -367,6 +371,24 @@ def _setup_cola_tuning(
             # "expert_num": finetuning_args.expert_num,
             "modules_to_save": finetuning_args.additional_target,
         }
+        init_lora_weights = finetuning_args.cola_init_lora_weights
+        if init_lora_weights is None:
+            if finetuning_args.use_cola_pissa_init:
+                init_lora_weights = (
+                    "pissa" if finetuning_args.pissa_iter == -1 else f"pissa_niter_{finetuning_args.pissa_iter}"
+                )
+            else:
+                init_lora_weights = True
+        else:
+            lowered = init_lora_weights.lower()
+            if lowered in {"true", "default", "lora"}:
+                init_lora_weights = True
+            elif lowered in {"false", "none", "random"}:
+                init_lora_weights = False
+            elif lowered == "pissa" and finetuning_args.pissa_iter != -1:
+                init_lora_weights = f"pissa_niter_{finetuning_args.pissa_iter}"
+        peft_kwargs["init_lora_weights"] = init_lora_weights
+        logger.info_rank0(f"CoLA adapter initialization method: {init_lora_weights}.")
 
         if model_args.use_unsloth:
             model = get_unsloth_peft_model(model, model_args, peft_kwargs)

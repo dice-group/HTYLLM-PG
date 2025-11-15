@@ -404,6 +404,20 @@ class FinetuningArguments(
     cola_num_experts: int = field(default=1, metadata={"help": "Number of experts per CoLA layer when mixture-of-experts is enabled."})
     cola_top_k: int = field(default=1, metadata={"help": "Top-k experts to select per token when mixture-of-experts is enabled."})
     cola_debug: bool = field(default=False, metadata={"help": "Enable verbose CoLA debugging output."})
+    use_cola_pissa_init: bool = field(
+        default=True,
+        metadata={"help": "When True, PiSSA init is applied to CoLA adapters unless overridden."},
+    )
+    cola_init_lora_weights: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Override the initialization method for CoLA adapters. "
+                "Accepts values like 'pissa', 'pissa_niter_16', 'gaussian', 'true', etc. "
+                "If unset, `use_cola_pissa_init` decides whether PiSSA or default LoRA init is used."
+            )
+        },
+    )
 
     use_hydralora_experts: bool = field(default=False, metadata={"help": "Enable mixture-of-experts routing for HydraLoRA adapters."})
     hydralora_num_experts: int = field(default=1, metadata={"help": "Number of experts per HydraLoRA layer when mixture-of-experts is enabled."})
@@ -424,6 +438,10 @@ class FinetuningArguments(
         self.galore_target: List[str] = split_arg(self.galore_target)
         self.freeze_vision_tower = self.freeze_vision_tower or self.train_mm_proj_only
         self.use_ref_model = self.stage == "dpo" and self.pref_loss not in ["orpo", "simpo"]
+        if isinstance(self.cola_init_lora_weights, str):
+            self.cola_init_lora_weights = self.cola_init_lora_weights.strip()
+            if len(self.cola_init_lora_weights) == 0:
+                self.cola_init_lora_weights = None
 
         assert self.finetuning_type in ["lora", "freeze", "full", "cola", "hydralora", "prompt_tuning", "ia3", "p_tuning"], "Invalid fine-tuning method."
         assert self.ref_model_quantization_bit in [None, 8, 4], "We only accept 4-bit or 8-bit quantization."

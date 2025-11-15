@@ -175,6 +175,7 @@ class ColaLayer(BaseTunerLayer):
         return device
 
     def update_layer(self, adapter_name, r, lora_alpha, lora_dropout, num_A, num_B, init_lora_weights):
+        use_pissa = self._should_use_pissa(init_lora_weights)
         if self.use_cola_experts and adapter_name == self._active_adapter:
             self._active_adapters = []
             adapter_names = []
@@ -204,7 +205,12 @@ class ColaLayer(BaseTunerLayer):
                     for p in b.parameters():
                         p.requires_grad = True
 
-            self.shared_pissa_init(adapter_names)
+            if use_pissa:
+                self.shared_pissa_init(adapter_names)
+            elif init_lora_weights:
+                for name in adapter_names:
+                    self.reset_lora_parameters(name, init_lora_weights)
+
             self._verify_cola_expert_init()
             self._cola_parent_children[adapter_name] = adapter_names
             self.set_adapter(adapter_name)
@@ -229,9 +235,11 @@ class ColaLayer(BaseTunerLayer):
         self.lora_A[adapter_name] = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(num_A)])
         self.lora_B[adapter_name] = nn.ModuleList([nn.Linear(r, self.out_features, bias=False) for _ in range(num_B)])
         self.scaling[adapter_name] = lora_alpha / r
-        # self.reset_lora_parameters(adapter_name, init_lora_weights)
 
-        self.pissa_init(adapter_name)
+        if use_pissa:
+            self.pissa_init(adapter_name)
+        elif init_lora_weights:
+            self.reset_lora_parameters(adapter_name, init_lora_weights)
 
         # call this before dora_init
         self._move_adapter_to_device_of_base_layer(adapter_name)
@@ -270,8 +278,9 @@ class ColaLayer(BaseTunerLayer):
                 # nn.init.kaiming_uniform_(self.lora_A[adapter_name].weight, a=math.sqrt(5))
                 for layer in self.lora_A[adapter_name]:
                     nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))
-            elif init_lora_weights.lower() == "gaussian":
-                nn.init.normal_(self.lora_A[adapter_name].weight, std=1 / self.r[adapter_name])
+            elif isinstance(init_lora_weights, str) and init_lora_weights.lower() == "gaussian":
+                for layer in self.lora_A[adapter_name]:
+                    nn.init.normal_(layer.weight, std=1 / self.r[adapter_name])
             else:
                 raise ValueError(f"Unknown initialization {init_lora_weights=}")
             for layer in self.lora_B[adapter_name]:
@@ -281,6 +290,9 @@ class ColaLayer(BaseTunerLayer):
             # https://github.com/microsoft/LoRA/blob/4c0333854cb905966f8cc4e9a74068c1e507c7b7/loralib/layers.py#L59-L60
             nn.init.zeros_(self.lora_embedding_A[adapter_name])
             nn.init.normal_(self.lora_embedding_B[adapter_name])
+
+    def _should_use_pissa(self, init_lora_weights: Union[bool, str]) -> bool:
+        return isinstance(init_lora_weights, str) and init_lora_weights.lower().startswith("pissa")
 
     def pissa_init(self, adapter_name):
         weight, dtype = self._clone_base_weight()

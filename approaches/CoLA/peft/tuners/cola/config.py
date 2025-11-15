@@ -127,7 +127,7 @@ class ColaConfig(PeftConfig):
         },
     )
     init_lora_weights: bool | Literal["gaussian", "olora", "pissa", "pissa_niter_[number of iters]", "loftq"] = field(
-        default=True,
+        default="pissa",
         metadata={
             "help": (
                 "How to initialize the weights of the LoRA layers. Passing `'True'` (default) results in the default "
