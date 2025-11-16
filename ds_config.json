@@ -1,5 +1,5 @@
 {
-  "train_batch_size": 128,
+  "train_batch_size": 32,
   "train_micro_batch_size_per_gpu": 8,
   "gradient_accumulation_steps": 4,
   "fp16": {
@@ -7,5 +7,18 @@
   },
   "zero_optimization": {
     "stage": 2
+  },
+  "checkpoint": {
+    "save_dir": "./checkpoints",
+    "load_dir": "./checkpoints",
+    "checkpoint_steps": 1000
+  },
+  "flops_profiler": {
+    "enabled": true,
+    "profile_step": 200,
+    "module_depth": -1,
+    "top_modules": 3,
+    "detailed": true,
+    "output_file": "profiles/flops_profile_rank${RANK}.txt"
   }
 }

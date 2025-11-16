@@ -9,17 +9,35 @@ class MultiLangTokenDataset(Dataset):
         self.files = []
         self.cumulative_sizes = [0]
         self._memmaps = {}
+        self._mask_memmaps = {}
         
         # Collect all .npy files from all language directories
         for lang_dir in sorted(self.root_dir.iterdir()):
             if lang_dir.is_dir():
                 npy_files = sorted(lang_dir.glob("tokens_*.npy"))
                 for f in npy_files:
-                    # Load to get size
+                    # Check if corresponding mask file exists
+                    mask_file = f.parent / f.name.replace("tokens_", "masks_")
+                    if not mask_file.exists():
+                        print(f"Warning: No mask file found for {f.name}, skipping")
+                        continue
+                    
+                    # Load to get size - expects pre-packed sequences (N, seq_length)
                     arr = np.load(f, mmap_mode='r')
-                    n_seqs = len(arr) // seq_length
+                    if arr.ndim != 2:
+                        raise ValueError(
+                            f"Expected 2D array (N, seq_length) in {f.name}, got shape {arr.shape}. "
+                            "Please use the new tokenization pipeline with packing."
+                        )
+                    
+                    if arr.shape[1] != seq_length:
+                        raise ValueError(
+                            f"Sequence length mismatch in {f.name}: expected {seq_length}, got {arr.shape[1]}"
+                        )
+                    
+                    n_seqs = len(arr)
                     if n_seqs > 0:
-                        self.files.append((f, len(arr)))
+                        self.files.append((f, mask_file))
                         self.cumulative_sizes.append(
                             self.cumulative_sizes[-1] + n_seqs
                         )
@@ -35,20 +53,25 @@ class MultiLangTokenDataset(Dataset):
         file_idx = np.searchsorted(self.cumulative_sizes[1:], idx, side='right')
         local_idx = idx - self.cumulative_sizes[file_idx]
         
-        # Load the file and extract sequence
-        filepath, _ = self.files[file_idx]
-        # cache memmaps
+        # Load the files and extract sequence
+        filepath, maskpath = self.files[file_idx]
+        
+        # Cache memmaps
         if filepath not in self._memmaps:
             self._memmaps[filepath] = np.load(filepath, mmap_mode='r')
-        tokens = self._memmaps[filepath]
+            self._mask_memmaps[filepath] = np.load(maskpath, mmap_mode='r')
         
-        start = local_idx * self.seq_length
-        end = start + self.seq_length
-        seq = tokens[start:end]
+        tokens = self._memmaps[filepath]
+        masks = self._mask_memmaps[filepath]
+        
+        # Extract pre-packed sequence
+        seq = tokens[local_idx]
+        mask = masks[local_idx]
         
         return {
             'input_ids': seq[:-1].astype(np.int64),
-            'labels': seq[1:].astype(np.int64)
+            'labels': seq[1:].astype(np.int64),
+            'attention_mask': mask[:-1].astype(np.int64)
         }
 
 

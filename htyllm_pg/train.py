@@ -147,7 +147,9 @@ def main():
         if RANK == 0:
             print(f"Loaded checkpoint '{tag}', resuming from step {global_step}")
 
-    criterion = nn.CrossEntropyLoss().to(device)
+    # Use pad_token_id = 0 
+    PAD_TOKEN_ID = 0
+    criterion = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN_ID).to(device)
     
     # real data if data_dir provided otherwise dummy data
     if args.data_dir:
@@ -173,8 +175,11 @@ def main():
         for step, batch in tqdm(enumerate(train_dataloader), total=len(train_dataloader)):
             input_ids = batch['input_ids'].to(device)
             target = batch['labels'].to(device)
+            attention_mask = batch.get('attention_mask', None)
+            if attention_mask is not None:
+                attention_mask = attention_mask.to(device)
 
-            output, l_aux = model(input_ids)
+            output, l_aux = model(input_ids, attention_mask=attention_mask)
             
             ce_loss = criterion(output.float().transpose(1, 2), target)
 
@@ -207,8 +212,11 @@ def main():
         for batch in tqdm(test_dataloader, desc="Evaluating"):
             input_ids = batch['input_ids'].to(device)
             target = batch['labels'].to(device)
+            attention_mask = batch.get('attention_mask', None)
+            if attention_mask is not None:
+                attention_mask = attention_mask.to(device)
 
-            output, l_aux = model(input_ids)
+            output, l_aux = model(input_ids, attention_mask=attention_mask)
             test_loss = criterion(output.float().transpose(1,2), target) + 0.01 * l_aux
             test_loss_sum += test_loss.item()
             num_test_batches += 1

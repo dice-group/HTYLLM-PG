@@ -2,6 +2,10 @@ import argparse
 from htyllm_pg.util.yield_jsonl_gz import yield_jsonl_gz
 from tokenizers import models, normalizers, pre_tokenizers, trainers, Tokenizer, processors, decoders
 
+
+PAD_TOKEN = "<|pad|>"
+EOT_TOKEN = "<|endoftext|>"
+
 def train_tokenizer(folder_path, vocab_size=262_144, batch_size=1000):
     tokenizer = Tokenizer(models.BPE())
     
@@ -12,7 +16,7 @@ def train_tokenizer(folder_path, vocab_size=262_144, batch_size=1000):
     ])
     tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
     
-    trainer = trainers.BpeTrainer(vocab_size=vocab_size, special_tokens=["<|endoftext|>"])
+    trainer = trainers.BpeTrainer(vocab_size=vocab_size, special_tokens=[PAD_TOKEN, EOT_TOKEN])
     
     print(f"Training tokenizer on data from: {folder_path}")
     tokenizer.train_from_iterator(
@@ -21,6 +25,14 @@ def train_tokenizer(folder_path, vocab_size=262_144, batch_size=1000):
     )
     tokenizer.post_processor = processors.ByteLevel(trim_offsets=False)
     tokenizer.decoder = decoders.ByteLevel()
+
+    pad_id = tokenizer.token_to_id(PAD_TOKEN)
+    tokenizer.enable_padding(
+        direction="right",
+        pad_id=pad_id,
+        pad_token=PAD_TOKEN,
+    )
+
 
     test_str = "Test the tokenizer roundtrip: Hello, 世界!"
     encoded = tokenizer.encode(test_str)

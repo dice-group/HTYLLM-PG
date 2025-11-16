@@ -42,7 +42,7 @@ class Attention(nn.Module):
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
-    def forward(self, x):
+    def forward(self, x, attention_mask=None):
         x = self.norm(x)# nomralize each tokens along dimension (mean 0, variance 1) shape stays 
 
         qkv = self.to_qkv(x).chunk(3, dim = -1)# linear layer that maps each 8-dim vector to a big vector (inner_dim * 3)
@@ -65,6 +65,16 @@ class Attention(nn.Module):
         # make attention causal
         seq_len = dots.shape[-1]
         mask = torch.triu(torch.ones(seq_len, seq_len, device=dots.device), diagonal=1).bool() # build triangular mask to prevent tokens from attending to future tokens 
+        
+        # Add padding mask if provided
+        if attention_mask is not None:
+            # attention_mask shape: (batch, seq_len) with 1 for real tokens, 0 for padding
+            padding_mask = attention_mask.unsqueeze(1).unsqueeze(2) == 0
+            # Expand causal mask to (1, 1, seq_len, seq_len)
+            mask = mask.unsqueeze(0).unsqueeze(0)
+            # Combine: mask out future tokens AND padding tokens
+            mask = mask | padding_mask
+        
         dots = dots.masked_fill(mask, float('-inf')) # fill the upper triangle with -inf 
         attn = self.attend(dots) # This is than turned into probabilites:
                                     # Luke-row after softmax:  [0.60, 0.15, 0.25]
@@ -106,17 +116,31 @@ class FlashAttention(nn.Module):
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
-    def forward(self, x):
+    def forward(self, x, attention_mask=None):
         x = self.norm(x)
         
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
         
+        # Create attention mask for Flash Attention if padding mask is provided
+        attn_mask = None
+        if attention_mask is not None:
+            # Flash attention expects attn_mask in shape (batch, num_heads, seq_len, seq_len) 
+            seq_len = q.shape[2]
+            causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=q.device), diagonal=1).bool()
+            # attention_mask shape: (batch, seq_len) with 1 for real tokens, 0 for padding
+            padding_mask = attention_mask.unsqueeze(1).unsqueeze(2) == 0  # (batch, 1, 1, seq_len)
+            # Combine masks
+            attn_mask = causal_mask.unsqueeze(0).unsqueeze(0) | padding_mask
+            # Convert bool mask to float (-inf for masked positions)
+            attn_mask = torch.where(attn_mask, float('-inf'), 0.0)
+        
         # Use PyTorch's Flash Attention implementation
         out = torch.nn.functional.scaled_dot_product_attention(
             q, k, v, 
+            attn_mask=attn_mask,
             dropout_p=self.dropout_p if self.training else 0.0,
-            is_causal=True
+            is_causal=(attention_mask is None)  
         )
         
         out = rearrange(out, 'b h n d -> b n (h d)')
@@ -163,11 +187,11 @@ class Transformer(nn.Module):
                 #max_expert_num=4
             )
 
-    def forward(self, x):
+    def forward(self, x, attention_mask=None):
 
         l_aux = 0.0
         for i, (attn, ff) in enumerate(self.layers):
-            x = attn(x) + x # Residual connection
+            x = attn(x, attention_mask=attention_mask) + x # Residual connection
 
             if i in self.moe_layers: # moe layers feed forward nn
                 output, moe_loss, _ = ff(x)
@@ -200,14 +224,14 @@ class MoE_Transformer(nn.Module):
 
         self.output_projection = nn.Linear(dim, vocab_size)
 
-    def forward(self, tokens):
+    def forward(self, tokens, attention_mask=None):
         x = self.token_embedding(tokens)
         b, n, _ = x.shape
 
         x += self.pos_embedding[:, :n]
         x = self.dropout(x)
 
-        x, l_aux = self.transformer(x)
+        x, l_aux = self.transformer(x, attention_mask=attention_mask)
         # for [B, T, dim]  output_projection treats B, T as batch dimensions and dim as feature dimension
         # maps each token to its vocab distribution (what comes after this token)
         return self.output_projection(x), l_aux
