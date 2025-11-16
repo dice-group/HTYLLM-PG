@@ -1,4 +1,15 @@
 #!/bin/bash
+#SBATCH --job-name=cola-ckpt-listener
+#SBATCH --partition=gpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --time=36:30:00
+#SBATCH --output=logs/checkpoint_listener_%j.log
+
+# This script can run either via `sbatch checkpoint_listener.sh ...`
+# (using the header above) or directly with `bash checkpoint_listener.sh ...`.
 set -euo pipefail
 
 usage() {
@@ -37,24 +48,25 @@ STOP=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --watch-dir) WATCH=$2;;
-    --eval-script) SCRIPT=$2;;
-    --tasks) TASKS=$2;;
-    --batch-size) BS=$2;;
-    --output-dir) OUT=$2;;
-    --wandb-project) WANDB_PROJ=$2;;
-    --wandb-prefix) WANDB_PREF=$2;;
-    --extra-args) EXTRA=$2;;
-    --poll-interval) POLL=$2;;
-    --state-file) STATE=$2;;
-    --stop-file) STOP=$2;;
+    --watch-dir) WATCH=$2; shift 2; continue;;
+    --eval-script) SCRIPT=$2; shift 2; continue;;
+    --tasks) TASKS=$2; shift 2; continue;;
+    --batch-size) BS=$2; shift 2; continue;;
+    --output-dir) OUT=$2; shift 2; continue;;
+    --wandb-project) WANDB_PROJ=$2; shift 2; continue;;
+    --wandb-prefix) WANDB_PREF=$2; shift 2; continue;;
+    --extra-args) EXTRA=$2; shift 2; continue;;
+    --poll-interval) POLL=$2; shift 2; continue;;
+    --state-file) STATE=$2; shift 2; continue;;
+    --stop-file) STOP=$2; shift 2; continue;;
     -h|--help) usage; exit 0;;
     *) echo "Unknown option $1"; usage; exit 1;;
   esac
-  shift
 done
 
 [[ -z "$WATCH" || -z "$SCRIPT" ]] && { echo "--watch-dir and --eval-script required"; exit 1; }
+
+mkdir -p "$WATCH"
 
 OUT=${OUT:-"$WATCH/lm_eval"}
 STATE=${STATE:-"$WATCH/.lm_eval_submitted"}
