@@ -26,9 +26,10 @@ INPUT_FOLDER="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/sharded_
 
 OUTPUT_FOLDER="/scratch/hpc-prf-merlin/luke/tokenized_data" 
 TOKENIZER_PATH="tokenizer.json"
+SEQ_LENGTH=2048
 BATCH_SIZE=10000
 
-srun python -m htyllm_pg.tokenize_data ${INPUT_FOLDER} ${OUTPUT_FOLDER} ${TOKENIZER_PATH} ${BATCH_SIZE}
+srun python -m htyllm_pg.tokenize_data ${INPUT_FOLDER} ${OUTPUT_FOLDER} ${TOKENIZER_PATH} ${SEQ_LENGTH} ${BATCH_SIZE}
 
 echo "Job finished at $(date)"
 

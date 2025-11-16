@@ -27,6 +27,7 @@ export PYTHONUNBUFFERED=1
 INPUT_FOLDER="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/sharded_samples"
 OUTPUT_FOLDER="/scratch/hpc-prf-merlin/luke/tokenized_subsets"
 TOKENIZER_PATH="tokenizer.json"
+SEQ_LENGTH=2048
 BATCH_SIZE=10000
 
 # Array of all subsets
@@ -42,7 +43,7 @@ SUBSETS=(
 SUBSET_NAME=${SUBSETS[$SLURM_ARRAY_TASK_ID]}
 echo "Processing subset: ${SUBSET_NAME}"
 
-srun python -m htyllm_pg.tokenize_subsets ${INPUT_FOLDER} ${OUTPUT_FOLDER}/${SUBSET_NAME} ${TOKENIZER_PATH} ${SUBSET_NAME} ${BATCH_SIZE}
+srun python -m htyllm_pg.tokenize_subsets ${INPUT_FOLDER} ${OUTPUT_FOLDER}/${SUBSET_NAME} ${TOKENIZER_PATH} ${SUBSET_NAME} ${SEQ_LENGTH} ${BATCH_SIZE}
 
 echo "Job finished at $(date)"
 
