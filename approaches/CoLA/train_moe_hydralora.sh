@@ -10,9 +10,9 @@ mkdir -p "${OUTPUT_DIR}"
 CUDA_VISIBLE_DEVICES=0 llamafactory-cli train \
   --stage sft \
   --do_train \
-  --model_name_or_path meta-llama/Llama-3.2-1B \
+  --model_name_or_path data/project_data/moe_study/models/llama-3.2-1B-multilingual \
   --resize_vocab true \
-  --dataset gsm8k \
+  --dataset c4 \
   --dataset_dir "${DATASET_DIR}" \
   --template llama3 \
   --finetuning_type hydralora \
@@ -25,7 +25,7 @@ CUDA_VISIBLE_DEVICES=0 llamafactory-cli train \
   --fp16 False \
   --lora_rank 4 \
   --lora_alpha 8 \
-  --lora_num 1 \
+  --lora_num 2 \
   --use_hydralora_experts \
   --hydralora_num_experts 2 \
   --hydralora_top_k 2 \

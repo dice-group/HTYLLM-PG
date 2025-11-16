@@ -207,8 +207,8 @@ class HydraLoraModel(BaseTuner):
                 lora_dropout=lora_config.lora_dropout,
                 lora_num=lora_config.lora_num,
                 init_lora_weights=lora_config.init_lora_weights,
-                #use_rslora=lora_config.use_rslora,
-                #use_dora=lora_config.use_dora,
+                use_rslora=lora_config.use_rslora,
+                use_dora=lora_config.use_dora,
             )
         else:
             new_module = self._create_new_module(lora_config, adapter_name, target, **kwargs)
@@ -389,36 +389,36 @@ class HydraLoraModel(BaseTuner):
                 if module.merged:
                     warnings.warn("Adapter cannot be set when the model is merged. Unmerging the model first.")
                     module.unmerge()
-                # module.set_adapter(adapter_name)
+                module.set_adapter(adapter_name)
 
-                module_dict = getattr(module, "lora_A")
-                for key, layer in module_dict.items():
-                    if key in self.active_adapters:
-                        # Note: It is possible that not a single layer is called with requires_grad_(True) here. This may
-                        # happen if a completely different adapter layer is being activated.
-                        layer.requires_grad_(True)
-                    else:
-                        layer.requires_grad_(False)
+                # module_dict = getattr(module, "lora_A")
+                # for key, layer in module_dict.items():
+                #     if key in self.active_adapters:
+                #         # Note: It is possible that not a single layer is called with requires_grad_(True) here. This may
+                #         # happen if a completely different adapter layer is being activated.
+                #         layer.requires_grad_(True)
+                #     else:
+                #         layer.requires_grad_(False)
                        
-                module_dict = getattr(module, "lora_B")
-                for key, layer in module_dict.items():
-                    if key in self.active_adapters:
-                        # Note: It is possible that not a single layer is called with requires_grad_(True) here. This may
-                        # happen if a completely different adapter layer is being activated.
-                        for sublayer in layer:
-                            sublayer.requires_grad_(True)
-                    else:
-                        for sublayer in layer:
-                            sublayer.requires_grad_(False)
+                # module_dict = getattr(module, "lora_B")
+                # for key, layer in module_dict.items():
+                #     if key in self.active_adapters:
+                #         # Note: It is possible that not a single layer is called with requires_grad_(True) here. This may
+                #         # happen if a completely different adapter layer is being activated.
+                #         for sublayer in layer:
+                #             sublayer.requires_grad_(True)
+                #     else:
+                #         for sublayer in layer:
+                #             sublayer.requires_grad_(False)
 
-                module_dict = getattr(module, "lora_route")
-                for key, layer in module_dict.items():
-                    if key in self.active_adapters:
-                        # Note: It is possible that not a single layer is called with requires_grad_(True) here. This may
-                        # happen if a completely different adapter layer is being activated.
-                        layer.requires_grad_(True)
-                    else:
-                        layer.requires_grad_(False)
+                # module_dict = getattr(module, "lora_route")
+                # for key, layer in module_dict.items():
+                #     if key in self.active_adapters:
+                #         # Note: It is possible that not a single layer is called with requires_grad_(True) here. This may
+                #         # happen if a completely different adapter layer is being activated.
+                #         layer.requires_grad_(True)
+                #     else:
+                #         layer.requires_grad_(False)
              
 
         self.active_adapter = adapter_name
