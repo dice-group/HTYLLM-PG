@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=cola-ckpt-listener
-#SBATCH --partition=gpu
+#SBATCH --partition=normal
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
@@ -67,6 +67,7 @@ done
 [[ -z "$WATCH" || -z "$SCRIPT" ]] && { echo "--watch-dir and --eval-script required"; exit 1; }
 
 mkdir -p "$WATCH"
+WATCH_LABEL=$(basename "$WATCH")
 
 OUT=${OUT:-"$WATCH/lm_eval"}
 STATE=${STATE:-"$WATCH/.lm_eval_submitted"}
@@ -79,16 +80,25 @@ processed() { grep -Fxq "$1" "$STATE"; }
 mark() { echo "$1" >> "$STATE"; }
 
 submit() {
-  echo "[INFO] eval for $1"
-  sbatch "$SCRIPT" \
-    --checkpoint "$1" \
+  local ckpt_path=$1
+  echo "[INFO] eval for ${ckpt_path}"
+  local ckpt_label
+  ckpt_label=$(basename "${ckpt_path}")
+  local job_name="lm-eval_${WATCH_LABEL}_${ckpt_label}"
+  local job_log="logs/${job_name}_%j.log"
+  local wandb_prefix="${WANDB_PREF}_${WATCH_LABEL}"
+  sbatch \
+    --job-name="${job_name}" \
+    --output="${job_log}" \
+    "$SCRIPT" \
+    --checkpoint "${ckpt_path}" \
     --output-dir "$OUT" \
     --tasks "$TASKS" \
     --batch-size "$BS" \
     --wandb-project "$WANDB_PROJ" \
-    --wandb-prefix "$WANDB_PREF" \
+    --wandb-prefix "${wandb_prefix}" \
     ${EXTRA:+--extra-args "$EXTRA"} \
-  && mark "$1"
+  && mark "${ckpt_path}"
 }
 
 echo "[INFO] Watching $WATCH"

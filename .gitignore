@@ -17,3 +17,5 @@ dist/
 *.out
 *.err
 *.log
+
+**/wandb/

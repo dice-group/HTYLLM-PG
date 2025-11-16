@@ -4,7 +4,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --gres=gpu:h100:4
-#SBATCH --time=12:00:00
+#SBATCH --time=35:00:00
 #SBATCH --mem=256G
 #SBATCH --output=logs/train_acc_moe_cola_%j.log
 #SBATCH --partition=gpu
@@ -19,7 +19,6 @@ source /opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3/etc/profile.d/conda.
 conda activate cola_llama_factory
 export CUDA_DEVICE_ORDER=PCI_BUS_ID
 export PYTHONUNBUFFERED=1
-export CUDA_VISIBLE_DEVICES=${SLURM_JOB_GPUS:-0}
 python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count());"
 
 export WANDB_PROJECT="llama3.1-8b_moe_cola_training_accelerate"
@@ -28,11 +27,12 @@ export WANDB_RUN_GROUP="cola_moe_accelerate"
 DATASET_DIR=./LLaMA-Factory/data
 DATASET_NAME=c4
 FINETUNING_TYPE=cola
-OUTPUT_DIR=/scratch/hpc-prf-merlin/project_data/moe_study/saves/cola_moe_llama31_8b_acc
+OUTPUT_DIR=${OUTPUT_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/saves/cola_moe_llama31_8b_acc}
 MODEL_NAME_OR_PATH=meta-llama/Llama-3.1-8B
 ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml
 export ACCELERATE_USE_FSDP=1
 #ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/ddp_4gpu_config.yaml
+#ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/single_gpu.yaml
 TOKENIZED_PATH=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter/llama-3.1-8B_tokenizer/5_langs
 LM_EVAL_TASKS=${LM_EVAL_TASKS:-belebele}
 LM_EVAL_BATCH_SIZE=${LM_EVAL_BATCH_SIZE:-auto}
@@ -84,7 +84,7 @@ fi
 NUM_LANGS=$(echo "${TOKENIZED_PATH}" | sed -n 's#.*/\([0-9]\+\)_langs.*#\1#p')
 NUM_LANGS=${NUM_LANGS:-all}
 
-RUN_NAME="cola_moe_acc_${NUM_LANGS}langs_$(date +%Y%m%d_%H%M%S)"
+RUN_NAME="cola_moe_acc_${NUM_LANGS}langs_a${NUM_A}_b${NUM_B}_$( [[ "${USE_COLA_PISSA_INIT}" =~ ^([Tt]rue|1)$ ]] && echo pissa || echo nopissa )_$(date +%Y%m%d_%H%M%S)"
 WANDB_TAGS="cola,moe,accelerate,bf16"
 WANDB_CONFIG_JSON=$(cat <<JSON
 {
