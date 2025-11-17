@@ -81,6 +81,7 @@ def main():
 
     pytorch_total_params = sum(p.numel() for p in model_pytorch.parameters() if p.requires_grad)
 
+    # Get model parameters for DeepSpeed
     base_params = {
         "params": [p for p in model_pytorch.parameters() if p.requires_grad],
         "name": "parameters",
@@ -89,16 +90,9 @@ def main():
     # let DeepSpeed split into MoE / non-MoE param groups
     param_groups = split_params_into_different_moe_groups_for_optimizer(base_params)
 
-    # construct AdamW on those groups
-    optimizer = torch.optim.AdamW(
-        param_groups,
-        lr=args.lr,
-        weight_decay=args.weight_decay,
-    )
-
     model, optimizer, _, _ = deepspeed.initialize(
-        model = model_pytorch,
-        optimizer=optimizer,
+        model=model_pytorch,
+        model_parameters=param_groups,
         args=args,
     )
 
