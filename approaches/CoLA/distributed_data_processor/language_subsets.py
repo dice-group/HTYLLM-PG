@@ -422,6 +422,11 @@ flores_languages = [
 ]
 
 # All of these lanagues are included in fineweb-2, belebele, flores-200, arc
+# Stats checkpoint:
+# - common_languages: 190 entries
+# - Overlap: 190/190 in (flores ∪ belebele)
+# - BeLEBELE coverage: 108/122 already in common_languages; add the remaining 14 if full coverage is desired
+# - FLORES coverage: 190/204 already in common_languages; missing {acq_Arab, ajp_Arab, aka_Latn, eng_Latn, est_Latn, grn_Latn, hau_Latn, kon_Latn, pes_Arab, prs_Arab, tgl_Latn, yue_Hant, zho_Hans, zho_Hant}
 common_languages = [
     "ace_Arab",
     "ace_Latn",
