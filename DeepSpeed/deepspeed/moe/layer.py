@@ -33,6 +33,7 @@ class MoE(nn.Module):
         use_tutel (bool, optional): default=False, whether to use Tutel optimizations (if installed).
         enable_expert_tensor_parallelism (bool, optional): default=False, whether to use tensor parallelism for experts
         top2_2nd_expert_sampling (bool, optional): default=True, whether to perform sampling for 2nd expert
+        topany_gating_impl (str, optional): default='opt_mem', implementation choice for top-any gating, valid options are 'opt' or 'opt_mem'.
     """
 
     def __init__(self,
@@ -51,7 +52,8 @@ class MoE(nn.Module):
                  use_tutel: bool = False,
                  enable_expert_tensor_parallelism: bool = False,
                  top2_2nd_expert_sampling: bool = True,
-                 gate_backward: str = "sign") -> None:
+                 gate_backward: str = "sign",
+                 topany_gating_impl: str = "opt_mem") -> None:
 
         super(MoE, self).__init__()
 
@@ -73,7 +75,7 @@ class MoE(nn.Module):
         experts = Experts(expert, self.num_local_experts, self.expert_group_name)
         self.deepspeed_moe = MOELayer(TopKGate(hidden_size, num_experts, k, capacity_factor, eval_capacity_factor,
                                                min_capacity, noisy_gate_policy, drop_tokens, use_rts, None,
-                                               top2_2nd_expert_sampling, gate_backward),
+                                               top2_2nd_expert_sampling, gate_backward, topany_gating_impl),
                                       experts,
                                       self.expert_group_name,
                                       self.ep_size,
