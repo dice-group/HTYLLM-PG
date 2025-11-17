@@ -33,7 +33,8 @@ echo "Hostfile:"
 cat "${HOSTFILE}"
 
 MASTER_ADDR=$(head -n 1 "${HOSTFILE}" | awk '{print $1}')
-MASTER_PORT=6000
+# Use SLURM_JOB_ID to generate unique port (range 10000-65000)
+MASTER_PORT=$((10000 + ($SLURM_JOB_ID % 55000)))
 
 echo "MASTER_ADDR = ${MASTER_ADDR}"
 echo "MASTER_PORT = ${MASTER_PORT}"
