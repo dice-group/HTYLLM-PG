@@ -147,11 +147,13 @@ class FlashAttention(nn.Module):
         return self.to_out(out)
 
 from deepspeed.moe.layer import MoE
+from torch.utils.checkpoint import checkpoint
+
 class Transformer(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., moe_layers:List[int]=[], 
                  num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
                  min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1, 
-                 topany_gating_impl='opt_mem', use_flash_attention=False):
+                 topany_gating_impl='opt_mem', use_flash_attention=False, use_gradient_checkpointing=True):
         for moe in moe_layers:
             assert moe >= 0, "MOE layers must be greater than or equal to 0"
             assert moe < depth, "MOE layers must be less than the depth of the transformer"
@@ -159,6 +161,7 @@ class Transformer(nn.Module):
         self.norm = nn.LayerNorm(dim)
         self.layers = nn.ModuleList([])
         self.moe_losses = []
+        self.use_gradient_checkpointing = use_gradient_checkpointing
 
         # Choose attention implementation
         AttentionClass = FlashAttention if use_flash_attention else Attention
@@ -188,25 +191,34 @@ class Transformer(nn.Module):
             )
 
     def forward(self, x, attention_mask=None):
-
         l_aux = 0.0
+        
         for i, (attn, ff) in enumerate(self.layers):
-            x = attn(x, attention_mask=attention_mask) + x # Residual connection
+            # Use gradient checkpointing for attention during training
+            if self.use_gradient_checkpointing and self.training:
+                x = checkpoint(attn, x, attention_mask, use_reentrant=False) + x
+            else:
+                x = attn(x, attention_mask=attention_mask) + x
 
-            if i in self.moe_layers: # moe layers feed forward nn
+            if i in self.moe_layers:
+                # MoE layers: Can't use checkpoint due to multiple return values
                 output, moe_loss, _ = ff(x)
                 l_aux += moe_loss
-                x = x + output # residual connection 
-            else: # "normal" feed forward layers 
-                x = ff(x) + x # residual connetion
+                x = x + output
+            else:
+                # Regular FF layers: Use gradient checkpointing during training
+                if self.use_gradient_checkpointing and self.training:
+                    x = checkpoint(ff, x, use_reentrant=False) + x
+                else:
+                    x = ff(x) + x
 
-        return self.norm(x), l_aux # normalization 
+        return self.norm(x), l_aux 
 
 class MoE_Transformer(nn.Module):
     def __init__(self, vocab_size, max_seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0., moe_layers: List[int] = [],
                  num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
                  min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1, 
-                 topany_gating_impl='opt_mem', use_flash_attention=False):
+                 topany_gating_impl='opt_mem', use_flash_attention=False, use_gradient_checkpointing=True):
         super().__init__()
 
         self.token_embedding = nn.Embedding(vocab_size, dim) # lookup table for token_id -> embedding (shape: [vocab_size, dim], 
@@ -220,7 +232,8 @@ class MoE_Transformer(nn.Module):
                                       num_experts=num_experts, k=k, capacity_factor=capacity_factor,
                                       eval_capacity_factor=eval_capacity_factor, min_capacity=min_capacity,
                                       use_residual=use_residual, gate_backward=gate_backward, ep_size=ep_size,
-                                      topany_gating_impl=topany_gating_impl, use_flash_attention=use_flash_attention)
+                                      topany_gating_impl=topany_gating_impl, use_flash_attention=use_flash_attention,
+                                      use_gradient_checkpointing=use_gradient_checkpointing)
 
         self.output_projection = nn.Linear(dim, vocab_size)
 
@@ -241,7 +254,7 @@ def moe_builder(vocab_size: int, max_seq_len: int, dim=768, depth=4, heads=4, ml
                 dim_head=64, dropout=0., emb_dropout=0., moe_layers=[0, 3],
                 num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0,
                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1,
-                topany_gating_impl='opt_mem', use_flash_attention=False):
+                topany_gating_impl='opt_mem', use_flash_attention=False, use_gradient_checkpointing=True):
     model = MoE_Transformer(
         vocab_size=vocab_size,
         max_seq_len=max_seq_len,
@@ -262,7 +275,8 @@ def moe_builder(vocab_size: int, max_seq_len: int, dim=768, depth=4, heads=4, ml
         gate_backward=gate_backward,
         ep_size=ep_size,
         topany_gating_impl=topany_gating_impl,
-        use_flash_attention=use_flash_attention
+        use_flash_attention=use_flash_attention,
+        use_gradient_checkpointing=use_gradient_checkpointing
     )
 
     return model

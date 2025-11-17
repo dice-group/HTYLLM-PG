@@ -45,6 +45,7 @@ def get_args() -> argparse.Namespace :
     parser.add_argument("--ep-size", type=int, dest="ep_size", default=1, help="Expert parallel size")
     parser.add_argument("--topany-gating-impl", type=str, dest="topany_gating_impl", default="opt_mem", help="Top-any gating implementation: 'opt' or 'opt_mem'")
     parser.add_argument("--use-flash-attention", action="store_true", dest="use_flash_attention", help="Use Flash Attention (optimized) instead of standard attention")
+    parser.add_argument("--use-gradient-checkpointing", action="store_true", dest="use_gradient_checkpointing", default=True, help="Use gradient checkpointing to save memory")
     
     parser.add_argument("--local_rank", type=int, default=-1)
     parser = deepspeed.add_config_arguments(parser)
@@ -76,7 +77,8 @@ def main():
         gate_backward=args.gate_backward,
         ep_size=args.ep_size,
         topany_gating_impl=args.topany_gating_impl,
-        use_flash_attention=args.use_flash_attention
+        use_flash_attention=args.use_flash_attention,
+        use_gradient_checkpointing=args.use_gradient_checkpointing
     )
 
     pytorch_total_params = sum(p.numel() for p in model_pytorch.parameters() if p.requires_grad)
@@ -124,6 +126,7 @@ def main():
                 "ep_size": args.ep_size,
                 "topany_gating_impl": args.topany_gating_impl,
                 "use_flash_attention": args.use_flash_attention,
+                "use_gradient_checkpointing": args.use_gradient_checkpointing,
                 "lr": args.lr,
                 "weight_decay": args.weight_decay,
                 "batch_size": args.batch_size,

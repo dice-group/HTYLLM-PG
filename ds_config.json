@@ -28,14 +28,6 @@
     "allgather_partitions": true,
     "reduce_scatter": true
   },
-  "activation_checkpointing": {
-    "partition_activations": true,
-    "cpu_checkpointing": false,
-    "contiguous_memory_optimization": true,
-    "number_checkpoints": null,
-    "synchronize_checkpoint_boundary": false,
-    "profile": false
-  },
   "checkpoint": {
     "save_dir": "./checkpoints2",
     "load_dir": "./checkpoints2",
