@@ -240,7 +240,6 @@ class Attention(nn.Module):
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
-<<<<<<< HEAD:htyllm-pg/model_builder.py
         # NEW: RoPE frequency computation with cache growth support
         if self.use_rope:
             # Ensure dim_head is even for RoPE
@@ -319,9 +318,6 @@ class Attention(nn.Module):
             output: [batch, seq_len, dim]
             (optional) past_key_value: Tuple of (k_cache, v_cache) if use_cache=True
         """
-=======
-    def forward(self, x, attention_mask=None):
->>>>>>> dbe10282890493f3574bf9c52c50af400bb4113f:htyllm_pg/model_builder.py
         x = self.norm(x)# nomralize each tokens along dimension (mean 0, variance 1) shape stays 
 
         qkv = self.to_qkv(x).chunk(3, dim = -1)# linear layer that maps each 8-dim vector to a big vector (inner_dim * 3)
@@ -385,12 +381,11 @@ class Attention(nn.Module):
             dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # compute dot product for each head and for each token pair (e.g. i, j)
                                                                  # i,e: score(i,j) = dot( q_i, k_j ) * scale <-> scale is for stability 
                                                                  # E.g. Head 0:
-                                                                #           Luke   likes   cats   (as keys)
+                                                                #           Luke   likes   cats   (as *keys*)
                                                                 # Luke    [ 1.2    0.1    0.5 ]
                                                                 # likes   [ 0.9    1.5    1.1 ]
                                                                 # cats    [ 0.2    0.3    1.8 ]
                                                                 #  ^ as queries
-<<<<<<< HEAD:htyllm-pg/model_builder.py
             
             # Apply custom attention mask if provided
             if attention_mask is not None:
@@ -413,26 +408,6 @@ class Attention(nn.Module):
                                         # Luke-row after softmax:  [0.60, 0.15, 0.25]
                                         # likes-row after softmax: [0.30, 0.40, 0.30]
                                         # cats-row after softmax:  [0.10, 0.10, 0.80]
-=======
-        # make attention causal
-        seq_len = dots.shape[-1]
-        mask = torch.triu(torch.ones(seq_len, seq_len, device=dots.device), diagonal=1).bool() # build triangular mask to prevent tokens from attending to future tokens 
-        
-        # Add padding mask if provided
-        if attention_mask is not None:
-            # attention_mask shape: (batch, seq_len) with 1 for real tokens, 0 for padding
-            padding_mask = attention_mask.unsqueeze(1).unsqueeze(2) == 0
-            # Expand causal mask to (1, 1, seq_len, seq_len)
-            mask = mask.unsqueeze(0).unsqueeze(0)
-            # Combine: mask out future tokens AND padding tokens
-            mask = mask | padding_mask
-        
-        dots = dots.masked_fill(mask, float('-inf')) # fill the upper triangle with -inf 
-        attn = self.attend(dots) # This is than turned into probabilites:
-                                    # Luke-row after softmax:  [0.60, 0.15, 0.25]
-                                    # likes-row after softmax: [0.30, 0.40, 0.30]
-                                    # cats-row after softmax:  [0.10, 0.10, 0.80]
->>>>>>> dbe10282890493f3574bf9c52c50af400bb4113f:htyllm_pg/model_builder.py
 
             attn = self.dropout(attn) # Regularization (drops some random weights)
 
@@ -453,61 +428,10 @@ class Attention(nn.Module):
             return output, (k, v)
         return output
 
-class FlashAttention(nn.Module):
-    """Flash Attention using PyTorch's scaled_dot_product_attention"""
-    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
-        super().__init__()
-        inner_dim = dim_head * heads
-        project_out = not (heads == 1 and dim_head == dim)
-
-        self.heads = heads
-        self.dim_head = dim_head
-
-        self.norm = nn.LayerNorm(dim)
-        self.dropout_p = dropout
-
-        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
-        
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, dim),
-            nn.Dropout(dropout)
-        ) if project_out else nn.Identity()
-
-    def forward(self, x, attention_mask=None):
-        x = self.norm(x)
-        
-        qkv = self.to_qkv(x).chunk(3, dim = -1)
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
-        
-        # Create attention mask for Flash Attention if padding mask is provided
-        attn_mask = None
-        if attention_mask is not None:
-            # Flash attention expects attn_mask in shape (batch, num_heads, seq_len, seq_len) 
-            seq_len = q.shape[2]
-            causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=q.device), diagonal=1).bool()
-            # attention_mask shape: (batch, seq_len) with 1 for real tokens, 0 for padding
-            padding_mask = attention_mask.unsqueeze(1).unsqueeze(2) == 0  # (batch, 1, 1, seq_len)
-            # Combine masks
-            attn_mask = causal_mask.unsqueeze(0).unsqueeze(0) | padding_mask
-            # Convert bool mask to float (-inf for masked positions)
-            attn_mask = torch.where(attn_mask, float('-inf'), 0.0)
-        
-        # Use PyTorch's Flash Attention implementation
-        out = torch.nn.functional.scaled_dot_product_attention(
-            q, k, v, 
-            attn_mask=attn_mask,
-            dropout_p=self.dropout_p if self.training else 0.0,
-            is_causal=(attention_mask is None)  
-        )
-        
-        out = rearrange(out, 'b h n d -> b n (h d)')
-        return self.to_out(out)
-
 from deepspeed.moe.layer import MoE
 class Transformer(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., moe_layers:List[int]=[], 
                  num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
-<<<<<<< HEAD:htyllm-pg/model_builder.py
                  min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1,
                  max_seq_len=512,        # NEW: Pass to Attention
                  use_rope=True,          # NEW: Enable RoPE
@@ -515,10 +439,6 @@ class Transformer(nn.Module):
                  rope_dim=None,          # NEW: Partial RoPE (None = full head_dim)
                  rope_scaling=None       # NEW: RoPE scaling config
     ):
-=======
-                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1, 
-                 topany_gating_impl='opt_mem', use_flash_attention=False):
->>>>>>> dbe10282890493f3574bf9c52c50af400bb4113f:htyllm_pg/model_builder.py
         for moe in moe_layers:
             assert moe >= 0, "MOE layers must be greater than or equal to 0"
             assert moe < depth, "MOE layers must be less than the depth of the transformer"
@@ -527,12 +447,8 @@ class Transformer(nn.Module):
         self.layers = nn.ModuleList([])
         self.moe_losses = []
 
-        # Choose attention implementation
-        AttentionClass = FlashAttention if use_flash_attention else Attention
-
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-<<<<<<< HEAD:htyllm-pg/model_builder.py
                 Attention(
                     dim, 
                     heads = heads, 
@@ -545,10 +461,6 @@ class Transformer(nn.Module):
                     rope_scaling=rope_scaling    # NEW
                 ),
                 FeedForward(dim, mlp_dim, dropout=dropout)
-=======
-                AttentionClass(dim, heads = heads, dim_head = dim_head, dropout = dropout),
-                FeedForward(dim, mlp_dim, dropout = dropout)
->>>>>>> dbe10282890493f3574bf9c52c50af400bb4113f:htyllm_pg/model_builder.py
             ]))
 
         self.moe_layers = moe_layers
@@ -565,11 +477,9 @@ class Transformer(nn.Module):
                 min_capacity=min_capacity, # minimum capacity for the expert
                 use_residual=use_residual, # whether to use residual connection in the MoE layer
                 gate_backward=gate_backward,
-                topany_gating_impl=topany_gating_impl, # implementation choice for top-any gating
                 #max_expert_num=4
             )
 
-<<<<<<< HEAD:htyllm-pg/model_builder.py
     def forward(
         self, 
         x, 
@@ -579,15 +489,10 @@ class Transformer(nn.Module):
         past_key_values=None,          # NEW: List of (k, v) tuples per layer
         is_causal=True                 # NEW
     ):
-=======
-    def forward(self, x, attention_mask=None):
-
->>>>>>> dbe10282890493f3574bf9c52c50af400bb4113f:htyllm_pg/model_builder.py
         l_aux = 0.0
         present_key_values = [] if use_cache else None
         
         for i, (attn, ff) in enumerate(self.layers):
-<<<<<<< HEAD:htyllm-pg/model_builder.py
             # Get past KV for this layer
             layer_past = None
             if past_key_values is not None and i < len(past_key_values):
@@ -616,9 +521,6 @@ class Transformer(nn.Module):
                 )
             
             x = attn_out + x # Residual connection
-=======
-            x = attn(x, attention_mask=attention_mask) + x # Residual connection
->>>>>>> dbe10282890493f3574bf9c52c50af400bb4113f:htyllm_pg/model_builder.py
 
             if i in self.moe_layers: # moe layers feed forward nn
                 output, moe_loss, _ = ff(x)
@@ -636,17 +538,12 @@ class Transformer(nn.Module):
 class MoE_Transformer(nn.Module):
     def __init__(self, vocab_size, max_seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0., moe_layers: List[int] = [],
                  num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
-<<<<<<< HEAD:htyllm-pg/model_builder.py
                  min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1,
                  use_rope=True,          # NEW: Enable RoPE
                  rope_theta=10000.0,     # NEW: RoPE base frequency
                  rope_dim=None,          # NEW: Partial RoPE (None = full head_dim)
                  rope_scaling=None       # NEW: RoPE scaling config
     ):
-=======
-                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1, 
-                 topany_gating_impl='opt_mem', use_flash_attention=False):
->>>>>>> dbe10282890493f3574bf9c52c50af400bb4113f:htyllm_pg/model_builder.py
         super().__init__()
 
         self.token_embedding = nn.Embedding(vocab_size, dim) # lookup table for token_id -> embedding (shape: [vocab_size, dim], 
@@ -666,20 +563,15 @@ class MoE_Transformer(nn.Module):
                                       num_experts=num_experts, k=k, capacity_factor=capacity_factor,
                                       eval_capacity_factor=eval_capacity_factor, min_capacity=min_capacity,
                                       use_residual=use_residual, gate_backward=gate_backward, ep_size=ep_size,
-<<<<<<< HEAD:htyllm-pg/model_builder.py
                                       max_seq_len=max_seq_len,    # NEW
                                       use_rope=use_rope,           # NEW
                                       rope_theta=rope_theta,       # NEW
                                       rope_dim=rope_dim,           # NEW
                                       rope_scaling=rope_scaling    # NEW
         )
-=======
-                                      topany_gating_impl=topany_gating_impl, use_flash_attention=use_flash_attention)
->>>>>>> dbe10282890493f3574bf9c52c50af400bb4113f:htyllm_pg/model_builder.py
 
-        self.output_projection = nn.Linear(dim, vocab_size)
+        self.mlp_head = nn.Linear(dim, vocab_size)
 
-<<<<<<< HEAD:htyllm-pg/model_builder.py
     def forward(
         self, 
         tokens, 
@@ -689,9 +581,6 @@ class MoE_Transformer(nn.Module):
         past_key_values=None,     # NEW
         is_causal=True            # NEW
     ):
-=======
-    def forward(self, tokens, attention_mask=None):
->>>>>>> dbe10282890493f3574bf9c52c50af400bb4113f:htyllm_pg/model_builder.py
         x = self.token_embedding(tokens)
         b, n, _ = x.shape
 
@@ -701,7 +590,6 @@ class MoE_Transformer(nn.Module):
 
         x = self.dropout(x)
 
-<<<<<<< HEAD:htyllm-pg/model_builder.py
         # Transformer with KV-cache support
         if use_cache:
             x, l_aux, present_kv = self.transformer(
@@ -725,19 +613,12 @@ class MoE_Transformer(nn.Module):
             )
             logits = self.mlp_head(x)
             return logits, l_aux
-=======
-        x, l_aux = self.transformer(x, attention_mask=attention_mask)
-        # for [B, T, dim]  output_projection treats B, T as batch dimensions and dim as feature dimension
-        # maps each token to its vocab distribution (what comes after this token)
-        return self.output_projection(x), l_aux
->>>>>>> dbe10282890493f3574bf9c52c50af400bb4113f:htyllm_pg/model_builder.py
 
 
 def moe_builder(vocab_size: int, max_seq_len: int, dim=768, depth=4, heads=4, mlp_dim=512, 
                 dim_head=64, dropout=0., emb_dropout=0., moe_layers=[0, 3],
                 num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0,
                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1,
-<<<<<<< HEAD:htyllm-pg/model_builder.py
                 use_rope=True,          # NEW: Enable RoPE by default
                 rope_theta=10000.0,     # NEW: RoPE base frequency
                 rope_dim=None,          # NEW: Partial RoPE (None = full head_dim)
@@ -776,9 +657,6 @@ def moe_builder(vocab_size: int, max_seq_len: int, dim=768, depth=4, heads=4, ml
     Returns:
         MoE_Transformer model
     """
-=======
-                topany_gating_impl='opt_mem', use_flash_attention=False):
->>>>>>> dbe10282890493f3574bf9c52c50af400bb4113f:htyllm_pg/model_builder.py
     model = MoE_Transformer(
         vocab_size=vocab_size,
         max_seq_len=max_seq_len,
@@ -798,15 +676,10 @@ def moe_builder(vocab_size: int, max_seq_len: int, dim=768, depth=4, heads=4, ml
         use_residual=use_residual,
         gate_backward=gate_backward,
         ep_size=ep_size,
-<<<<<<< HEAD:htyllm-pg/model_builder.py
         use_rope=use_rope,           # NEW
         rope_theta=rope_theta,       # NEW
         rope_dim=rope_dim,           # NEW
         rope_scaling=rope_scaling     # NEW
-=======
-        topany_gating_impl=topany_gating_impl,
-        use_flash_attention=use_flash_attention
->>>>>>> dbe10282890493f3574bf9c52c50af400bb4113f:htyllm_pg/model_builder.py
     )
 
     return model
