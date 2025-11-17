@@ -34,8 +34,8 @@
     "profile": false
   },
   "checkpoint": {
-    "save_dir": "./checkpoints",
-    "load_dir": "./checkpoints",
+    "save_dir": "./checkpoints2",
+    "load_dir": "./checkpoints2",
     "checkpoint_steps": 1000
   },
   "flops_profiler": {
@@ -44,7 +44,7 @@
     "module_depth": -1,
     "top_modules": 3,
     "detailed": true,
-    "output_file": "profiles/flops_profile.txt"
+    "output_file": "profiles2/flops_profile.txt"
   },
   "steps_per_print": 10,
   "wall_clock_breakdown": false
