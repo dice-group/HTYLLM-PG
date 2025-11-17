@@ -38,7 +38,7 @@ def debug(msg: str):
 
 class HydraLoraLayer(BaseTunerLayer):
     # All names of layers that may contain (trainable) adapter weights
-    adapter_layer_names = ("lora_A", "lora_B", "lora_embedding_A", "lora_embedding_B")
+    adapter_layer_names = ("lora_A", "lora_B", "lora_embedding_A", "lora_embedding_B", "lora_route")
     # All names of other parameters that may contain adapter-related parameters
     other_param_names = ("r", "lora_alpha", "scaling", "lora_dropout")
 
@@ -110,6 +110,7 @@ class HydraLoraLayer(BaseTunerLayer):
 
         if self.use_hydralora_experts:
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
+            self._move_router_to_device_of_base_layer()
             if self.hydralora_debug:
                 debug(
                     f"[HYDRA DEBUG] Initialized router in {self.__class__.__name__} "
@@ -212,6 +213,7 @@ class HydraLoraLayer(BaseTunerLayer):
 
         # Router grads only when Hydra hierarchy is actually in use
         if self.use_hydralora_experts and hasattr(self, "router"):
+            self._move_router_to_device_of_base_layer()
             self.router.requires_grad_(any_hydra_parent_active)
 
         # Defer to BaseTunerLayer for actual bookkeeping
@@ -247,6 +249,15 @@ class HydraLoraLayer(BaseTunerLayer):
     def _cache_pop(self, key: str) -> Any:
         value = self._caches.pop(key)
         return value
+
+    def _move_router_to_device_of_base_layer(self) -> None:
+        if not hasattr(self, "router") or self.router is None:
+            return
+        base_layer = self.get_base_layer()
+        weight = getattr(base_layer, "weight", None)
+        if weight is None:
+            return
+        self.router.to(weight.device, dtype=weight.dtype)
 
     def set_scale(self, adapter, scale):
         if adapter not in self.scaling:
