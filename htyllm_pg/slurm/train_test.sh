@@ -51,7 +51,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
     htyllm_pg/train.py \
       --deepspeed \
       --deepspeed_config ds_config.json \
-      --epochs 1 \
+      --epochs 5 \
       --batch-size 224 \
       --lr 1e-4 \
       --topany-gating-impl "opt_mem" \
