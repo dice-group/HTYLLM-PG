@@ -512,72 +512,131 @@ def topanygating_opt_mem(
     use_tutel: bool = False,
 ) -> Tuple:
     """Implements Top-Any Gating on already-binarized `logits` ∈ {0,1}.
-    
-    Returns tutel-compatible sparse format when use_tutel=True to avoid building [T,E,C] tensor.
+
+    Uses capacity_factor and min_capacity similar to top-k gating:
+    - capacity ≈ ceil( (T * avg_k * capacity_factor) / E ), clamped by min_capacity
+    - tokens beyond capacity per expert are DROPPED.
+    Returns tutel-compatible sparse format when use_tutel=True to avoid building [T,E,C].
     """
 
+    # logits ∈ {0,1}, shape: [T, E]
     gates = logits                                   # [T, E] (binary)
     mask = gates.bool()                              # [T, E] (bool)
-    exp_counts = mask.sum(dim=0)                     # [E] on device
+    T, E = gates.shape
+    num_experts = int(E)
 
-    # global capacity = max tokens per expert across all ranks
-    new_capacity = exp_counts.max()
-    dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.get_world_group())
-    capacity = torch.clamp(new_capacity, min=1)       # ensure at least 1 to avoid zero-sized tensors
+    
+    device = logits.device
 
-    num_experts = int(gates.shape[1])
+    # avg_k over tokens; K is per-token number of selected experts
+    # (ensure it is on correct device / dtype)
+    avg_k = torch.clamp(K.float().to(device).mean(), min=1.0)   # scalar
 
-    # l_aux 
+    tokens_per_rank = torch.tensor(float(T), device=device)
+    num_experts_t = torch.tensor(float(num_experts), device=device)
+
+    # raw capacity per expert
+    raw_capacity = (tokens_per_rank * avg_k * capacity_factor) / num_experts_t
+    capacity = torch.ceil(raw_capacity).to(torch.int64)
+    capacity = torch.clamp(capacity, min=min_capacity)
+
+    # sync capacity across ranks (use ep_group if provided, else global group)
+    group = ep_group if ep_group is not None else dist.get_world_group()
+    dist.all_reduce(capacity, op=dist.ReduceOp.MAX, group=group)
+
+    # Ensure at least 1 for safety (should already hold due to min_capacity)
+    capacity = torch.clamp(capacity, min=1)
+    cap_int = int(capacity.item())
+
+    # l_aux computation
     if gate_tensor is None or expert_mask is None:
+        # NOTE: gates is binary here; me == ce
         me = gates.float().mean(dim=0)
         ce = mask.float().mean(dim=0)
-        l_aux = torch.mean(me * ce) * num_experts * num_experts
+        # use num_experts, same as before
+        # (l_aux will be recomputed after mask is truncated by capacity)
+        base_l_aux = torch.mean(me * ce) * num_experts * num_experts
+        # we'll recompute with updated mask below
     else:
         non_zero_mask = gates.sum(dim=1) > 0
         if non_zero_mask.any():
             normalized_gates = gates[non_zero_mask]
-            normalized_gates = normalized_gates / (normalized_gates.sum(dim=1, keepdim=True))
+            normalized_gates = normalized_gates / (
+                normalized_gates.sum(dim=1, keepdim=True)
+            )
             me = normalized_gates.mean(dim=0)
             ce = mask[non_zero_mask].float().mean(dim=0)
             load_balance_loss = torch.mean(me * ce) * num_experts * num_experts
         else:
             load_balance_loss = gates.new_zeros(())
         efficiency_loss = gates.float().mean()
-        l_aux = diverse_and_simple_gate_loss(gate_tensor, expert_mask) + load_balance_loss + efficiency_loss
+        base_l_aux = (
+            diverse_and_simple_gate_loss(gate_tensor, expert_mask)
+            + load_balance_loss
+            + efficiency_loss
+        )
 
-    # Compute locations per-expert
+  
+    # cumsum per expert over tokens: [T, E]
     cumsum = torch.cumsum(mask.to(torch.int32), dim=0)       # [T, E]
-    locations = torch.where(mask, cumsum - 1, torch.zeros_like(cumsum)).clamp_min(0)  # [T, E]
+    locations = cumsum - 1                                   # [T, E]
 
-    # per-(token,expert) weight split by K 
-    gate_weights = gates / torch.clamp(K, 1).unsqueeze(1)    # [T, E]
+    # keep only first 'capacity' tokens per expert
+    valid = locations < capacity                             # [T, E]
+    mask = mask & valid                                      # drop tokens beyond capacity
+    locations = torch.clamp(locations, min=0, max=cap_int - 1)
+
+    # per-(token,expert) weight split by K
+    gate_weights = gates / torch.clamp(K.to(device), 1).unsqueeze(1)    # [T, E]
+
+    # zero-out weights for dropped positions
+    gate_weights = gate_weights * mask                       # [T, E]
+
+    # recompute exp_counts AFTER dropping
+    exp_counts = mask.sum(dim=0).detach()                    # [E]
+
+    # recompute l_aux using *final* mask
+    if gate_tensor is None or expert_mask is None:
+        me = gates.float().mean(dim=0)
+        ce = mask.float().mean(dim=0)
+        l_aux = torch.mean(me * ce) * num_experts * num_experts
+    else:
+        # keep original base_l_aux from above (already uses mask)
+        l_aux = base_l_aux
+
 
     if use_tutel:
         # Sparse tutel-compatible format: avoid building [T, E, C] tensor
-        # For variable-K topany, we return flattened sparse representation
-        # This is handled specially in MOELayer
-        active_mask = mask.bool()  # [T, E]
-        token_indices, expert_indices = torch.where(active_mask)
-        
-        active_locations = locations[active_mask]  # [num_active]
-        active_gates = gate_weights[active_mask]   # [num_active]
-        
+        active_mask = mask                                   # [T, E]
+        token_indices, expert_indices = torch.where(active_mask)  # [num_active]
+
+        active_locations = locations[active_mask]            # [num_active]
+        active_gates = gate_weights[active_mask]             # [num_active]
+
         # Return: l_aux, capacity, num_experts, expert_indices, locations, gates, exp_counts, token_indices
-        # Note: extra token_indices for reconstructing variable-K routing
-        return l_aux, capacity, num_experts, expert_indices, active_locations, active_gates, exp_counts.to('cpu'), token_indices
+        return (
+            l_aux,
+            capacity,
+            num_experts,
+            expert_indices,
+            active_locations,
+            active_gates,
+            exp_counts.to("cpu"),
+            token_indices,
+        )
     else:
-        # Dense format (fallback): build [T, E, C] tensor
-        cap_int = int(capacity.item())
+        # Dense format 
         combine_weights = torch.zeros(
-            (gates.shape[0], gates.shape[1], cap_int),
-            device=logits.device,
+            (T, E, cap_int),
+            device=device,
             dtype=logits.dtype,
         )
-        src = (gate_weights * mask).unsqueeze(-1)                # [T, E, 1]
-        combine_weights.scatter_(2, locations.unsqueeze(-1), src)      # [T, E, C]
+        src = (gate_weights * mask).unsqueeze(-1)            # [T, E, 1]
+        combine_weights.scatter_(2, locations.unsqueeze(-1), src)
 
-        dispatch_mask = combine_weights.ne(0)                    # [T, E, C] bool
-        return l_aux, combine_weights, dispatch_mask, exp_counts.to('cpu')
+        dispatch_mask = combine_weights.ne(0)                # [T, E, C] bool
+        return l_aux, combine_weights, dispatch_mask, exp_counts.to("cpu")
+
 
 
 
