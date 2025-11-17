@@ -948,16 +948,26 @@ class MOELayer(Base):
         # Initialize output [E, C, M]
         dispatched = torch.zeros(E, C, M, dtype=input_tokens.dtype, device=input_tokens.device)
         
-        # Vectorized scatter: compute weighted tokens and flatten indices
-        # Ensure dtype consistency for mixed precision training
-        weighted_tokens = (gates.unsqueeze(-1).to(input_tokens.dtype) * input_tokens[token_indices])  # [num_active, M]
-        
-        # Flatten indices: [expert, location] -> flat_idx in [E*C, M] view
-        flat_indices = (expert_indices * C + locations).unsqueeze(-1).expand(-1, M)  # [num_active, M]
-        
-        # Scatter add into flattened dispatched tensor
-        dispatched_flat = dispatched.view(E * C, M)
-        dispatched_flat.scatter_add_(0, flat_indices, weighted_tokens)
+        # Bounds checking for safety
+        if len(expert_indices) > 0:
+            # Clamp indices to valid ranges
+            expert_indices = torch.clamp(expert_indices, min=0, max=E-1)
+            locations = torch.clamp(locations, min=0, max=C-1)
+            token_indices = torch.clamp(token_indices, min=0, max=T-1)
+            
+            # Vectorized scatter: compute weighted tokens and flatten indices
+            # Ensure dtype consistency for mixed precision training
+            weighted_tokens = (gates.unsqueeze(-1).to(input_tokens.dtype) * input_tokens[token_indices])  # [num_active, M]
+            
+            # Flatten indices: [expert, location] -> flat_idx in [E*C, M] view
+            flat_indices = (expert_indices * C + locations).unsqueeze(-1).expand(-1, M)  # [num_active, M]
+            
+            # Additional bounds check for flat indices
+            flat_indices = torch.clamp(flat_indices, min=0, max=E*C-1)
+            
+            # Scatter add into flattened dispatched tensor
+            dispatched_flat = dispatched.view(E * C, M)
+            dispatched_flat.scatter_add_(0, flat_indices, weighted_tokens)
         
         return dispatched.view(E, C, M)
     
@@ -982,18 +992,28 @@ class MOELayer(Base):
         # Initialize output [T, M]
         combined = torch.zeros(num_tokens, M, dtype=expert_output.dtype, device=expert_output.device)
         
-        # Vectorized gather: flatten expert output and gather by flat indices
-        expert_flat = expert_output.view(E * C, M)  # [E*C, M]
-        flat_indices = (expert_indices * C + locations).unsqueeze(-1).expand(-1, M)  # [num_active, M]
-        
-        # Gather expert outputs
-        gathered = torch.gather(expert_flat, 0, flat_indices)  # [num_active, M]
-        
-        # Weight and scatter_add back to tokens
-        # Ensure dtype consistency for mixed precision training
-        weighted_outputs = gates.unsqueeze(-1).to(expert_output.dtype) * gathered  # [num_active, M]
-        token_indices_expanded = token_indices.unsqueeze(-1).expand(-1, M)  # [num_active, M]
-        combined.scatter_add_(0, token_indices_expanded, weighted_outputs)
+        # Bounds checking for safety
+        if len(expert_indices) > 0:
+            # Clamp indices to valid ranges
+            expert_indices = torch.clamp(expert_indices, min=0, max=E-1)
+            locations = torch.clamp(locations, min=0, max=C-1)
+            token_indices = torch.clamp(token_indices, min=0, max=num_tokens-1)
+            
+            # Vectorized gather: flatten expert output and gather by flat indices
+            expert_flat = expert_output.view(E * C, M)  # [E*C, M]
+            flat_indices = (expert_indices * C + locations).unsqueeze(-1).expand(-1, M)  # [num_active, M]
+            
+            # Additional bounds check for flat indices
+            flat_indices = torch.clamp(flat_indices, min=0, max=E*C-1)
+            
+            # Gather expert outputs
+            gathered = torch.gather(expert_flat, 0, flat_indices)  # [num_active, M]
+            
+            # Weight and scatter_add back to tokens
+            # Ensure dtype consistency for mixed precision training
+            weighted_outputs = gates.unsqueeze(-1).to(expert_output.dtype) * gathered  # [num_active, M]
+            token_indices_expanded = token_indices.unsqueeze(-1).expand(-1, M)  # [num_active, M]
+            combined.scatter_add_(0, token_indices_expanded, weighted_outputs)
         
         return combined
 

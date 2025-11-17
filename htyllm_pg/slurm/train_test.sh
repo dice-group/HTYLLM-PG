@@ -21,6 +21,8 @@ module load compiler/GCCcore/12.3.0
 
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 
+# Enable CUDA debugging
+export CUDA_LAUNCH_BLOCKING=1
 
 GPUS_PER_NODE=2   
 
