@@ -509,8 +509,12 @@ def topanygating_opt_mem(
     gate_tensor=None,
     expert_mask=None,
     ep_group=None,
-) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-    """Implements Top-Any Gating on already-binarized `logits` ∈ {0,1}."""
+    use_tutel: bool = False,
+) -> Tuple:
+    """Implements Top-Any Gating on already-binarized `logits` ∈ {0,1}.
+    
+    Returns tutel-compatible sparse format when use_tutel=True to avoid building [T,E,C] tensor.
+    """
 
     gates = logits                                   # [T, E] (binary)
     mask = gates.bool()                              # [T, E] (bool)
@@ -541,25 +545,39 @@ def topanygating_opt_mem(
         efficiency_loss = gates.float().mean()
         l_aux = diverse_and_simple_gate_loss(gate_tensor, expert_mask) + load_balance_loss + efficiency_loss
 
-    # Scatter-based routing (replaces one-hot + einsum) 
-    # per-(token,expert) slot index (0..capacity-1) for selected pairs
+    # Compute locations per-expert
     cumsum = torch.cumsum(mask.to(torch.int32), dim=0)       # [T, E]
-    idx = torch.where(mask, cumsum - 1, torch.zeros_like(cumsum)).clamp_min(0)
+    locations = torch.where(mask, cumsum - 1, torch.zeros_like(cumsum)).clamp_min(0)  # [T, E]
 
     # per-(token,expert) weight split by K 
     gate_weights = gates / torch.clamp(K, 1).unsqueeze(1)    # [T, E]
 
-    cap_int = int(capacity.item())
-    combine_weights = torch.zeros(
-        (gates.shape[0], gates.shape[1], cap_int),
-        device=logits.device,
-        dtype=logits.dtype,
-    )
-    src = (gate_weights * mask).unsqueeze(-1)                # [T, E, 1]
-    combine_weights.scatter_(2, idx.unsqueeze(-1), src)      # [T, E, C]
+    if use_tutel:
+        # Sparse tutel-compatible format: avoid building [T, E, C] tensor
+        # For variable-K topany, we return flattened sparse representation
+        # This is handled specially in MOELayer
+        active_mask = mask.bool()  # [T, E]
+        token_indices, expert_indices = torch.where(active_mask)
+        
+        active_locations = locations[active_mask]  # [num_active]
+        active_gates = gate_weights[active_mask]   # [num_active]
+        
+        # Return: l_aux, capacity, num_experts, expert_indices, locations, gates, exp_counts, token_indices
+        # Note: extra token_indices for reconstructing variable-K routing
+        return l_aux, capacity, num_experts, expert_indices, active_locations, active_gates, exp_counts.to('cpu'), token_indices
+    else:
+        # Dense format (fallback): build [T, E, C] tensor
+        cap_int = int(capacity.item())
+        combine_weights = torch.zeros(
+            (gates.shape[0], gates.shape[1], cap_int),
+            device=logits.device,
+            dtype=logits.dtype,
+        )
+        src = (gate_weights * mask).unsqueeze(-1)                # [T, E, 1]
+        combine_weights.scatter_(2, locations.unsqueeze(-1), src)      # [T, E, C]
 
-    dispatch_mask = combine_weights.ne(0)                    # [T, E, C] bool
-    return l_aux, combine_weights, dispatch_mask, exp_counts.to('cpu')
+        dispatch_mask = combine_weights.ne(0)                    # [T, E, C] bool
+        return l_aux, combine_weights, dispatch_mask, exp_counts.to('cpu')
 
 
 
@@ -763,12 +781,12 @@ class TopKGate(Module):
         if self.k == -1:
             if self.topany_gating_impl == "opt_mem":
                 gate_output = topanygating_opt_mem(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
-                                         self.min_capacity, top_k, self.wg.sim_matrix, None #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn
-                                         , self.ep_group)
+                                         self.min_capacity, top_k, self.wg.sim_matrix, None, #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn
+                                         self.ep_group, use_tutel)
             elif self.topany_gating_impl == "opt":
                 gate_output = topanygating_opt(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
-                                         self.min_capacity, top_k, self.wg.sim_matrix, None #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn
-                                         , self.ep_group)
+                                         self.min_capacity, top_k, self.wg.sim_matrix, None, #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn
+                                         self.ep_group)
             else:
                 raise ValueError(f"Invalid topany_gating_impl: {self.topany_gating_impl}. Must be 'opt' or 'opt_mem'.")
         elif self.k == 1:
@@ -829,20 +847,94 @@ class MOELayer(Base):
         self.timers = SynchronizedWallClockTimer()
         self.wall_clock_breakdown = False
 
-        self.use_tutel = use_tutel and TUTEL_INSTALLED and gate.k == 1
+        # Enable tutel for top-1 and top-any (k=-1) gating
+        self.use_tutel = use_tutel and TUTEL_INSTALLED and (gate.k == 1 or gate.k == -1)
 
         if self.use_tutel:
-            logger.info('Using Tutel optimizations.')
+            if gate.k == -1:
+                logger.info('Using sparse tutel-compatible path for top-any gating.')
+            else:
+                logger.info('Using Tutel optimizations.')
         elif use_tutel and not TUTEL_INSTALLED:
             logger.warning("Tutel optimization requested but not installed. "
                            "Proceeding without Tutel.")
-        elif use_tutel and TUTEL_INSTALLED and gate.k != 1:
-            logger.warning("To enable Tutel optimization, use top-1 instead of top-2 gate. "
+        elif use_tutel and TUTEL_INSTALLED and gate.k not in [1, -1]:
+            logger.warning("To enable Tutel optimization, use top-1 or top-any (k=-1) gating. "
                            "Proceeding without Tutel.")
 
     def _set_ep_group(self, ep_group):
         self.ep_group = ep_group
         self.gate._set_ep_group(ep_group)
+
+    def _topany_sparse_dispatch(self, input_tokens, expert_indices, locations, gates, token_indices, num_experts, capacity):
+        """
+        Sparse dispatch for topany gating without building [T, E, C] tensor.
+        
+        Args:
+            input_tokens: [T, M] input token embeddings
+            expert_indices: [num_active] which expert each active pair goes to
+            locations: [num_active] location in expert's capacity buffer
+            gates: [num_active] routing weights
+            token_indices: [num_active] which token each active pair comes from
+            num_experts: total number of experts
+            capacity: capacity per expert
+        
+        Returns:
+            dispatched_input: [E, C, M] sparse dispatched tokens
+        """
+        T, M = input_tokens.shape
+        E = num_experts
+        C = capacity
+        
+        # Initialize output [E, C, M]
+        dispatched = torch.zeros(E, C, M, dtype=input_tokens.dtype, device=input_tokens.device)
+        
+        # Vectorized scatter: compute weighted tokens and flatten indices
+        weighted_tokens = gates.unsqueeze(-1) * input_tokens[token_indices]  # [num_active, M]
+        
+        # Flatten indices: [expert, location] -> flat_idx in [E*C, M] view
+        flat_indices = (expert_indices * C + locations).unsqueeze(-1).expand(-1, M)  # [num_active, M]
+        
+        # Scatter add into flattened dispatched tensor
+        dispatched_flat = dispatched.view(E * C, M)
+        dispatched_flat.scatter_add_(0, flat_indices, weighted_tokens)
+        
+        return dispatched.view(E, C, M)
+    
+    def _topany_sparse_combine(self, expert_output, expert_indices, locations, gates, token_indices, num_tokens):
+        """
+        Sparse combine for topany gating without building [T, E, C] tensor.
+        Uses vectorized gather for efficiency.
+        
+        Args:
+            expert_output: [E, C, M] expert outputs
+            expert_indices: [num_active] which expert each active pair comes from
+            locations: [num_active] location in expert's capacity buffer
+            gates: [num_active] routing weights  
+            token_indices: [num_active] which token each active pair goes to
+            num_tokens: total number of tokens T
+        
+        Returns:
+            combined_output: [T, M] combined outputs
+        """
+        E, C, M = expert_output.shape
+        
+        # Initialize output [T, M]
+        combined = torch.zeros(num_tokens, M, dtype=expert_output.dtype, device=expert_output.device)
+        
+        # Vectorized gather: flatten expert output and gather by flat indices
+        expert_flat = expert_output.view(E * C, M)  # [E*C, M]
+        flat_indices = (expert_indices * C + locations).unsqueeze(-1).expand(-1, M)  # [num_active, M]
+        
+        # Gather expert outputs
+        gathered = torch.gather(expert_flat, 0, flat_indices)  # [num_active, M]
+        
+        # Weight and scatter_add back to tokens
+        weighted_outputs = gates.unsqueeze(-1) * gathered  # [num_active, M]
+        token_indices_expanded = token_indices.unsqueeze(-1).expand(-1, M)  # [num_active, M]
+        combined.scatter_add_(0, token_indices_expanded, weighted_outputs)
+        
+        return combined
 
     def forward(self, *input: Tensor, **kwargs: Any) -> Tensor:
 
@@ -857,14 +949,38 @@ class MOELayer(Base):
         # group_size = kwargs['group_size'] if 'group_size' in kwargs.keys() else 1
         reshaped_input = input[0].reshape(-1, d_model)
 
+        # Track if we're using topany sparse format
+        using_topany_sparse = False
+        
         if self.use_tutel:
-            self.l_aux, C, E, indices_, locations_, gates_, self.exp_counts = self.gate(reshaped_input, input[1], True)
-            S, M = reshaped_input.size(0), reshaped_input.size(1)
+            gate_output = self.gate(reshaped_input, input[1], True)
+            
+            # Handle topany sparse format (8 returns) vs standard tutel format (7 returns)
+            if len(gate_output) == 8:
+                # topany sparse format: l_aux, capacity, num_experts, expert_indices, locations, gates, exp_counts, token_indices
+                self.l_aux, C, E, expert_indices, locations_, gates_, self.exp_counts, token_indices = gate_output
+                S, M = reshaped_input.size(0), reshaped_input.size(1)
+                
+                # Store for later combine step
+                using_topany_sparse = True
+                self._sparse_expert_indices = expert_indices
+                self._sparse_locations = locations_
+                self._sparse_gates = gates_
+                self._sparse_token_indices = token_indices
+                self._sparse_num_tokens = S
+                
+                # Custom sparse dispatch for variable-K topany (avoids [T,E,C] tensor)
+                dispatched_input = self._topany_sparse_dispatch(reshaped_input, expert_indices, locations_, 
+                                                                gates_, token_indices, E, int(C.item()))
+            else:
+                # Standard tutel format (top1)
+                self.l_aux, C, E, indices_, locations_, gates_, self.exp_counts = gate_output
+                S, M = reshaped_input.size(0), reshaped_input.size(1)
 
-            if not hasattr(self, '_tutel_dispatcher'):
-                self._tutel_dispatcher = tutel_moe.fast_dispatcher(E, C, M, dispatch_dtype=reshaped_input.dtype)
-            self._tutel_dispatcher.update(indices_, locations_, gates_, capacity=C)
-            dispatched_input = self._tutel_dispatcher.encode(reshaped_input)
+                if not hasattr(self, '_tutel_dispatcher'):
+                    self._tutel_dispatcher = tutel_moe.fast_dispatcher(E, C, M, dispatch_dtype=reshaped_input.dtype)
+                self._tutel_dispatcher.update(indices_, locations_, gates_, capacity=C)
+                dispatched_input = self._tutel_dispatcher.encode(reshaped_input)
         else:
             self.l_aux, combine_weights, dispatch_mask, self.exp_counts = self.gate(reshaped_input, input[1])
             dispatched_input = einsum("sec,sm->ecm", dispatch_mask.type_as(input[0]), reshaped_input)
@@ -925,7 +1041,19 @@ class MOELayer(Base):
             expert_output = gather_tokens(expert_output, dim=1)
 
         if self.use_tutel:
-            combined_output = self._tutel_dispatcher.decode(expert_output.view(E * C, M))
+            if using_topany_sparse:
+                # Use sparse combine for topany (avoids building [T,E,C] tensor)
+                combined_output = self._topany_sparse_combine(
+                    expert_output, 
+                    self._sparse_expert_indices,
+                    self._sparse_locations,
+                    self._sparse_gates,
+                    self._sparse_token_indices,
+                    self._sparse_num_tokens
+                )
+            else:
+                # Standard tutel decode (top1)
+                combined_output = self._tutel_dispatcher.decode(expert_output.view(E * C, M))
         else:
             combined_output = einsum("sec,ecm->sm", combine_weights.type_as(input[0]), expert_output)
 

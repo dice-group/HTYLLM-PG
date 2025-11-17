@@ -57,5 +57,6 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --topany-gating-impl "opt_mem" \
       --use-gradient-checkpointing \
       --use-flash-attention \
+      --use-tutel \
       --data-dir ../tokenized_subsets/five_representatives_mediods
 '
