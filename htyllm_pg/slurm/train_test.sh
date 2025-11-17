@@ -53,7 +53,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --deepspeed \
       --deepspeed_config ds_config.json \
       --epochs 5 \
-      --batch-size 4 \
+      --batch-size 16 \
       --lr 1e-4 \
       --topany-gating-impl "opt_mem" \
       --use-gradient-checkpointing \

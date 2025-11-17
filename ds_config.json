@@ -1,6 +1,6 @@
 {
   "gradient_accumulation_steps": 16,
-  "train_micro_batch_size_per_gpu": 4,
+  "train_micro_batch_size_per_gpu": 16,
   "gradient_clipping": 1.0,
   "optimizer": {
     "type": "AdamW",
@@ -31,7 +31,7 @@
   "checkpoint": {
     "save_dir": "./checkpoints2",
     "load_dir": "./checkpoints2",
-    "checkpoint_steps": 1000
+    "checkpoint_steps": 100
   },
   "flops_profiler": {
     "enabled": true,
