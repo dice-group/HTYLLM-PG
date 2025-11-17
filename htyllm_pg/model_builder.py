@@ -127,13 +127,13 @@ class FlashAttention(nn.Module):
         if attention_mask is not None:
             # Flash attention expects attn_mask in shape (batch, num_heads, seq_len, seq_len) 
             seq_len = q.shape[2]
-            causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=q.device), diagonal=1).bool()
+            causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=q.device, dtype=q.dtype), diagonal=1).bool()
             # attention_mask shape: (batch, seq_len) with 1 for real tokens, 0 for padding
             padding_mask = attention_mask.unsqueeze(1).unsqueeze(2) == 0  # (batch, 1, 1, seq_len)
             # Combine masks
             attn_mask = causal_mask.unsqueeze(0).unsqueeze(0) | padding_mask
-            # Convert bool mask to float (-inf for masked positions)
-            attn_mask = torch.where(attn_mask, float('-inf'), 0.0)
+            # Convert bool mask to float (-inf for masked positions) with correct dtype
+            attn_mask = torch.where(attn_mask, float('-inf'), 0.0).to(q.dtype)
         
         # Use PyTorch's Flash Attention implementation
         out = torch.nn.functional.scaled_dot_product_attention(
