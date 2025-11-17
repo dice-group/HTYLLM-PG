@@ -27,14 +27,14 @@ High level:
    - Extend `ColaConfig` / Hydra config to carry language + family metadata and routing-mode flags.
    - DONE Update `FinetuningArguments` and PEFT setup to pass language metadata/routing settings into both CoLA and Hydra configs.
 2. **Router inputs**
-   - Modify `ColaLayer.forward` (`peft/tuners/cola/layer.py:607+`) to accept optional `language_id`, expose router logits, and allow hard/biased routing when metadata is present.
-   - Apply the same pattern to Hydra routing (`peft/tuners/hydralora/layer.py:330-433`).
+   - DONE Modify `ColaLayer.forward` (`peft/tuners/cola/layer.py:607+`) to accept optional `language_id`, expose router logits, and allow hard/biased routing when metadata is present.
+   - DONE Apply the same pattern to Hydra routing (`peft/tuners/hydralora/layer.py:330-433`).
 3. **Parameter sharing**
-   - Refactor `ColaLayer.update_layer` so experts reference family-level A tensors rather than duplicating them; add mapping tables (family→A modules, language→B modules).
-   - Mirror the mapping logic for Hydra’s `lora_A`/`lora_B` so families and languages are first-class indices.
+   - DONE Refactor `ColaLayer.update_layer` so experts reference family-level A tensors rather than duplicating them; add mapping tables (family→A modules, language→B modules).
+   - DONE Mirror the mapping logic for Hydra’s routing so families and languages are first-class indices.
 4. **Language-prior loss hook**
    - Provide a mechanism (e.g., cached logits) for the trainer to compute an auxiliary loss using `language_id`.
-   - Thread a new hyperparameter (γ) through training args to weight this loss.
+   - DONE Thread a new hyperparameter (γ) through training args to weight this loss, and teach the SFT trainer to consume router caches and log the auxiliary loss.
 5. **Initialization**
    - Adjust PiSSA/shared init paths to seed each family A stack once, then clone for languages, preserving the current dtype/FSDP safeguards.
 6. **Docs & tests**
@@ -43,6 +43,8 @@ High level:
 
 Current status:
 - Config/CLI plumbing completed and shared across CoLA/Hydra.
-- Dataset alignment, preprocessing, and collators now propagate `language_ids`/`family_ids` tensors for use by the routers.
+- Dataset alignment, preprocessing, and collators now propagate `language_ids` tensors for use by the routers.
+- CoLA/Hydra layers now consume the metadata, support deterministic routing modes, share family-level A stacks (CoLA), and cache raw router logits/targets for the auxiliary loss.
+- SFT trainer aggregates those caches and adds the weighted language-prior loss; other trainer stages still run unchanged.
 
 This document tracks the actionable plan, while `docs/cola_language_prior_routing.md` remains the broader conceptual reference.

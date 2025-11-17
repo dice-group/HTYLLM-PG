@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Union
+from typing import Literal, Optional, Union, List
 
 from torch import nn
 
@@ -170,6 +170,18 @@ class ColaConfig(PeftConfig):
             "help": "Additive logit bias applied in 'bias' routing mode."
         },
     )
+    language_list: Optional[List[str]] = field(
+        default=None,
+        metadata={"help": "Sorted list of languages used for language-prior routing."},
+    )
+    family_list: Optional[List[str]] = field(
+        default=None,
+        metadata={"help": "Sorted list of language families used for language-prior routing."},
+    )
+    language_to_family_ids: Optional[List[int]] = field(
+        default=None,
+        metadata={"help": "For each language in `language_list`, the index of its family in `family_list`."},
+    )
     layers_to_transform: Optional[Union[list[int], int]] = field(
         default=None,
         metadata={
@@ -279,6 +291,13 @@ class ColaConfig(PeftConfig):
         self._custom_modules: Optional[dict[type[nn.Mmodule], type[nn.Module]]] = None
         if self.language_map is not None and not isinstance(self.language_map, dict):
             raise ValueError("language_map must be a dict mapping language ids to family ids.")
+        if self.language_list is not None and self.language_to_family_ids is not None:
+            if len(self.language_list) != len(self.language_to_family_ids):
+                raise ValueError("`language_list` and `language_to_family_ids` must be the same length.")
+        if self.family_list is not None and self.language_to_family_ids is not None:
+            max_idx = len(self.family_list) - 1
+            if any(idx < 0 or idx > max_idx for idx in self.language_to_family_ids):
+                raise ValueError("Entries in `language_to_family_ids` must index into `family_list`.")
 
     def _register_custom_module(self, mapping: dict[type[nn.Mmodule], type[nn.Module]]) -> None:
         """

@@ -36,6 +36,9 @@ import sys
 def debug(msg: str):
     print(f"[DEBUG] {msg}", file=sys.stderr, flush=True)
 
+
+LANGUAGE_PAD_ID = -1
+
 class HydraLoraLayer(BaseTunerLayer):
     # All names of layers that may contain (trainable) adapter weights
     adapter_layer_names = ("lora_A", "lora_B", "lora_embedding_A", "lora_embedding_B")
@@ -107,8 +110,28 @@ class HydraLoraLayer(BaseTunerLayer):
         self.num_experts = kwargs.pop("hydralora_num_experts", 1)
         self.top_k = kwargs.pop("hydralora_top_k", 1)
         self.hydralora_debug = kwargs.pop("hydralora_debug", False)
+        self.language_list = kwargs.pop("language_list", None)
+        self.family_list = kwargs.pop("family_list", None)
+        self.language_to_family_ids = kwargs.pop("language_to_family_ids", None)
+        self.language_router_mode = kwargs.pop("language_router_mode", "learned")
+        self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
+        self._language_to_idx = {lang: idx for idx, lang in enumerate(self.language_list)} if self.language_list else {}
+        language_expert_mapping = (
+            torch.arange(len(self.language_list), dtype=torch.long) if self.language_list else torch.empty(0, dtype=torch.long)
+        )
+        self.register_buffer("language_id_to_expert", language_expert_mapping, persistent=False)
+        family_mapping = (
+            torch.tensor(self.language_to_family_ids, dtype=torch.long)
+            if self.language_to_family_ids is not None
+            else torch.empty(0, dtype=torch.long)
+        )
+        self.register_buffer("language_id_to_family", family_mapping, persistent=False)
 
         if self.use_hydralora_experts:
+            if self.language_list:
+                self.num_experts = len(self.language_list)
+                if self.top_k > self.num_experts:
+                    self.top_k = self.num_experts
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
             if self.hydralora_debug:
                 debug(
@@ -245,7 +268,7 @@ class HydraLoraLayer(BaseTunerLayer):
         self._caches[key] = value
 
     def _cache_pop(self, key: str) -> Any:
-        value = self._caches.pop(key)
+        value = self._caches.pop(key, None)
         return value
 
     def set_scale(self, adapter, scale):
@@ -364,6 +387,94 @@ class HydraLoraLayer(BaseTunerLayer):
             )
         debug("[HYDRA DEBUG] Expert verification complete\n" + "=" * 60)    
 
+    def _language_head_targets(
+        self, language_ids: Optional[torch.Tensor], adapter_name: str
+    ) -> Optional[torch.Tensor]:
+        if language_ids is None or self.language_list is None:
+            return None
+        head_count = self.lora_num.get(adapter_name)
+        if not head_count:
+            return None
+
+        head_ids = torch.full_like(language_ids, LANGUAGE_PAD_ID)
+        valid = (language_ids >= 0) & (language_ids < len(self.language_list))
+        if valid.any():
+            head_ids[valid] = language_ids[valid] % head_count
+        return head_ids
+
+    def _language_expert_targets(self, language_ids: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+        if language_ids is None or self.language_id_to_expert.numel() == 0:
+            return None
+        mapping = self.language_id_to_expert.to(language_ids.device)
+        expert_ids = torch.full_like(language_ids, LANGUAGE_PAD_ID)
+        valid = (language_ids >= 0) & (language_ids < mapping.numel())
+        if valid.any():
+            expert_ids[valid] = mapping[language_ids[valid]]
+        return expert_ids
+
+    def _apply_language_bias_heads(
+        self, logits: torch.Tensor, head_ids: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        if head_ids is None or self.language_router_mode != "bias":
+            return logits
+        valid = head_ids >= 0
+        if not valid.any():
+            return logits
+        bias = torch.zeros(logits.size(0), logits.size(-1), device=logits.device, dtype=logits.dtype)
+        bias[valid, head_ids[valid]] = self.language_bias_value
+        return logits + bias.unsqueeze(1)
+
+    def _enforce_language_heads(
+        self, weights: torch.Tensor, head_ids: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        if head_ids is None or self.language_router_mode != "hard":
+            return weights
+        valid = head_ids >= 0
+        if not valid.any():
+            return weights
+        weights = weights.clone()
+        weights[valid] = 0
+        weights[valid, :, head_ids[valid]] = 1
+        return weights
+
+    def _apply_language_bias_experts(
+        self, logits: torch.Tensor, expert_ids: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        if expert_ids is None or self.language_router_mode != "bias":
+            return logits
+        valid = expert_ids >= 0
+        if not valid.any():
+            return logits
+        bias = torch.zeros(logits.size(0), logits.size(-1), device=logits.device, dtype=logits.dtype)
+        bias[valid, expert_ids[valid]] = self.language_bias_value
+        return logits + bias.unsqueeze(1)
+
+    def _enforce_language_experts(
+        self, topi: torch.Tensor, weights: torch.Tensor, expert_ids: Optional[torch.Tensor]
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if expert_ids is None or self.language_router_mode != "hard":
+            return topi, weights
+        valid = expert_ids >= 0
+        if not valid.any():
+            return topi, weights
+        seq_len = topi.size(1)
+        replacement = expert_ids[valid].view(-1, 1, 1).expand(-1, seq_len, self.top_k)
+        topi = topi.clone()
+        weights = weights.clone()
+        topi[valid] = replacement
+        weights[valid] = 0
+        weights[valid, :, 0] = 1
+        return topi, weights
+
+    def _cache_router_state(
+        self, logits: torch.Tensor, language_ids: Optional[torch.Tensor], prefix: str, targets: Optional[torch.Tensor]
+    ) -> None:
+        self._cache_store(f"{prefix}_router_logits", logits)
+        if language_ids is not None and torch.is_tensor(language_ids):
+            self._cache_store(f"{prefix}_router_language_ids", language_ids)
+        if targets is not None and torch.is_tensor(targets):
+            self._cache_store(f"{prefix}_router_targets", targets)
+
 
 # Below code is based on https://github.com/microsoft/LoRA/blob/main/loralib/layers.py
 # and modified to work with PyTorch FSDP
@@ -407,6 +518,13 @@ class Linear(nn.Module, HydraLoraLayer):
     def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
         self._check_forward_args(x, *args, **kwargs)
         adapter_names = kwargs.pop("adapter_names", None)
+        language_ids = kwargs.pop("language_ids", None)
+        if isinstance(language_ids, torch.Tensor):
+            language_ids = language_ids.to(x.device).long()
+            if language_ids.dim() > 1:
+                language_ids = language_ids.view(language_ids.size(0))
+        else:
+            language_ids = None
         if self.disable_adapters:
             if self.merged:
                 self.unmerge()
@@ -432,7 +550,14 @@ class Linear(nn.Module, HydraLoraLayer):
                     
             
                     x = x.to(lora_A.weight.dtype)
-                    route_weight = nn.functional.softmax(lora_route(x), dim=-1, dtype=torch.float32).to(result.dtype)
+                    route_logits = lora_route(x.to(torch.float32)).to(result.dtype)
+                    head_targets = self._language_head_targets(language_ids, active_adapter)
+                    self._cache_router_state(
+                        route_logits, language_ids, f"hydra_head_{active_adapter}", head_targets
+                    )
+                    route_logits = self._apply_language_bias_heads(route_logits, head_targets)
+                    route_weight = nn.functional.softmax(route_logits, dim=-1, dtype=torch.float32).to(result.dtype)
+                    route_weight = self._enforce_language_heads(route_weight, head_targets)
 
                     for i in range(self.lora_num[active_adapter]):
                         result = result + torch.unsqueeze(route_weight[:,:,i], -1) * lora_B[i]((lora_A(dropout(x)))) * scaling
@@ -440,8 +565,12 @@ class Linear(nn.Module, HydraLoraLayer):
                 result = result.to(torch_result_dtype)
             else:
                 logits = self.router(x.to(torch.float32)).to(x.dtype)
+                expert_targets = self._language_expert_targets(language_ids)
+                self._cache_router_state(logits, language_ids, "hydra_expert", expert_targets)
+                logits = self._apply_language_bias_experts(logits, expert_targets)
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
                 weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
+                topi, weights = self._enforce_language_experts(topi, weights, expert_targets)
 
                 if getattr(self, "hydralora_debug", False):
                     with torch.no_grad():
@@ -585,6 +714,26 @@ class Linear(nn.Module, HydraLoraLayer):
     def __repr__(self) -> str:
         rep = super().__repr__()
         return "lora." + rep
+
+    def pop_language_router_cache(self) -> list[tuple[str, torch.Tensor, torch.Tensor]]:
+        caches: list[tuple[str, torch.Tensor, torch.Tensor]] = []
+        # Head routers for standard Hydra adapters
+        head_keys = [
+            key for key in list(self._caches.keys()) if key.startswith("hydra_head_") and key.endswith("_router_logits")
+        ]
+        for key in head_keys:
+            logits = self._cache_pop(key)
+            targets = self._cache_pop(key.replace("_router_logits", "_router_targets"))
+            if logits is not None and targets is not None:
+                caches.append(("hydra_head", logits, targets))
+            self._cache_pop(key.replace("_router_logits", "_router_language_ids"))
+        # Global expert router
+        logits = self._cache_pop("hydra_expert_router_logits")
+        targets = self._cache_pop("hydra_expert_router_targets")
+        if logits is not None and targets is not None:
+            caches.append(("hydra_expert", logits, targets))
+        self._cache_pop("hydra_expert_router_language_ids")
+        return caches
 
 
 class Embedding(nn.Module, HydraLoraLayer):
@@ -765,6 +914,7 @@ class Embedding(nn.Module, HydraLoraLayer):
         # TODO: no dtype conversion here, unlike in Linear, is that correct?
         self._check_forward_args(x, *args, **kwargs)
         adapter_names = kwargs.pop("adapter_names", None)
+        kwargs.pop("language_ids", None)
 
         if self.disable_adapters:
             if self.merged:

@@ -128,11 +128,10 @@ def preprocess_supervised_dataset(
         model_inputs["videos"].append(examples["_videos"][i])
         if language_meta and languages is not None:
             language_map, language_vocab, family_vocab = language_meta
-            lang_id, fam_id = language_to_ids(languages[i], language_map, language_vocab, family_vocab)
+            lang_id, _ = language_to_ids(languages[i], language_map, language_vocab, family_vocab)
         else:
-            lang_id = fam_id = LANGUAGE_PAD_ID
+            lang_id = LANGUAGE_PAD_ID
         model_inputs["language_ids"].append(lang_id)
-        model_inputs["family_ids"].append(fam_id)
 
     return model_inputs
 
@@ -218,7 +217,6 @@ def preprocess_packed_supervised_dataset(
         model_inputs["images"].append(packed_images or None)
         model_inputs["videos"].append(packed_videos or None)
         model_inputs["language_ids"].append(LANGUAGE_PAD_ID)
-        model_inputs["family_ids"].append(LANGUAGE_PAD_ID)
 
     return model_inputs
 

@@ -93,7 +93,7 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
 
     def __call__(self, features: Sequence[Dict[str, Any]]) -> Dict[str, "torch.Tensor"]:
         batch_images, batch_videos, batch_imglens, batch_vidlens, batch_input_ids = [], [], [], [], []
-        batch_language_ids, batch_family_ids = [], []
+        batch_language_ids = []
         have_language_ids = False
         for feature in features:
             images = feature.pop("images", None) or []
@@ -108,7 +108,6 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
             if lang_raw is not None or fam_raw is not None:
                 have_language_ids = True
             batch_language_ids.append(lang_raw if lang_raw is not None else LANGUAGE_PAD_ID)
-            batch_family_ids.append(fam_raw if fam_raw is not None else LANGUAGE_PAD_ID)
 
         if self.processor is not None and sum(batch_imglens) == 0:  # avoid process hanging in zero3/fsdp case
             fake_messages = [{"role": "user", "content": IMAGE_PLACEHOLDER}]
@@ -158,7 +157,6 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
         features.update(mm_inputs)
         if have_language_ids:
             features["language_ids"] = torch.tensor(batch_language_ids, dtype=torch.long)
-            features["family_ids"] = torch.tensor(batch_family_ids, dtype=torch.long)
 
         if isinstance(features.get("pixel_values"), list):  # for pixtral inputs
             features = features.data  # use default_collate() instead of BatchEncoding.to()
