@@ -43,6 +43,7 @@ def train_tokenizer(folder_path, vocab_size=262_144, batch_size=1000):
     
     assert test_str == decoded, "Encode-decode roundtrip failed!"
     
+    return tokenizer
 
 def test_tokenizer(tokenizer):
     test_sentences = {

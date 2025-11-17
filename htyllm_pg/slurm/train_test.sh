@@ -55,5 +55,5 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --batch-size 224 \
       --lr 1e-4 \
       --topany-gating-impl "opt_mem" \
-      --data-dir ../tokenized_data
+      --data-dir ../tokenized_subsets/five_representatives_mediods
 '
