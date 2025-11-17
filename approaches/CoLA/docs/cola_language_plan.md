@@ -25,7 +25,7 @@ High level:
 ### Implementation TODOs
 1. **Config plumbing**
    - Extend `ColaConfig` / Hydra config to carry language + family metadata and routing-mode flags.
-   - Update `FinetuningArguments` and PEFT model creation so those fields reach the tuners.
+   - DONE Update `FinetuningArguments` and PEFT setup to pass language metadata/routing settings into both CoLA and Hydra configs.
 2. **Router inputs**
    - Modify `ColaLayer.forward` (`peft/tuners/cola/layer.py:607+`) to accept optional `language_id`, expose router logits, and allow hard/biased routing when metadata is present.
    - Apply the same pattern to Hydra routing (`peft/tuners/hydralora/layer.py:330-433`).

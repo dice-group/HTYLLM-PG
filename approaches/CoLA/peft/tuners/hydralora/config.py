@@ -155,6 +155,26 @@ class HydraLoraConfig(PeftConfig):
             ),
         },
     )
+    language_map: Optional[dict[str, str]] = field(
+        default=None,
+        metadata={"help": "Mapping from language id to family id for language-prior routing."},
+    )
+    language_column: Optional[str] = field(
+        default=None,
+        metadata={"help": "Dataset column used for language ids; stored for reference."},
+    )
+    language_router_mode: Literal["learned", "bias", "hard"] = field(
+        default="learned",
+        metadata={"help": "Routing behavior when language metadata is present."},
+    )
+    language_prior_weight: float = field(
+        default=0.0,
+        metadata={"help": "Auxiliary loss weight encouraging router alignment with metadata."},
+    )
+    language_bias_value: float = field(
+        default=5.0,
+        metadata={"help": "Additive logit bonus applied in 'bias' routing mode."},
+    )
     layers_to_transform: Optional[Union[list[int], int]] = field(
         default=None,
         metadata={
@@ -262,6 +282,8 @@ class HydraLoraConfig(PeftConfig):
         # path_initial_model_for_weight_conversionl). Therefore, we only warn but don't raise an error here.
 
         self._custom_modules: Optional[dict[type[nn.Mmodule], type[nn.Module]]] = None
+        if self.language_map is not None and not isinstance(self.language_map, dict):
+            raise ValueError("language_map must be a dict mapping language ids to family ids.")
 
     def _register_custom_module(self, mapping: dict[type[nn.Mmodule], type[nn.Module]]) -> None:
         """

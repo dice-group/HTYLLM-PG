@@ -423,6 +423,46 @@ class FinetuningArguments(
     hydralora_num_experts: int = field(default=1, metadata={"help": "Number of experts per HydraLoRA layer when mixture-of-experts is enabled."})
     hydralora_top_k: int = field(default=1, metadata={"help": "Top-k experts to select per token when mixture-of-experts is enabled."})
     hydralora_debug: bool = field(default=False, metadata={"help": "Enable verbose HydraLoRA debugging output."})
+    language_column: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Name of the dataset column that contains the language identifier per example. "
+                "If unset, language-aware routing features remain disabled."
+            )
+        },
+    )
+    language_map: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "JSON string or path to a JSON file mapping languages to families, e.g. "
+                "'{\"en\": \"germanic\", \"de\": \"germanic\", \"es\": \"romance\"}'. "
+                "Used by language-prior routing."
+            )
+        },
+    )
+    language_router_mode: Literal["learned", "bias", "hard"] = field(
+        default="learned",
+        metadata={
+            "help": (
+                "Routing behavior when language metadata is available: "
+                "'learned' leaves router outputs untouched, "
+                "'bias' adds a fixed bonus to the target expert/head logits, "
+                "and 'hard' enforces one-hot routing."
+            )
+        },
+    )
+    language_prior_weight: float = field(
+        default=0.0,
+        metadata={"help": "Weight γ for the language-prior auxiliary loss. Set to 0 to disable."},
+    )
+    language_bias_value: float = field(
+        default=5.0,
+        metadata={
+            "help": "Additive logit bias applied in 'bias' routing mode when language metadata is present."
+        },
+    )
 
     def __post_init__(self):
         def split_arg(arg):

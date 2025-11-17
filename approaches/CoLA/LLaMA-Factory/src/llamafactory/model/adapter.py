@@ -15,8 +15,10 @@
 
 
 
+import json
 import re
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional
 
 import torch
 
@@ -39,6 +41,24 @@ if TYPE_CHECKING:
 
 
 logger = logging.get_logger(__name__)
+
+
+def _load_language_map(spec: Optional[str]) -> Optional[dict[str, str]]:
+    if spec is None:
+        return None
+    path = Path(spec)
+    try:
+        if path.exists():
+            with path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = json.loads(spec)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Failed to parse language_map '{spec}': {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise ValueError("language_map must decode to a dict mapping language -> family.")
+    return data
 
 
 def _setup_full_tuning(
@@ -371,6 +391,16 @@ def _setup_cola_tuning(
             # "expert_num": finetuning_args.expert_num,
             "modules_to_save": finetuning_args.additional_target,
         }
+        language_map = _load_language_map(finetuning_args.language_map)
+        peft_kwargs.update(
+            {
+                "language_map": language_map,
+                "language_column": finetuning_args.language_column,
+                "language_router_mode": finetuning_args.language_router_mode,
+                "language_prior_weight": finetuning_args.language_prior_weight,
+                "language_bias_value": finetuning_args.language_bias_value,
+            }
+        )
         init_lora_weights = finetuning_args.cola_init_lora_weights
         if init_lora_weights is None:
             if finetuning_args.use_cola_pissa_init:
@@ -752,6 +782,16 @@ def _setup_hydralora_tuning(
 
             "modules_to_save": finetuning_args.additional_target,
         }
+        language_map = _load_language_map(finetuning_args.language_map)
+        peft_kwargs.update(
+            {
+                "language_map": language_map,
+                "language_column": finetuning_args.language_column,
+                "language_router_mode": finetuning_args.language_router_mode,
+                "language_prior_weight": finetuning_args.language_prior_weight,
+                "language_bias_value": finetuning_args.language_bias_value,
+            }
+        )
 
         if model_args.use_unsloth:
             model = get_unsloth_peft_model(model, model_args, peft_kwargs)
