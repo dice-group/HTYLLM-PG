@@ -52,7 +52,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --deepspeed \
       --deepspeed_config ds_config.json \
       --epochs 5 \
-      --batch-size 8 \
+      --batch-size 6 \
       --lr 1e-4 \
       --topany-gating-impl "opt_mem" \
       --data-dir ../tokenized_subsets/five_representatives_mediods
