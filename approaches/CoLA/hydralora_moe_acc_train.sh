@@ -25,6 +25,7 @@ source /opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3/etc/profile.d/conda.
 conda activate hydralora_llama_factory
 export CUDA_DEVICE_ORDER=PCI_BUS_ID
 export PYTHONUNBUFFERED=1
+export CUDA_VISIBLE_DEVICES=${SLURM_JOB_GPUS:-0}
 python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count());"
 
 export WANDB_PROJECT="llama3.1-8b_moe_hydralora_training_accelerate"
