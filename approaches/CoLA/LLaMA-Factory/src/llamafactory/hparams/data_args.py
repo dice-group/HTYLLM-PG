@@ -45,6 +45,19 @@ class DataArguments:
         default=None,
         metadata={"help": "Path to the folder containing the images or videos. Defaults to `dataset_dir`."},
     )
+    language_column: Optional[str] = field(
+        default=None,
+        metadata={"help": "Name of the dataset column that stores the language identifier per example."},
+    )
+    language_map: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "JSON string or path to a JSON file mapping languages to families. "
+                "Used to derive numeric language/family ids for language-prior routing."
+            )
+        },
+    )
     cutoff_len: int = field(
         default=2048,
         metadata={"help": "The cutoff length of the tokenized inputs in the dataset."},
@@ -124,6 +137,8 @@ class DataArguments:
         },
     )
 
+    _language_metadata: Optional[tuple] = field(init=False, default=None, repr=False)
+
     def __post_init__(self):
         def split_arg(arg):
             if isinstance(arg, str):
@@ -164,3 +179,17 @@ class DataArguments:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+    def get_language_metadata(self) -> Optional[tuple]:
+        if self._language_metadata is not None:
+            return self._language_metadata
+
+        from ..extras.language import build_language_vocab, load_language_map
+
+        language_map = load_language_map(self.language_map)
+        if language_map is None:
+            self._language_metadata = None
+        else:
+            language_vocab, family_vocab = build_language_vocab(language_map)
+            self._language_metadata = (language_map, language_vocab, family_vocab)
+        return self._language_metadata

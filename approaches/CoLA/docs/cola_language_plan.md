@@ -41,4 +41,8 @@ High level:
    - Update CLI/help text for new metadata flags and routing behaviors.
    - Add regression tests or scripted checks covering metadata-driven routing vs learned fallback.
 
+Current status:
+- Config/CLI plumbing completed and shared across CoLA/Hydra.
+- Dataset alignment, preprocessing, and collators now propagate `language_ids`/`family_ids` tensors for use by the routers.
+
 This document tracks the actionable plan, while `docs/cola_language_prior_routing.md` remains the broader conceptual reference.

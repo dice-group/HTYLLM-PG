@@ -15,9 +15,7 @@
 
 
 
-import json
 import re
-from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import torch
@@ -27,6 +25,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import is_fsdp_enabled
 
 from ..extras import logging
+from ..extras.language import load_language_map
 from .model_utils.misc import find_all_linear_modules, find_expanded_modules
 from .model_utils.quantization import QuantizationMethod
 from .model_utils.unsloth import get_unsloth_peft_model, load_unsloth_peft_model
@@ -41,24 +40,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.get_logger(__name__)
-
-
-def _load_language_map(spec: Optional[str]) -> Optional[dict[str, str]]:
-    if spec is None:
-        return None
-    path = Path(spec)
-    try:
-        if path.exists():
-            with path.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-        else:
-            data = json.loads(spec)
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(f"Failed to parse language_map '{spec}': {exc}") from exc
-
-    if not isinstance(data, dict):
-        raise ValueError("language_map must decode to a dict mapping language -> family.")
-    return data
 
 
 def _setup_full_tuning(

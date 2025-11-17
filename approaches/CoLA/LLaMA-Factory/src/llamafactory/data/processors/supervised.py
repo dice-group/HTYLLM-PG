@@ -16,6 +16,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from ...extras import logging
+from ...extras.language import LANGUAGE_PAD_ID, language_to_ids
 from ...extras.constants import IGNORE_INDEX
 from .processor_utils import greedy_knapsack, infer_seqlen
 
@@ -97,6 +98,8 @@ def preprocess_supervised_dataset(
     # build inputs with format `<bos> X Y <eos>` and labels with format `<ignore> ... <ignore> Y <eos>`
     # for multiturn examples, we only mask the prompt part in each prompt-response pair.
     model_inputs = defaultdict(list)
+    language_meta = data_args.get_language_metadata()
+    languages = examples.get("_language")
     for i in range(len(examples["_prompt"])):
         if len(examples["_prompt"][i]) % 2 != 1 or len(examples["_response"][i]) != 1:
             logger.warning_rank0(
@@ -123,6 +126,13 @@ def preprocess_supervised_dataset(
         model_inputs["labels"].append(labels)
         model_inputs["images"].append(examples["_images"][i])
         model_inputs["videos"].append(examples["_videos"][i])
+        if language_meta and languages is not None:
+            language_map, language_vocab, family_vocab = language_meta
+            lang_id, fam_id = language_to_ids(languages[i], language_map, language_vocab, family_vocab)
+        else:
+            lang_id = fam_id = LANGUAGE_PAD_ID
+        model_inputs["language_ids"].append(lang_id)
+        model_inputs["family_ids"].append(fam_id)
 
     return model_inputs
 
@@ -207,6 +217,8 @@ def preprocess_packed_supervised_dataset(
         model_inputs["labels"].append(packed_labels)
         model_inputs["images"].append(packed_images or None)
         model_inputs["videos"].append(packed_videos or None)
+        model_inputs["language_ids"].append(LANGUAGE_PAD_ID)
+        model_inputs["family_ids"].append(LANGUAGE_PAD_ID)
 
     return model_inputs
 
