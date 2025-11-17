@@ -890,7 +890,8 @@ class MOELayer(Base):
         dispatched = torch.zeros(E, C, M, dtype=input_tokens.dtype, device=input_tokens.device)
         
         # Vectorized scatter: compute weighted tokens and flatten indices
-        weighted_tokens = gates.unsqueeze(-1) * input_tokens[token_indices]  # [num_active, M]
+        # Ensure dtype consistency for mixed precision training
+        weighted_tokens = (gates.unsqueeze(-1).to(input_tokens.dtype) * input_tokens[token_indices])  # [num_active, M]
         
         # Flatten indices: [expert, location] -> flat_idx in [E*C, M] view
         flat_indices = (expert_indices * C + locations).unsqueeze(-1).expand(-1, M)  # [num_active, M]
@@ -930,7 +931,8 @@ class MOELayer(Base):
         gathered = torch.gather(expert_flat, 0, flat_indices)  # [num_active, M]
         
         # Weight and scatter_add back to tokens
-        weighted_outputs = gates.unsqueeze(-1) * gathered  # [num_active, M]
+        # Ensure dtype consistency for mixed precision training
+        weighted_outputs = gates.unsqueeze(-1).to(expert_output.dtype) * gathered  # [num_active, M]
         token_indices_expanded = token_indices.unsqueeze(-1).expand(-1, M)  # [num_active, M]
         combined.scatter_add_(0, token_indices_expanded, weighted_outputs)
         
