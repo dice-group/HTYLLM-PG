@@ -26,8 +26,7 @@
     "allgather_bucket_size": 5e8,
     "reduce_bucket_size": 5e8,
     "allgather_partitions": true,
-    "reduce_scatter": true,
-    "cpu_offload": false
+    "reduce_scatter": true
   },
   "activation_checkpointing": {
     "partition_activations": true,
