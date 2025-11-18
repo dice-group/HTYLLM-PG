@@ -763,7 +763,9 @@ class Linear(nn.Module, ColaLayer):
                     #     result = result + lora_B[i](lora_A[i-B_i](dropout(x))) * scaling
 
             else:
-                logits = self.router(x.to(torch.float32)).to(x.dtype)
+                router_dtype = self.router.weight.dtype
+                router_inp = x.to(router_dtype)
+                logits = self.router(router_inp).to(torch.float32).to(x.dtype)
                 language_targets = self._language_expert_targets(language_ids)
                 self._cache_router_state(logits, language_ids, language_targets)
                 logits = self._apply_language_bias(logits, language_targets)
