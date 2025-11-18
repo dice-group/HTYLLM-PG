@@ -34,6 +34,7 @@ for ckpt in "$CKPT_ROOT"/checkpoint-*; do
     --model_args "pretrained=$ckpt,tokenizer=$ckpt" \
     --tasks "$TASKS" \
     --device cuda \
+    --batch_size auto \
     --output_path "$out" \
     --wandb_args "$wandb"
 done
