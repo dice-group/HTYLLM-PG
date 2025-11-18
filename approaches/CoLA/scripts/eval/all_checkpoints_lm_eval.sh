@@ -10,6 +10,7 @@ set -euo pipefail
 
 : "${CKPT_ROOT:?Need CKPT_ROOT pointing to a checkpoint directory root}"
 RUN_LABEL="${RUN_LABEL:-$(basename "$CKPT_ROOT")}"
+RUN_NAME="${RUN_NAME:-${RUN_LABEL}-$(date +%Y%m%d%H%M%S)}"
 TASKS="${TASKS:-belebele,xnli,arc_multilingual,flores}"
 WANDB_PROJECT="${WANDB_PROJECT:-lm_eval_project}"
 LM_EVAL_BIN="${LM_EVAL_BIN:-lm_eval}"
@@ -17,7 +18,7 @@ WANDB_RESUME="${WANDB_RESUME:-allow}"
 
 mkdir -p logs
 
-WANDB_ARGS_COMMON="project=${WANDB_PROJECT},group=lm_eval,name=${RUN_LABEL},id=${RUN_LABEL},resume=${WANDB_RESUME}"
+WANDB_ARGS_COMMON="project=${WANDB_PROJECT},group=lm_eval,name=${RUN_NAME},id=${RUN_NAME},resume=${WANDB_RESUME}"
 
 for ckpt in "$CKPT_ROOT"/checkpoint-*; do
   [[ -d "$ckpt" ]] || continue
