@@ -765,7 +765,7 @@ class Linear(nn.Module, ColaLayer):
             else:
                 router_dtype = self.router.weight.dtype
                 router_inp = x.to(router_dtype)
-                logits = self.router(router_inp).to(torch.float32).to(x.dtype)
+                logits = self.router(router_inp)
                 language_targets = self._language_expert_targets(language_ids)
                 self._cache_router_state(logits, language_ids, language_targets)
                 logits = self._apply_language_bias(logits, language_targets)
