@@ -18,6 +18,7 @@ WANDB_RESUME="${WANDB_RESUME:-allow}"
 
 mkdir -p logs
 
+WANDB_INIT_TIMEOUT="${WANDB_INIT_TIMEOUT:-180}"
 WANDB_ARGS_COMMON="project=${WANDB_PROJECT},group=lm_eval,name=${RUN_NAME},id=${RUN_NAME},resume=${WANDB_RESUME}"
 
 for ckpt in "$CKPT_ROOT"/checkpoint-*; do
@@ -28,7 +29,7 @@ for ckpt in "$CKPT_ROOT"/checkpoint-*; do
   mkdir -p "$out"
   wandb="${WANDB_ARGS_COMMON},tags=${name}"
 
-  "$LM_EVAL_BIN" \
+  WANDB_INIT_TIMEOUT="$WANDB_INIT_TIMEOUT" "$LM_EVAL_BIN" \
     --model hf \
     --model_args "pretrained=$ckpt,tokenizer=$ckpt" \
     --tasks "$TASKS" \
