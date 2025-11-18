@@ -13,17 +13,19 @@ RUN_LABEL="${RUN_LABEL:-$(basename "$CKPT_ROOT")}"
 TASKS="${TASKS:-belebele,xnli,arc_multilingual,flores}"
 WANDB_PROJECT="${WANDB_PROJECT:-lm_eval_project}"
 LM_EVAL_BIN="${LM_EVAL_BIN:-lm_eval}"
+WANDB_RESUME="${WANDB_RESUME:-allow}"
 
 mkdir -p logs
+
+WANDB_ARGS_COMMON="project=${WANDB_PROJECT},group=lm_eval,name=${RUN_LABEL},id=${RUN_LABEL},resume=${WANDB_RESUME}"
 
 for ckpt in "$CKPT_ROOT"/checkpoint-*; do
   [[ -d "$ckpt" ]] || continue
 
   name=$(basename "$ckpt")
-  run_name="${RUN_LABEL}-${name}"
   out="$ckpt/lm_eval"
   mkdir -p "$out"
-  wandb="project=${WANDB_PROJECT},group=lm_eval,name=${run_name},id=${run_name}-$(date +%s)"
+  wandb="${WANDB_ARGS_COMMON},tags=${name}"
 
   "$LM_EVAL_BIN" \
     --model hf \
