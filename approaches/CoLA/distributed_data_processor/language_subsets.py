@@ -395,6 +395,62 @@ hundred_ninty_nine_representatives_mediods = [
     "ben_Latn",
 ]
 
+hierarchical_four_families = [
+    # Germanic (2)
+    "eng_Latn",
+    "deu_Latn",
+    # Romance (2)
+    "spa_Latn",
+    "por_Latn",
+    # Indo-Iranian (2)
+    "hin_Deva",
+    "urd_Arab",
+    # Semitic (2)
+    "arb_Arab",
+    "heb_Hebr",
+]
+
+hierarchical_low_resource_clusters = [
+    # Cluster 1 (low-resource Latin-based)
+    "wbm_Latn",
+    "agg_Latn",
+    "amr_Latn",
+    "toc_Latn",
+    # Cluster 2 (Cyrillic-heavy)
+    "abk_Cyrl",
+    "mhr_Cyrl",
+    "sah_Cyrl",
+    "srp_Cyrl",
+    # Cluster 3 (South/Southeast Asia scripts)
+    "ksw_Mymr",
+    "kxm_Thai",
+    "mni_Beng",
+    "wsg_Telu",
+]
+
+belebele_balanced_clusters = [
+    # Cluster 1 (high-resource mix)
+    "tam_Taml",
+    "kin_Latn",
+    "fra_Latn",
+    "hau_Latn",
+    # Cluster 2 (sem/se asian focus)
+    "amh_Ethi",
+    "arb_Arab",
+    "vie_Latn",
+    "tha_Thai",
+    # Cluster 3 (mainland SE Asia)
+    "khm_Khmr",
+    "lao_Laoo",
+    "swa_Latn",
+    "yor_Latn",
+    # Cluster 4 (West Africa)
+    "wol_Latn",
+    "ibo_Latn",
+    "hin_Deva",
+    "urd_Arab",
+]
+
 flores_languages = [
     "ace_Arab",  "bam_Latn",  "dzo_Tibt",  "hin_Deva",	"khm_Khmr",  "mag_Deva",  "pap_Latn",  "sot_Latn",	"tur_Latn",
     "ace_Latn",  "ban_Latn",  "ell_Grek",  "hne_Deva",	"kik_Latn",  "mai_Deva",  "pbt_Arab",  "spa_Latn",	"twi_Latn",
@@ -744,3 +800,15 @@ belebele_languages = [
     "zsm_Latn",
     "zul_Latn"
 ]
+
+LANGUAGE_SUBSET_MAP = {
+    "five_representatives_mediods": five_representatives_mediods,
+    "ten_representatives_mediods": ten_representatives_mediods,
+    "twenty_two_representatives_mediods": twenty_two_representatives_mediods,
+    "fourty_six_representatives_mediods": fourty_six_representatives_mediods,
+    "ninty_five_representatives_mediods": ninty_five_representatives_mediods,
+    "hundred_ninty_nine_representatives_mediods": hundred_ninty_nine_representatives_mediods,
+    "hierarchical_four_families": hierarchical_four_families,
+    "hierarchical_low_resource_clusters": hierarchical_low_resource_clusters,
+    "belebele_balanced_clusters": belebele_balanced_clusters,
+}
