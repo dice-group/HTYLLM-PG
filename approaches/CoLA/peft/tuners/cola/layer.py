@@ -41,9 +41,12 @@ except ImportError:
 
 
 _GLOBAL_DEBUG = os.environ.get("COLA_DEBUG", "").lower() in {"1", "true", "yes", "on"}
+_GLOBAL_DEBUG_SUPPRESS = os.environ.get("COLA_SUPPRESS_DEBUG", "").lower() in {"1", "true", "yes", "on"}
 
 
 def debug(msg: str, enabled: bool = False):
+    if _GLOBAL_DEBUG_SUPPRESS:
+        return
     if not (enabled or _GLOBAL_DEBUG):
         return
     print(f"[DEBUG] {msg}", file=sys.stderr, flush=True)
@@ -578,12 +581,18 @@ class ColaLayer(BaseTunerLayer):
         if not getattr(self, "cola_debug", False):
             return
 
-        debug(f"[COLA DEBUG] Verifying CoLA experts in {self.__class__.__name__} ({self.num_experts} experts)")
+        debug(
+            f"[COLA DEBUG] Verifying CoLA experts in {self.__class__.__name__} ({self.num_experts} experts)",
+            enabled=self.cola_debug,
+        )
         for i in range(self.num_experts):
-            debug(f"  Expert {i}: "
-                  f"A_shapes={[a.weight.shape for a in self.lora_A[f'expert_{i}']]}, "
-                  f"B_shapes={[b.weight.shape for b in self.lora_B[f'expert_{i}']]}, "
-                  f"scaling={self.scaling[f'expert_{i}']}")
+            debug(
+                f"  Expert {i}: "
+                f"A_shapes={[a.weight.shape for a in self.lora_A[f'expert_{i}']]}, "
+                f"B_shapes={[b.weight.shape for b in self.lora_B[f'expert_{i}']]}, "
+                f"scaling={self.scaling[f'expert_{i}']}",
+                enabled=self.cola_debug,
+            )
         for i in range(self.num_experts - 1):
             a_equal = torch.allclose(
                 self.lora_A[f'expert_{i}'][0].weight,
@@ -593,8 +602,11 @@ class ColaLayer(BaseTunerLayer):
                 self.lora_B[f'expert_{i}'][0].weight,
                 self.lora_B[f'expert_{i + 1}'][0].weight
             )
-            debug(f"[COLA DEBUG] Experts {i} vs {i + 1}: A identical={a_equal}, B identical={b_equal}")
-        debug("=" * 60)
+            debug(
+                f"[COLA DEBUG] Experts {i} vs {i + 1}: A identical={a_equal}, B identical={b_equal}",
+                enabled=self.cola_debug,
+            )
+        debug("=" * 60, enabled=self.cola_debug)
 
     def _language_expert_targets(self, language_ids: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
         if language_ids is None or self.language_id_to_expert.numel() == 0:
