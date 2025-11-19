@@ -1,0 +1,871 @@
+cpu-bind=MASK - gpu1020, task  0  0 [2989766]: mask |BBBBBBBB|--------|--------|--------|--------|--------|--------|--------|--------|BBBBBBBB|--------|--------||||BBBBBBBB|--------|--------|--------|--------|--------|--------|--------|--------|BBBBBBBB|--------|--------|  set
+The following modules were not unloaded:
+  (Use "module --force purge" to unload all):
+
+  1) pc2env   2) slurm/24.11.6-1   3) DefaultModules
+CUDA available: True
+Device count: 4
+[INFO] Profiling model FLOPs at Wed Nov 19 02:56:24 AM CET 2025
+Warning: The cache directory for DeepSpeed Triton autotune, /pc2/users/j/joeldag/.triton/autotune, appears to be on an NFS system. While this is generally acceptable, if you experience slowdowns or hanging when DeepSpeed exits, it is recommended to set the TRITON_CACHE_DIR environment variable to a non-NFS path.
+[INFO|configuration_utils.py:675] 2025-11-19 02:56:31,093 >> loading configuration file config.json from cache at /scratch/hpc-prf-merlin/shared_cache/huggingface/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b/config.json
+[INFO|configuration_utils.py:742] 2025-11-19 02:56:31,093 >> Model config LlamaConfig {
+  "_name_or_path": "meta-llama/Llama-3.1-8B",
+  "architectures": [
+    "LlamaForCausalLM"
+  ],
+  "attention_bias": false,
+  "attention_dropout": 0.0,
+  "bos_token_id": 128000,
+  "eos_token_id": 128001,
+  "head_dim": 128,
+  "hidden_act": "silu",
+  "hidden_size": 4096,
+  "initializer_range": 0.02,
+  "intermediate_size": 14336,
+  "max_position_embeddings": 131072,
+  "mlp_bias": false,
+  "model_type": "llama",
+  "num_attention_heads": 32,
+  "num_hidden_layers": 32,
+  "num_key_value_heads": 8,
+  "pretraining_tp": 1,
+  "rms_norm_eps": 1e-05,
+  "rope_scaling": {
+    "factor": 8.0,
+    "high_freq_factor": 4.0,
+    "low_freq_factor": 1.0,
+    "original_max_position_embeddings": 8192,
+    "rope_type": "llama3"
+  },
+  "rope_theta": 500000.0,
+  "tie_word_embeddings": false,
+  "torch_dtype": "bfloat16",
+  "transformers_version": "4.45.2",
+  "use_cache": true,
+  "vocab_size": 128256
+}
+
+[INFO|tokenization_utils_base.py:2206] 2025-11-19 02:56:31,295 >> loading file tokenizer.json from cache at /scratch/hpc-prf-merlin/shared_cache/huggingface/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b/tokenizer.json
+[INFO|tokenization_utils_base.py:2206] 2025-11-19 02:56:31,295 >> loading file tokenizer.model from cache at None
+[INFO|tokenization_utils_base.py:2206] 2025-11-19 02:56:31,295 >> loading file added_tokens.json from cache at None
+[INFO|tokenization_utils_base.py:2206] 2025-11-19 02:56:31,295 >> loading file special_tokens_map.json from cache at /scratch/hpc-prf-merlin/shared_cache/huggingface/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b/special_tokens_map.json
+[INFO|tokenization_utils_base.py:2206] 2025-11-19 02:56:31,295 >> loading file tokenizer_config.json from cache at /scratch/hpc-prf-merlin/shared_cache/huggingface/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b/tokenizer_config.json
+[INFO|tokenization_utils_base.py:2470] 2025-11-19 02:56:31,467 >> Special tokens have been added in the vocabulary, make sure the associated word embeddings are fine-tuned or trained.
+[INFO|configuration_utils.py:675] 2025-11-19 02:56:31,939 >> loading configuration file config.json from cache at /scratch/hpc-prf-merlin/shared_cache/huggingface/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b/config.json
+[INFO|configuration_utils.py:742] 2025-11-19 02:56:31,939 >> Model config LlamaConfig {
+  "_name_or_path": "meta-llama/Llama-3.1-8B",
+  "architectures": [
+    "LlamaForCausalLM"
+  ],
+  "attention_bias": false,
+  "attention_dropout": 0.0,
+  "bos_token_id": 128000,
+  "eos_token_id": 128001,
+  "head_dim": 128,
+  "hidden_act": "silu",
+  "hidden_size": 4096,
+  "initializer_range": 0.02,
+  "intermediate_size": 14336,
+  "max_position_embeddings": 131072,
+  "mlp_bias": false,
+  "model_type": "llama",
+  "num_attention_heads": 32,
+  "num_hidden_layers": 32,
+  "num_key_value_heads": 8,
+  "pretraining_tp": 1,
+  "rms_norm_eps": 1e-05,
+  "rope_scaling": {
+    "factor": 8.0,
+    "high_freq_factor": 4.0,
+    "low_freq_factor": 1.0,
+    "original_max_position_embeddings": 8192,
+    "rope_type": "llama3"
+  },
+  "rope_theta": 500000.0,
+  "tie_word_embeddings": false,
+  "torch_dtype": "bfloat16",
+  "transformers_version": "4.45.2",
+  "use_cache": true,
+  "vocab_size": 128256
+}
+
+[INFO|tokenization_utils_base.py:2206] 2025-11-19 02:56:32,051 >> loading file tokenizer.json from cache at /scratch/hpc-prf-merlin/shared_cache/huggingface/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b/tokenizer.json
+[INFO|tokenization_utils_base.py:2206] 2025-11-19 02:56:32,051 >> loading file tokenizer.model from cache at None
+[INFO|tokenization_utils_base.py:2206] 2025-11-19 02:56:32,051 >> loading file added_tokens.json from cache at None
+[INFO|tokenization_utils_base.py:2206] 2025-11-19 02:56:32,051 >> loading file special_tokens_map.json from cache at /scratch/hpc-prf-merlin/shared_cache/huggingface/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b/special_tokens_map.json
+[INFO|tokenization_utils_base.py:2206] 2025-11-19 02:56:32,051 >> loading file tokenizer_config.json from cache at /scratch/hpc-prf-merlin/shared_cache/huggingface/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b/tokenizer_config.json
+[INFO|tokenization_utils_base.py:2470] 2025-11-19 02:56:32,223 >> Special tokens have been added in the vocabulary, make sure the associated word embeddings are fine-tuned or trained.
+[INFO|2025-11-19 02:56:32] llamafactory.data.template:157 >> Add pad token: <|end_of_text|>
+[INFO|configuration_utils.py:675] 2025-11-19 02:56:32,349 >> loading configuration file config.json from cache at /scratch/hpc-prf-merlin/shared_cache/huggingface/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b/config.json
+[INFO|configuration_utils.py:742] 2025-11-19 02:56:32,350 >> Model config LlamaConfig {
+  "_name_or_path": "meta-llama/Llama-3.1-8B",
+  "architectures": [
+    "LlamaForCausalLM"
+  ],
+  "attention_bias": false,
+  "attention_dropout": 0.0,
+  "bos_token_id": 128000,
+  "eos_token_id": 128001,
+  "head_dim": 128,
+  "hidden_act": "silu",
+  "hidden_size": 4096,
+  "initializer_range": 0.02,
+  "intermediate_size": 14336,
+  "max_position_embeddings": 131072,
+  "mlp_bias": false,
+  "model_type": "llama",
+  "num_attention_heads": 32,
+  "num_hidden_layers": 32,
+  "num_key_value_heads": 8,
+  "pretraining_tp": 1,
+  "rms_norm_eps": 1e-05,
+  "rope_scaling": {
+    "factor": 8.0,
+    "high_freq_factor": 4.0,
+    "low_freq_factor": 1.0,
+    "original_max_position_embeddings": 8192,
+    "rope_type": "llama3"
+  },
+  "rope_theta": 500000.0,
+  "tie_word_embeddings": false,
+  "torch_dtype": "bfloat16",
+  "transformers_version": "4.45.2",
+  "use_cache": true,
+  "vocab_size": 128256
+}
+
+[INFO|2025-11-19 02:56:32] llamafactory.model.patcher:157 >> Using KV cache for faster generation.
+[INFO|modeling_utils.py:3732] 2025-11-19 02:56:32,411 >> loading weights file model.safetensors from cache at /scratch/hpc-prf-merlin/shared_cache/huggingface/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b/model.safetensors.index.json
+[INFO|modeling_utils.py:1622] 2025-11-19 02:56:32,412 >> Instantiating LlamaForCausalLM model under default dtype torch.bfloat16.
+[INFO|configuration_utils.py:1099] 2025-11-19 02:56:32,413 >> Generate config GenerationConfig {
+  "bos_token_id": 128000,
+  "eos_token_id": 128001
+}
+
+
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]
+Loading checkpoint shards:  25%|██▌       | 1/4 [00:01<00:05,  1.76s/it]
+Loading checkpoint shards:  50%|█████     | 2/4 [00:03<00:03,  1.72s/it]
+Loading checkpoint shards:  75%|███████▌  | 3/4 [00:05<00:01,  1.69s/it]
+Loading checkpoint shards: 100%|██████████| 4/4 [00:05<00:00,  1.26s/it]
+Loading checkpoint shards: 100%|██████████| 4/4 [00:05<00:00,  1.43s/it]
+[INFO|modeling_utils.py:4574] 2025-11-19 02:56:38,683 >> All model checkpoint weights were used when initializing LlamaForCausalLM.
+
+[INFO|modeling_utils.py:4582] 2025-11-19 02:56:38,683 >> All the weights of LlamaForCausalLM were initialized from the model checkpoint at meta-llama/Llama-3.1-8B.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use LlamaForCausalLM for predictions without further training.
+[INFO|configuration_utils.py:1054] 2025-11-19 02:56:38,801 >> loading configuration file generation_config.json from cache at /scratch/hpc-prf-merlin/shared_cache/huggingface/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b/generation_config.json
+[INFO|configuration_utils.py:1099] 2025-11-19 02:56:38,801 >> Generate config GenerationConfig {
+  "bos_token_id": 128000,
+  "do_sample": true,
+  "eos_token_id": 128001,
+  "temperature": 0.6,
+  "top_p": 0.9
+}
+
+[INFO|2025-11-19 02:56:38] llamafactory.model.model_utils.attention:157 >> Using torch SDPA for faster training and inference.
+[INFO|2025-11-19 02:56:38] llamafactory.model.loader:157 >> all params: 8,030,261,248
+
+-------------------------- DeepSpeed Flops Profiler --------------------------
+Profile Summary at step 1:
+Notations:
+data parallel size (dp_size), model parallel size(mp_size),
+number of parameters (params), number of multiply-accumulate operations(MACs),
+number of floating-point operations (flops), floating-point operations per second (FLOPS),
+fwd latency (forward propagation latency), bwd latency (backward propagation latency),
+step (weights update latency), iter latency (sum of fwd, bwd and step latency)
+
+params per GPU:                                                         8.03 B
+params of model = params per GPU * mp_size:                             0
+fwd MACs per GPU:                                                       127.35 TMACs
+fwd flops per GPU:                                                      255.86 T
+fwd flops of model = fwd flops per GPU * mp_size:                       255.86 T
+fwd latency:                                                            628.25 ms
+fwd FLOPS per GPU = fwd flops per GPU / fwd latency:                    407.27 TFLOPS
+
+----------------------------- Aggregated Profile per GPU -----------------------------
+Top 1 modules in terms of params, MACs or fwd latency at different model depths:
+depth 0:
+    params      - {'LlamaForCausalLM': '8.03 B'}
+    MACs        - {'LlamaForCausalLM': '127.35 TMACs'}
+    fwd latency - {'LlamaForCausalLM': '628.25 ms'}
+depth 1:
+    params      - {'LlamaModel': '7.5 B'}
+    MACs        - {'LlamaModel': '118.75 TMACs'}
+    fwd latency - {'LlamaModel': '494.13 ms'}
+depth 2:
+    params      - {'ModuleList': '6.98 B'}
+    MACs        - {'ModuleList': '118.75 TMACs'}
+    fwd latency - {'ModuleList': '491.97 ms'}
+depth 3:
+    params      - {'LlamaDecoderLayer': '6.98 B'}
+    MACs        - {'LlamaDecoderLayer': '118.75 TMACs'}
+    fwd latency - {'LlamaDecoderLayer': '491.97 ms'}
+depth 4:
+    params      - {'LlamaMLP': '5.64 B'}
+    MACs        - {'LlamaMLP': '92.36 TMACs'}
+    fwd latency - {'LlamaMLP': '49.23 ms'}
+
+------------------------------ Detailed Profile per GPU ------------------------------
+Each module profile is listed after its name in the following order:
+params, percentage of total params, MACs, percentage of total MACs, fwd latency, percentage of total fwd latency, fwd FLOPS
+
+Note: 1. A module can have torch.nn.module or torch.nn.functional to compute logits (e.g. CrossEntropyLoss). They are not counted as submodules, thus not to be printed out. However they make up the difference between a parent's MACs (or latency) and the sum of its submodules'.
+2. Number of floating-point operations is a theoretical estimation, thus FLOPS computed using that could be larger than the maximum system throughput.
+3. The fwd latency listed in the top module's profile is directly captured at the module forward function in PyTorch, thus it's less than the fwd latency shown above which is captured in DeepSpeed.
+
+LlamaForCausalLM(
+  8.03 B = 100% Params, 127.35 TMACs = 100% MACs, 628.25 ms = 100% latency, 407.27 TFLOPS
+  (model): LlamaModel(
+    7.5 B = 93.46% Params, 118.75 TMACs = 93.24% MACs, 494.13 ms = 78.65% latency, 482.97 TFLOPS
+    (embed_tokens): Embedding(525.34 M = 6.54% Params, 0 MACs = 0% MACs, 451.56 us = 0.07% latency, 0 FLOPS, 128256, 4096)
+    (layers): ModuleList(
+      (0): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.93 ms = 2.54% latency, 468.19 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 4.31 ms = 0.69% latency, 382.86 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 815.63 us = 0.13% latency, 674.03 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 222.68 us = 0.04% latency, 617.2 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 214.1 us = 0.03% latency, 641.94 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 767.47 us = 0.12% latency, 716.32 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 8.51 ms = 1.36% latency, 678.12 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.51 ms = 0.4% latency, 767.15 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.51 ms = 0.4% latency, 765.7 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.35 ms = 0.37% latency, 818.92 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 452.52 us = 0.07% latency, 1.04 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 1.31 ms = 0.21% latency, 13.13 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 1.31 ms = 0.21% latency, 13.18 TFLOPS, (4096,), eps=1e-05)
+      )
+      (1): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 16.07 ms = 2.56% latency, 464.07 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 4.22 ms = 0.67% latency, 390.62 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 759.12 us = 0.12% latency, 724.2 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 215.05 us = 0.03% latency, 639.09 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 212.91 us = 0.03% latency, 645.53 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 763.18 us = 0.12% latency, 720.35 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 8.75 ms = 1.39% latency, 659.72 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.51 ms = 0.4% latency, 766.79 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.52 ms = 0.4% latency, 764.9 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.38 ms = 0.38% latency, 809.88 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 445.6 us = 0.07% latency, 1.05 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 1.31 ms = 0.21% latency, 13.19 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 1.31 ms = 0.21% latency, 13.16 TFLOPS, (4096,), eps=1e-05)
+      )
+      (2): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 16.03 ms = 2.55% latency, 465.31 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 4.41 ms = 0.7% latency, 374.2 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 765.8 us = 0.12% latency, 717.88 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 220.78 us = 0.04% latency, 622.53 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 213.15 us = 0.03% latency, 644.81 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 943.9 us = 0.15% latency, 582.43 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 8.51 ms = 1.35% latency, 678.42 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.52 ms = 0.4% latency, 764.75 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.52 ms = 0.4% latency, 765.04 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.35 ms = 0.37% latency, 819.09 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 445.6 us = 0.07% latency, 1.05 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 1.31 ms = 0.21% latency, 13.18 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 1.31 ms = 0.21% latency, 13.16 TFLOPS, (4096,), eps=1e-05)
+      )
+      (3): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.84 ms = 2.52% latency, 470.77 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 4.23 ms = 0.67% latency, 390.15 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 760.56 us = 0.12% latency, 722.83 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 215.29 us = 0.03% latency, 638.38 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 213.38 us = 0.03% latency, 644.09 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 762.94 us = 0.12% latency, 720.58 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 8.53 ms = 1.36% latency, 677.13 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.52 ms = 0.4% latency, 764.68 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.52 ms = 0.4% latency, 764.39 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.36 ms = 0.38% latency, 815.03 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 444.17 us = 0.07% latency, 1.06 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 1.31 ms = 0.21% latency, 13.2 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 1.31 ms = 0.21% latency, 13.14 TFLOPS, (4096,), eps=1e-05)
+      )
+      (4): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 16.05 ms = 2.55% latency, 464.74 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 4.26 ms = 0.68% latency, 386.9 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 760.56 us = 0.12% latency, 722.83 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 216.01 us = 0.03% latency, 636.27 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 213.62 us = 0.03% latency, 643.37 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 788.45 us = 0.13% latency, 697.26 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 8.68 ms = 1.38% latency, 664.75 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.59 ms = 0.41% latency, 741.5 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.59 ms = 0.41% latency, 742.04 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 2.37 ms = 0.38% latency, 812.24 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 444.41 us = 0.07% latency, 1.06 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 1.31 ms = 0.21% latency, 13.18 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 1.32 ms = 0.21% latency, 13.05 TFLOPS, (4096,), eps=1e-05)
+      )
+      (5): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 2.07 ms = 0.33% latency, 3608.46 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 456.57 us = 0.07% latency, 3612.84 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 51.98 us = 0.01% latency, 10577.3 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 34.81 us = 0.01% latency, 3948.36 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 31.23 us = 0% latency, 4400.46 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 55.07 us = 0.01% latency, 9982 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 206.71 us = 0.03% latency, 27928.8 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 40.77 us = 0.01% latency, 47195.6 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36 us = 0.01% latency, 53446.7 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 35.29 us = 0.01% latency, 54530.1 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 29.09 us = 0% latency, 16.15 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 103 us = 0.02% latency, 167.45 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 84.64 us = 0.01% latency, 203.77 TFLOPS, (4096,), eps=1e-05)
+      )
+      (6): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.46 ms = 2.46% latency, 482.47 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 420.09 us = 0.07% latency, 3926.55 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 43.15 us = 0.01% latency, 12739.5 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 32.9 us = 0.01% latency, 4177.25 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 30.28 us = 0% latency, 4539.06 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 48.64 us = 0.01% latency, 11303.1 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 203.85 us = 0.03% latency, 28320.8 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 41.01 us = 0.01% latency, 46921.2 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.24 us = 0.01% latency, 53095.1 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 33.86 us = 0.01% latency, 56834.2 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 26.94 us = 0% latency, 17.44 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 80.82 us = 0.01% latency, 213.39 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 83.21 us = 0.01% latency, 207.28 TFLOPS, (4096,), eps=1e-05)
+      )
+      (7): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.45 ms = 2.46% latency, 482.63 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 426.77 us = 0.07% latency, 3865.13 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 44.58 us = 0.01% latency, 12330.7 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.86 us = 0.01% latency, 4059.58 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 30.76 us = 0% latency, 4468.69 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 48.16 us = 0.01% latency, 11415.1 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 213.38 us = 0.03% latency, 27055.1 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 41.48 us = 0.01% latency, 46381.9 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 42.2 us = 0.01% latency, 45595.8 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 35.52 us = 0.01% latency, 54164.1 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.18 us = 0% latency, 17.28 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 83.68 us = 0.01% latency, 206.09 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 88.21 us = 0.01% latency, 195.51 TFLOPS, (4096,), eps=1e-05)
+      )
+      (8): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.43 ms = 2.46% latency, 483.38 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 428.68 us = 0.07% latency, 3847.93 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 44.58 us = 0.01% latency, 12330.7 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.86 us = 0.01% latency, 4059.58 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 30.99 us = 0% latency, 4434.31 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 47.45 us = 0.01% latency, 11587.1 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 200.03 us = 0.03% latency, 28860.9 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 39.82 us = 0.01% latency, 48326.1 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.24 us = 0.01% latency, 53095.1 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 32.9 us = 0.01% latency, 58481.5 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.18 us = 0% latency, 17.28 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 81.54 us = 0.01% latency, 211.52 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 82.02 us = 0.01% latency, 210.29 TFLOPS, (4096,), eps=1e-05)
+      )
+      (9): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.51 ms = 2.47% latency, 480.8 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 416.76 us = 0.07% latency, 3958 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 43.39 us = 0.01% latency, 12669.5 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.38 us = 0.01% latency, 4117.58 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 30.76 us = 0% latency, 4468.69 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 47.45 us = 0.01% latency, 11587.1 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 202.89 us = 0.03% latency, 28453.9 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 41.48 us = 0.01% latency, 46381.9 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.48 us = 0.01% latency, 52748 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 32.9 us = 0.01% latency, 58481.5 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 26.46 us = 0% latency, 17.75 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 81.3 us = 0.01% latency, 212.14 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 87.74 us = 0.01% latency, 196.57 TFLOPS, (4096,), eps=1e-05)
+      )
+      (10): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.84 ms = 2.52% latency, 470.67 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 416.52 us = 0.07% latency, 3960.27 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 43.87 us = 0.01% latency, 12531.8 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.38 us = 0.01% latency, 4117.58 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 30.99 us = 0% latency, 4434.31 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 47.21 us = 0.01% latency, 11645.7 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 536.44 us = 0.09% latency, 10761.9 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 44.35 us = 0.01% latency, 43389.5 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 35.76 us = 0.01% latency, 53803 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 63.9 us = 0.01% latency, 30113.6 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 26.46 us = 0% latency, 17.75 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 83.21 us = 0.01% latency, 207.28 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 81.54 us = 0.01% latency, 211.52 TFLOPS, (4096,), eps=1e-05)
+      )
+      (11): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.23 ms = 2.42% latency, 489.73 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 452.76 us = 0.07% latency, 3643.28 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 49.35 us = 0.01% latency, 11139.3 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 34.81 us = 0.01% latency, 3948.36 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 31.71 us = 0.01% latency, 4334.29 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 54.12 us = 0.01% latency, 10157.9 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 211 us = 0.03% latency, 27360.8 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 41.01 us = 0.01% latency, 46921.2 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 37.67 us = 0.01% latency, 51078.8 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 35.05 us = 0.01% latency, 54901 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 28.61 us = 0% latency, 16.42 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 95.13 us = 0.02% latency, 181.3 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 84.16 us = 0.01% latency, 204.93 TFLOPS, (4096,), eps=1e-05)
+      )
+      (12): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.62 ms = 2.49% latency, 477.32 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 427.96 us = 0.07% latency, 3854.36 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 44.82 us = 0.01% latency, 12265.1 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.14 us = 0.01% latency, 4147.2 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 30.99 us = 0% latency, 4434.31 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 48.88 us = 0.01% latency, 11248 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 202.42 us = 0.03% latency, 28521 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 40.77 us = 0.01% latency, 47195.6 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 35.76 us = 0.01% latency, 53803 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 32.66 us = 0.01% latency, 58908.4 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.89 us = 0% latency, 16.84 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 82.49 us = 0.01% latency, 209.07 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 83.68 us = 0.01% latency, 206.09 TFLOPS, (4096,), eps=1e-05)
+      )
+      (13): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.67 ms = 2.49% latency, 476.02 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 419.14 us = 0.07% latency, 3935.49 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 46.01 us = 0.01% latency, 11947.4 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.62 us = 0.01% latency, 4088.37 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 30.76 us = 0% latency, 4468.69 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 46.73 us = 0.01% latency, 11764.5 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 205.99 us = 0.03% latency, 28025.8 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 41.72 us = 0.01% latency, 46116.9 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.24 us = 0.01% latency, 53095.1 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 33.86 us = 0.01% latency, 56834.2 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.18 us = 0% latency, 17.28 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 79.87 us = 0.01% latency, 215.94 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 80.82 us = 0.01% latency, 213.39 TFLOPS, (4096,), eps=1e-05)
+      )
+      (14): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.68 ms = 2.5% latency, 475.48 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 420.57 us = 0.07% latency, 3922.1 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 43.15 us = 0.01% latency, 12739.5 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.38 us = 0.01% latency, 4117.58 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 30.76 us = 0% latency, 4468.69 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 51.02 us = 0.01% latency, 10775 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 203.37 us = 0.03% latency, 28387.2 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 39.82 us = 0.01% latency, 48326.1 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36 us = 0.01% latency, 53446.7 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 33.62 us = 0.01% latency, 57237.2 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.42 us = 0% latency, 17.13 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 80.82 us = 0.01% latency, 213.39 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 80.59 us = 0.01% latency, 214.02 TFLOPS, (4096,), eps=1e-05)
+      )
+      (15): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 17.18 ms = 2.73% latency, 434.12 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 450.37 us = 0.07% latency, 3662.56 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 48.88 us = 0.01% latency, 11248 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.62 us = 0.01% latency, 4088.37 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 30.76 us = 0% latency, 4468.69 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 50.54 us = 0.01% latency, 10876.6 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 209.09 us = 0.03% latency, 27610.4 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 41.01 us = 0.01% latency, 46921.2 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.24 us = 0.01% latency, 53095.1 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.95 us = 0.01% latency, 52067.4 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 29.56 us = 0% latency, 15.89 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 100.85 us = 0.02% latency, 171.01 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 85.59 us = 0.01% latency, 201.5 TFLOPS, (4096,), eps=1e-05)
+      )
+      (16): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.65 ms = 2.49% latency, 476.62 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 431.3 us = 0.07% latency, 3824.54 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 44.35 us = 0.01% latency, 12397 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 36 us = 0.01% latency, 3817.62 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 32.66 us = 0.01% latency, 4207.74 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 51.26 us = 0.01% latency, 10724.9 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 204.32 us = 0.03% latency, 28254.7 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 41.48 us = 0.01% latency, 46381.9 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.95 us = 0.01% latency, 52067.4 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 33.62 us = 0.01% latency, 57237.2 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 28.85 us = 0% latency, 16.28 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 84.88 us = 0.01% latency, 203.2 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 84.4 us = 0.01% latency, 204.35 TFLOPS, (4096,), eps=1e-05)
+      )
+      (17): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.56 ms = 2.48% latency, 479.16 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 416.28 us = 0.07% latency, 3962.53 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 43.39 us = 0.01% latency, 12669.5 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.38 us = 0.01% latency, 4117.58 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 30.99 us = 0% latency, 4434.31 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 46.73 us = 0.01% latency, 11764.5 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 201.46 us = 0.03% latency, 28656 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 40.29 us = 0.01% latency, 47754.2 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36 us = 0.01% latency, 53446.7 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 33.38 us = 0.01% latency, 57646.1 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.18 us = 0% latency, 17.28 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 84.88 us = 0.01% latency, 203.2 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 82.25 us = 0.01% latency, 209.68 TFLOPS, (4096,), eps=1e-05)
+      )
+      (18): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.62 ms = 2.49% latency, 477.54 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 429.15 us = 0.07% latency, 3843.66 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 44.11 us = 0.01% latency, 12464 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.62 us = 0.01% latency, 4088.37 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 32.19 us = 0.01% latency, 4270.08 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 49.11 us = 0.01% latency, 11193.4 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 205.52 us = 0.03% latency, 28090.8 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 40.29 us = 0.01% latency, 47754.2 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 38.39 us = 0.01% latency, 50127 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 34.57 us = 0.01% latency, 55658.3 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.89 us = 0% latency, 16.84 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 80.82 us = 0.01% latency, 213.39 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 83.45 us = 0.01% latency, 206.68 TFLOPS, (4096,), eps=1e-05)
+      )
+      (19): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.76 ms = 2.51% latency, 473.19 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 430.35 us = 0.07% latency, 3833.01 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 43.63 us = 0.01% latency, 12600.2 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 32.66 us = 0.01% latency, 4207.74 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 36.24 us = 0.01% latency, 3792.5 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 47.92 us = 0.01% latency, 11471.9 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 209.09 us = 0.03% latency, 27610.4 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 44.58 us = 0.01% latency, 43157.5 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 37.19 us = 0.01% latency, 51733.7 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 33.62 us = 0.01% latency, 57237.2 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.89 us = 0% latency, 16.84 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 84.4 us = 0.01% latency, 204.35 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 83.68 us = 0.01% latency, 206.09 TFLOPS, (4096,), eps=1e-05)
+      )
+      (20): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 16.14 ms = 2.57% latency, 462.09 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 425.34 us = 0.07% latency, 3878.13 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 44.35 us = 0.01% latency, 12397 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.86 us = 0.01% latency, 4059.58 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 31.71 us = 0.01% latency, 4334.29 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 51.02 us = 0.01% latency, 10775 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 575.78 us = 0.09% latency, 10026.6 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 41.25 us = 0.01% latency, 46650 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 37.19 us = 0.01% latency, 51733.7 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 65.57 us = 0.01% latency, 29347.1 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 26.7 us = 0% latency, 17.59 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 81.06 us = 0.01% latency, 212.76 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 82.97 us = 0.01% latency, 207.87 TFLOPS, (4096,), eps=1e-05)
+      )
+      (21): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.46 ms = 2.46% latency, 482.49 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 448.94 us = 0.07% latency, 3674.24 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 50.31 us = 0.01% latency, 10928.2 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 34.81 us = 0.01% latency, 3948.36 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 31.71 us = 0.01% latency, 4334.29 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 50.07 us = 0.01% latency, 10980.2 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 209.81 us = 0.03% latency, 27516.3 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 41.48 us = 0.01% latency, 46381.9 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 37.43 us = 0.01% latency, 51404.1 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 38.39 us = 0.01% latency, 50127 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 28.61 us = 0% latency, 16.42 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 99.42 us = 0.02% latency, 173.48 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 85.59 us = 0.01% latency, 201.5 TFLOPS, (4096,), eps=1e-05)
+      )
+      (22): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.75 ms = 2.51% latency, 473.39 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 432.97 us = 0.07% latency, 3809.79 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 45.3 us = 0.01% latency, 12136 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 34.09 us = 0.01% latency, 4031.19 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 31.23 us = 0% latency, 4400.46 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 49.83 us = 0.01% latency, 11032.7 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 201.7 us = 0.03% latency, 28622.1 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 39.58 us = 0.01% latency, 48617.2 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 37.19 us = 0.01% latency, 51733.7 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 33.38 us = 0.01% latency, 57646.1 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.42 us = 0% latency, 17.13 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 86.31 us = 0.01% latency, 199.83 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 84.4 us = 0.01% latency, 204.35 TFLOPS, (4096,), eps=1e-05)
+      )
+      (23): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.96 ms = 2.54% latency, 467.11 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 422.72 us = 0.07% latency, 3902.19 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 43.63 us = 0.01% latency, 12600.2 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 34.09 us = 0.01% latency, 4031.19 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 30.99 us = 0% latency, 4434.31 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 47.68 us = 0.01% latency, 11529.2 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 200.75 us = 0.03% latency, 28758.1 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 39.58 us = 0.01% latency, 48617.2 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 35.76 us = 0.01% latency, 53803 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 34.57 us = 0.01% latency, 55658.3 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 26.7 us = 0% latency, 17.59 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 82.49 us = 0.01% latency, 209.07 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 82.02 us = 0.01% latency, 210.29 TFLOPS, (4096,), eps=1e-05)
+      )
+      (24): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 16 ms = 2.55% latency, 466.19 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 425.58 us = 0.07% latency, 3875.96 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 42.92 us = 0.01% latency, 12810.2 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.14 us = 0.01% latency, 4147.2 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 31.95 us = 0.01% latency, 4301.95 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 48.64 us = 0.01% latency, 11303.1 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 206.95 us = 0.03% latency, 27896.7 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 40.05 us = 0.01% latency, 48038.4 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 40.29 us = 0.01% latency, 47754.2 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 34.33 us = 0.01% latency, 56044.8 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.18 us = 0% latency, 17.28 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 83.92 us = 0.01% latency, 205.51 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 83.92 us = 0.01% latency, 205.51 TFLOPS, (4096,), eps=1e-05)
+      )
+      (25): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 17.1 ms = 2.72% latency, 436.02 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 434.16 us = 0.07% latency, 3799.33 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 46.97 us = 0.01% latency, 11704.8 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 37.43 us = 0.01% latency, 3671.72 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 32.42 us = 0.01% latency, 4238.68 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 47.68 us = 0.01% latency, 11529.2 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 204.32 us = 0.03% latency, 28254.7 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 40.29 us = 0.01% latency, 47754.2 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.95 us = 0.01% latency, 52067.4 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 34.33 us = 0.01% latency, 56044.8 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.18 us = 0% latency, 17.28 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 92.27 us = 0.01% latency, 186.92 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 83.92 us = 0.01% latency, 205.51 TFLOPS, (4096,), eps=1e-05)
+      )
+      (26): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.64 ms = 2.49% latency, 476.83 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 419.62 us = 0.07% latency, 3931.01 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 44.82 us = 0.01% latency, 12265.1 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.14 us = 0.01% latency, 4147.2 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 32.19 us = 0.01% latency, 4270.08 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 46.25 us = 0.01% latency, 11885.8 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 201.23 us = 0.03% latency, 28689.9 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 40.29 us = 0.01% latency, 47754.2 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.72 us = 0.01% latency, 52405.5 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 33.38 us = 0.01% latency, 57646.1 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 26.46 us = 0% latency, 17.75 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 82.25 us = 0.01% latency, 209.68 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 81.54 us = 0.01% latency, 211.52 TFLOPS, (4096,), eps=1e-05)
+      )
+      (27): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.67 ms = 2.49% latency, 475.79 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 418.42 us = 0.07% latency, 3942.21 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 42.92 us = 0.01% latency, 12810.2 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 32.9 us = 0.01% latency, 4177.25 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 31.47 us = 0.01% latency, 4367.13 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 47.21 us = 0.01% latency, 11645.7 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 207.9 us = 0.03% latency, 27768.7 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 43.87 us = 0.01% latency, 43861.1 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.95 us = 0.01% latency, 52067.4 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 33.86 us = 0.01% latency, 56834.2 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.18 us = 0% latency, 17.28 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 79.63 us = 0.01% latency, 216.58 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 82.02 us = 0.01% latency, 210.29 TFLOPS, (4096,), eps=1e-05)
+      )
+      (28): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.68 ms = 2.5% latency, 475.66 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 427.01 us = 0.07% latency, 3862.97 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 47.68 us = 0.01% latency, 11529.2 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.62 us = 0.01% latency, 4088.37 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 31.71 us = 0.01% latency, 4334.29 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 48.88 us = 0.01% latency, 11248 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 202.89 us = 0.03% latency, 28453.9 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 40.29 us = 0.01% latency, 47754.2 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.72 us = 0.01% latency, 52405.5 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 33.62 us = 0.01% latency, 57237.2 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 26.46 us = 0% latency, 17.75 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 82.02 us = 0.01% latency, 210.29 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 82.73 us = 0.01% latency, 208.47 TFLOPS, (4096,), eps=1e-05)
+      )
+      (29): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.63 ms = 2.49% latency, 477.15 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 427.48 us = 0.07% latency, 3858.66 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 43.87 us = 0.01% latency, 12531.8 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 33.38 us = 0.01% latency, 4117.58 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 31.23 us = 0% latency, 4400.46 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 49.11 us = 0.01% latency, 11193.4 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 202.18 us = 0.03% latency, 28554.6 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 40.29 us = 0.01% latency, 47754.2 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.72 us = 0.01% latency, 52405.5 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 33.86 us = 0.01% latency, 56834.2 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.18 us = 0% latency, 17.28 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 81.54 us = 0.01% latency, 211.52 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 84.16 us = 0.01% latency, 204.93 TFLOPS, (4096,), eps=1e-05)
+      )
+      (30): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.61 ms = 2.49% latency, 477.63 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 416.76 us = 0.07% latency, 3958 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 43.87 us = 0.01% latency, 12531.8 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 32.9 us = 0.01% latency, 4177.25 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 31.23 us = 0% latency, 4400.46 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 47.45 us = 0.01% latency, 11587.1 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 208.38 us = 0.03% latency, 27705.2 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 41.01 us = 0.01% latency, 46921.2 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.72 us = 0.01% latency, 52405.5 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 34.33 us = 0.01% latency, 56044.8 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 27.42 us = 0% latency, 17.13 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 82.02 us = 0.01% latency, 210.29 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 82.49 us = 0.01% latency, 209.07 TFLOPS, (4096,), eps=1e-05)
+      )
+      (31): LlamaDecoderLayer(
+        218.11 M = 2.72% Params, 3.71 TMACs = 2.91% MACs, 15.69 ms = 2.5% latency, 475.19 TFLOPS
+        (self_attn): LlamaSdpaAttention(
+          41.94 M = 0.52% Params, 824.63 GMACs = 0.65% MACs, 422 us = 0.07% latency, 3908.8 TFLOPS
+          (q_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 42.92 us = 0.01% latency, 12810.2 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (k_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 37.91 us = 0.01% latency, 3625.54 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (v_proj): Linear(4.19 M = 0.05% Params, 68.72 GMACs = 0.05% MACs, 31.23 us = 0% latency, 4400.46 TFLOPS, in_features=4096, out_features=1024, bias=False)
+          (o_proj): Linear(16.78 M = 0.21% Params, 274.88 GMACs = 0.22% MACs, 47.45 us = 0.01% latency, 11587.1 TFLOPS, in_features=4096, out_features=4096, bias=False)
+          (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 0 MACs = 0% MACs, 0 s = 0% latency, 0 FLOPS)
+        )
+        (mlp): LlamaMLP(
+          176.16 M = 2.19% Params, 2.89 TMACs = 2.27% MACs, 205.28 us = 0.03% latency, 28123.5 TFLOPS
+          (gate_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 40.77 us = 0.01% latency, 47195.6 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (up_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 36.24 us = 0.01% latency, 53095.1 TFLOPS, in_features=4096, out_features=14336, bias=False)
+          (down_proj): Linear(58.72 M = 0.73% Params, 962.07 GMACs = 0.76% MACs, 33.62 us = 0.01% latency, 57237.2 TFLOPS, in_features=14336, out_features=4096, bias=False)
+          (act_fn): SiLU(0 = 0% Params, 0 MACs = 0% MACs, 26.7 us = 0% latency, 17.59 TFLOPS)
+        )
+        (input_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 81.78 us = 0.01% latency, 210.9 TFLOPS, (4096,), eps=1e-05)
+        (post_attention_layernorm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 82.25 us = 0.01% latency, 209.68 TFLOPS, (4096,), eps=1e-05)
+      )
+    )
+    (norm): LlamaRMSNorm(4.1 K = 0% Params, 0 MACs = 0% MACs, 76.06 us = 0.01% latency, 226.77 TFLOPS, (4096,), eps=1e-05)
+    (rotary_emb): LlamaRotaryEmbedding(0 = 0% Params, 131.07 KMACs = 0% MACs, 1.06 ms = 0.17% latency, 492.83 MFLOPS)
+  )
+  (lm_head): Linear(525.34 M = 6.54% Params, 8.61 TMACs = 6.76% MACs, 71.29 us = 0.01% latency, 241477 TFLOPS, in_features=4096, out_features=128256, bias=False)
+)
+------------------------------------------------------------------------------
+FLOPs: 255.86 T
+MACs: 127.35 TMACs
+Params: 8.03 B
