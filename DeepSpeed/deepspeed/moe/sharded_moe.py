@@ -902,7 +902,8 @@ class MOELayer(Base):
                 # Select tokens: [N_active, M]
                 selected_tokens = reshaped_input[sample_idx]
                 # Scale by weights: [N_active, M]
-                weighted_tokens = selected_tokens * flat_weights.unsqueeze(1)
+                weights_casted = flat_weights.to(dtype=reshaped_input.dtype).unsqueeze(1)
+                weighted_tokens = selected_tokens * weights_casted
                 
                 # Scatter add to buffer (The Dispatch)
                 buffer.index_add_(0, destination_idx, weighted_tokens)
@@ -990,7 +991,8 @@ class MOELayer(Base):
             selected_expert_out = expert_output_flat[destination_idx]
             
             # Scale by the same weights used in dispatch
-            weighted_expert_out = selected_expert_out * flat_weights.unsqueeze(1)
+            weights_casted = flat_weights.to(dtype=expert_output.dtype).unsqueeze(1)
+            weighted_expert_out = selected_expert_out * weights_casted
             
             # Scatter add back to the original token positions
             combined_output.index_add_(0, sample_idx, weighted_expert_out)
