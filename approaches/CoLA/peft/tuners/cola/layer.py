@@ -40,7 +40,12 @@ except ImportError:
     FSDP = None  # FSDP not always available (e.g. single-GPU runs)
 
 
-def debug(msg: str):
+_GLOBAL_DEBUG = os.environ.get("COLA_DEBUG", "").lower() in {"1", "true", "yes", "on"}
+
+
+def debug(msg: str, enabled: bool = False):
+    if not (enabled or _GLOBAL_DEBUG):
+        return
     print(f"[DEBUG] {msg}", file=sys.stderr, flush=True)
 
 
@@ -261,7 +266,10 @@ class ColaLayer(BaseTunerLayer):
             self._verify_cola_expert_init()
             self._cola_parent_children[adapter_name] = adapter_names
             self.set_adapter(adapter_name)
-            debug(f"[MoE-COLA] Created {self.num_experts} CoLA experts (r={r}, num_A={num_A}, num_B={num_B})")
+            debug(
+                f"[MoE-COLA] Created {self.num_experts} CoLA experts (r={r}, num_A={num_A}, num_B={num_B})",
+                enabled=self.cola_debug,
+            )
             return
 
         # This code works for linear layers, override for other layer types
@@ -352,10 +360,10 @@ class ColaLayer(BaseTunerLayer):
         rank, world_size = self._distributed_rank_world()
         nan_count = torch.isnan(weight).sum().item()
         inf_count = torch.isinf(weight).sum().item()
-        print(
+        debug(
             f"[PiSSA-DEBUG] rank={rank}/{world_size} layer={self.get_base_layer().__class__.__name__} "
             f"shape={tuple(weight.shape)} nan={nan_count} inf={inf_count}",
-            flush=True,
+            enabled=self.cola_debug,
         )
         if not torch.isfinite(weight).all():
             raise ValueError(
@@ -415,10 +423,10 @@ class ColaLayer(BaseTunerLayer):
         rank, world_size = self._distributed_rank_world()
         nan_count = torch.isnan(weight).sum().item()
         inf_count = torch.isinf(weight).sum().item()
-        print(
+        debug(
             f"[PiSSA-DEBUG] rank={rank}/{world_size} layer={self.get_base_layer().__class__.__name__} "
             f"shape={tuple(weight.shape)} nan={nan_count} inf={inf_count}",
-            flush=True,
+            enabled=self.cola_debug,
         )
         if not torch.isfinite(weight).all():
             raise ValueError(
