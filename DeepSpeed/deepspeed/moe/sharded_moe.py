@@ -901,12 +901,10 @@ class MOELayer(Base):
                 # Prepare weights and inputs
                 # Select tokens: [N_active, M]
                 selected_tokens = reshaped_input[sample_idx]
-                # Scale by weights: [N_active, M]
-                weights_casted = flat_weights.to(dtype=reshaped_input.dtype).unsqueeze(1)
-                weighted_tokens = selected_tokens * weights_casted
+                
                 
                 # Scatter add to buffer (The Dispatch)
-                buffer.index_add_(0, destination_idx, weighted_tokens)
+                buffer.index_add_(0, destination_idx, selected_tokens)
                 
                 # Reshape for AllToAll: [E, C, M]
                 dispatched_input = buffer.view(num_experts, cap_int, d_model)
