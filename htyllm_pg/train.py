@@ -2,6 +2,7 @@ from numpy import argmax
 from torch import nn
 import torch
 from torch.utils.data import DataLoader, Dataset
+import torch.nn.functional as F
 import deepspeed
 from deepspeed import comm
 import argparse
@@ -11,6 +12,47 @@ from htyllm_pg.dataset import create_dataloaders
 from tqdm.auto import tqdm
 
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
+
+
+# TODO: LF: naive solution maybe? We should look at this: 
+def chunked_cross_entropy(logits, targets, chunk_size=4096, ignore_index=-100):
+    """
+    Computes CrossEntropyLoss in chunks to avoid OOM from casting 
+    huge logit tensors to FP32 all at once.
+    """
+    # logits: [Batch, Seq, Vocab] -> [Batch*Seq, Vocab]
+    # targets: [Batch, Seq] -> [Batch*Seq]
+    logits = logits.view(-1, logits.size(-1))
+    targets = targets.view(-1)
+    
+    num_tokens = targets.size(0)
+    total_loss = 0.0
+    num_valid_tokens = 0 # Counter for non-ignored tokens
+    
+    for i in range(0, num_tokens, chunk_size):
+        end = min(i + chunk_size, num_tokens)
+        
+        # Slice the tensors 
+        chunk_logits = logits[i:end]
+        chunk_targets = targets[i:end]
+        
+        chunk_loss = F.cross_entropy(
+            chunk_logits.float(), 
+            chunk_targets, 
+            reduction='sum', 
+            ignore_index=ignore_index
+        )
+        
+        total_loss += chunk_loss
+        
+        if ignore_index is not None:
+            num_valid_tokens += (chunk_targets != ignore_index).sum()
+        else:
+            num_valid_tokens += (end - i)
+
+    # Average the loss
+    return total_loss / num_valid_tokens
+
 
 def get_args() -> argparse.Namespace :
     parser = argparse.ArgumentParser()
@@ -178,7 +220,7 @@ def main():
 
             output, l_aux = model(input_ids, attention_mask=attention_mask)
             
-            ce_loss = criterion(output.float().transpose(1, 2), target)
+            ce_loss = chunked_cross_entropy(output, target) 
 
             loss = ce_loss + 0.01 * l_aux
 
