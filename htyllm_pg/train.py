@@ -43,7 +43,7 @@ def get_args() -> argparse.Namespace :
     parser.add_argument("--use-residual", action="store_true", dest="use_residual", help="Use residual connection in MoE")
     parser.add_argument("--gate-backward", type=str, dest="gate_backward", default="ste", help="Gate backward method")
     parser.add_argument("--ep-size", type=int, dest="ep_size", default=1, help="Expert parallel size")
-    parser.add_argument("--topany-gating-impl", type=str, dest="topany_gating_impl", default="opt_mem", help="Top-any gating implementation: 'opt' or 'opt_mem'")
+    parser.add_argument("--topany-gating-impl", type=str, dest="topany_gating_impl", default="sparse", help="Top-any gating implementation: 'opt' or 'sparse'")
     parser.add_argument("--use-flash-attention", action="store_true", dest="use_flash_attention", help="Use Flash Attention (optimized) instead of standard attention")
     parser.add_argument("--use-gradient-checkpointing", action="store_true", dest="use_gradient_checkpointing", default=True, help="Use gradient checkpointing to save memory")
     

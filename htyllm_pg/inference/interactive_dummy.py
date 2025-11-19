@@ -40,7 +40,7 @@ def main():
         use_residual=False,
         gate_backward="ste",
         ep_size=1,
-        topany_gating_impl="opt_mem",
+        topany_gating_impl="sparse",
         use_flash_attention=False
     )
     
