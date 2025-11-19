@@ -6,7 +6,7 @@ ROOTS=(
   "/scratch/hpc-prf-merlin/project_data/moe_study/saves/cola_moe_llama31_8b_acc/pissa"
 )
 LABELS=("simpe_cola_nopissa" "moe_cola_pissa")
-TASKS="${TASKS:-belebele,xnli,arc_multilingual,flores}"
+TASKS="${TASKS:-belebele_tel_Telu}"
 WANDB_PROJECT="${WANDB_PROJECT:-eval_moe_cola_nopissa_vs_pissa}"
 LM_EVAL_BIN="${LM_EVAL_BIN:-lm_eval}"
 
