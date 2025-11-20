@@ -67,6 +67,9 @@ class HydraLoraLayer(BaseTunerLayer):
         self._disable_adapters = False
         self.merged_adapters = []
         self._caches: dict[str, Any] = {}
+        self.track_router_usage: bool = kwargs.pop("track_router_usage", False)
+        self._routing_label: Optional[str] = kwargs.pop("routing_label", None)
+        self._router_usage_batches: list[tuple[str, int, Optional[torch.Tensor], Optional[torch.Tensor]]] = []
         self.ephemeral_gpu_offload: bool = ephemeral_gpu_offload
         setattr(self, "_active_adapters", [])
         self.kwargs = kwargs
@@ -270,6 +273,27 @@ class HydraLoraLayer(BaseTunerLayer):
     def _cache_pop(self, key: str) -> Any:
         value = self._caches.pop(key, None)
         return value
+
+    def _record_router_batch(
+        self,
+        flavor: str,
+        num_routes: int,
+        assignments: Optional[torch.Tensor],
+        weights: Optional[torch.Tensor],
+    ) -> None:
+        if not self.track_router_usage or num_routes <= 0:
+            return
+        if assignments is None and weights is None:
+            return
+        label = self._routing_label or self.__class__.__name__
+        self._router_usage_batches.append(
+            (
+                f"{flavor}/{label}",
+                num_routes,
+                assignments.detach().to("cpu") if assignments is not None else None,
+                weights.detach().to("cpu") if weights is not None else None,
+            )
+        )
 
     def set_scale(self, adapter, scale):
         if adapter not in self.scaling:
@@ -558,6 +582,12 @@ class Linear(nn.Module, HydraLoraLayer):
                     route_logits = self._apply_language_bias_heads(route_logits, head_targets)
                     route_weight = nn.functional.softmax(route_logits, dim=-1, dtype=torch.float32).to(result.dtype)
                     route_weight = self._enforce_language_heads(route_weight, head_targets)
+                    self._record_router_batch(
+                        f"hydra_head:{active_adapter}",
+                        self.lora_num[active_adapter],
+                        None,
+                        route_weight,
+                    )
 
                     for i in range(self.lora_num[active_adapter]):
                         result = result + torch.unsqueeze(route_weight[:,:,i], -1) * lora_B[i]((lora_A(dropout(x)))) * scaling
@@ -571,6 +601,9 @@ class Linear(nn.Module, HydraLoraLayer):
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
                 weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
                 topi, weights = self._enforce_language_experts(topi, weights, expert_targets)
+                self._record_router_batch(
+                    "hydra_expert", self.num_experts, topi, weights
+                )
 
                 if getattr(self, "hydralora_debug", False):
                     with torch.no_grad():
@@ -734,6 +767,13 @@ class Linear(nn.Module, HydraLoraLayer):
             caches.append(("hydra_expert", logits, targets))
         self._cache_pop("hydra_expert_router_language_ids")
         return caches
+
+    def pop_router_usage_batches(
+        self,
+    ) -> list[tuple[str, int, Optional[torch.Tensor], Optional[torch.Tensor]]]:
+        batches = self._router_usage_batches
+        self._router_usage_batches = []
+        return batches
 
 
 class Embedding(nn.Module, HydraLoraLayer):

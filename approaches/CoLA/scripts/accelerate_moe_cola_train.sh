@@ -69,6 +69,7 @@ USE_COLA_EXPERTS=True
 USE_REENTRANT_GC=False
 USE_COLA_PISSA_INIT=${USE_COLA_PISSA_INIT:-True}
 COLA_INIT_LORA_WEIGHTS=${COLA_INIT_LORA_WEIGHTS:-}
+LOG_ROUTER_USAGE=${LOG_ROUTER_USAGE:-True}
 if [[ -z "${PURE_BF16:-}" ]]; then
   if [[ "${ACCEL_CONFIG}" == *"fsdp"* ]]; then
     PURE_BF16=True
@@ -114,7 +115,8 @@ WANDB_CONFIG_JSON=$(cat <<JSON
   "seed": ${SEED},
   "logging_steps": ${LOGGING_STEPS},
   "pure_bf16": $(echo "${PURE_BF16}" | tr '[:upper:]' '[:lower:]'),
-  "num_langs": "${NUM_LANGS}"
+  "num_langs": "${NUM_LANGS}",
+  "log_router_usage": $(echo "${LOG_ROUTER_USAGE}" | tr '[:upper:]' '[:lower:]')
 }
 JSON
 )
@@ -225,6 +227,7 @@ accelerate launch \
   --logging_first_step ${LOGGING_FIRST_STEP} \
   --include_num_input_tokens_seen true \
   --cola_debug \
+  --log_router_usage $(echo "${LOG_ROUTER_USAGE}" | tr '[:upper:]' '[:lower:]') \
   --dataloader_num_workers 8 \
   --preprocessing_num_workers 16 \
   --include_effective_tokens_per_second true \

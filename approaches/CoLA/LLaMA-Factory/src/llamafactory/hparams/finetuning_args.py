@@ -465,6 +465,14 @@ class FinetuningArguments(
             "help": "Additive logit bias applied in 'bias' routing mode when language metadata is present."
         },
     )
+    log_router_usage: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Collect and log cola / hydralora mixture-of-experts routing statistics (token counts and weights) at each logging step."
+            )
+        },
+    )
 
     def __post_init__(self):
         def split_arg(arg):

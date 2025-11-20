@@ -170,6 +170,12 @@ class ColaConfig(PeftConfig):
             "help": "Additive logit bias applied in 'bias' routing mode."
         },
     )
+    track_router_usage: bool = field(
+        default=False,
+        metadata={
+            "help": "If True, accumulate per-expert routing statistics for logging/debugging."
+        },
+    )
     language_list: Optional[List[str]] = field(
         default=None,
         metadata={"help": "Sorted list of languages used for language-prior routing."},

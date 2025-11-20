@@ -204,6 +204,8 @@ class HydraLoraModel(BaseTuner):
             "hydralora_num_experts": lora_config.num_experts,
             "hydralora_top_k": lora_config.top_k,
             "hydralora_debug": getattr(lora_config, "hydralora_debug", False),
+            "track_router_usage": lora_config.track_router_usage,
+            "routing_label": current_key,
             "language_list": lora_config.language_list,
             "family_list": lora_config.family_list,
             "language_to_family_ids": lora_config.language_to_family_ids,
@@ -213,6 +215,10 @@ class HydraLoraModel(BaseTuner):
 
 
         if isinstance(target, HydraLoraLayer):
+            if getattr(target, "track_router_usage", False) or lora_config.track_router_usage:
+                target.track_router_usage = True
+                if not getattr(target, "_routing_label", None):
+                    target._routing_label = current_key
             target.update_layer(
                 adapter_name,
                 r,

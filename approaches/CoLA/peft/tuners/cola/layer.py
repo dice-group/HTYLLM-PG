@@ -80,6 +80,9 @@ class ColaLayer(BaseTunerLayer):
         self._disable_adapters = False
         self.merged_adapters = []
         self._caches: dict[str, Any] = {}
+        self.track_router_usage: bool = kwargs.pop("track_router_usage", False)
+        self._routing_label: Optional[str] = kwargs.pop("routing_label", None)
+        self._router_usage_batches: list[tuple[str, int, Optional[torch.Tensor], Optional[torch.Tensor]]] = []
         self.ephemeral_gpu_offload: bool = ephemeral_gpu_offload
         setattr(self, "_active_adapters", [])
         self.kwargs = kwargs
@@ -490,6 +493,27 @@ class ColaLayer(BaseTunerLayer):
         value = self._caches.pop(key, None)
         return value
 
+    def _record_router_batch(
+        self,
+        flavor: str,
+        num_routes: int,
+        assignments: Optional[torch.Tensor],
+        weights: Optional[torch.Tensor],
+    ) -> None:
+        if not self.track_router_usage or num_routes <= 0:
+            return
+        if assignments is None and weights is None:
+            return
+        label = self._routing_label or self.__class__.__name__
+        self._router_usage_batches.append(
+            (
+                f"{flavor}/{label}",
+                num_routes,
+                assignments.detach().to("cpu") if assignments is not None else None,
+                weights.detach().to("cpu") if weights is not None else None,
+            )
+        )
+
     def _move_router_to_device_of_base_layer(self) -> None:
         if not hasattr(self, "router") or self.router is None:
             return
@@ -792,6 +816,9 @@ class Linear(nn.Module, ColaLayer):
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
                 weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
                 topi, weights = self._enforce_language_routing(topi, weights, language_targets)
+                self._record_router_batch(
+                    "cola_expert", self.num_experts, topi, weights
+                )
 
                 expert_outs = [self._adapter_delta(x, f"expert_{e}") for e in range(self.num_experts)]
                 expert_outs = torch.stack(expert_outs, dim=-1)  # [B, S, D_out, E]
@@ -925,6 +952,13 @@ class Linear(nn.Module, ColaLayer):
         # ensure we clear stale metadata
         self._cache_pop("cola_router_language_ids")
         return caches
+
+    def pop_router_usage_batches(
+        self,
+    ) -> list[tuple[str, int, Optional[torch.Tensor], Optional[torch.Tensor]]]:
+        batches = self._router_usage_batches
+        self._router_usage_batches = []
+        return batches
 
 
 class Embedding(nn.Module, ColaLayer):

@@ -136,6 +136,13 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
 
         return loss, generated_tokens, labels
 
+    @override
+    def log(self, logs: Dict[str, float]) -> None:
+        router_logs = self._flush_router_usage_stats()
+        if router_logs:
+            logs.update(router_logs)
+        super().log(logs)
+
     def save_predictions(
         self, dataset: "Dataset", predict_results: "PredictionOutput", skip_special_tokens: bool = True
     ) -> None:
@@ -207,3 +214,58 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
             if callable(pop_fn):
                 caches.extend(pop_fn())
         return caches
+
+    def _flush_router_usage_stats(self) -> Dict[str, float]:
+        logs: Dict[str, float] = {}
+        track_usage = getattr(self.finetuning_args, "log_router_usage", False)
+        for module in self.model.modules():
+            pop_fn = getattr(module, "pop_router_usage_batches", None)
+            if not callable(pop_fn):
+                continue
+            batches = pop_fn()
+            if not batches or not track_usage:
+                continue
+            for key, num_routes, assignments, weights in batches:
+                if num_routes <= 0:
+                    continue
+                count_hist = torch.zeros(num_routes, dtype=torch.float64)
+                weight_hist = torch.zeros(num_routes, dtype=torch.float64)
+                weight_total = 0.0
+
+                if assignments is not None:
+                    assign = assignments.to(torch.long).reshape(-1)
+                    valid = (assign >= 0) & (assign < num_routes)
+                    if torch.any(valid):
+                        idx = assign[valid]
+                        count_hist.scatter_add_(0, idx, torch.ones_like(idx, dtype=torch.float64))
+                        tokens_total = count_hist.sum().item()
+
+                if weights is not None:
+                    weight = weights.to(torch.float64)
+                    if (
+                        assignments is not None
+                        and weight.shape == assignments.shape
+                    ):
+                        mask = (assignments >= 0) & (assignments < num_routes)
+                        if torch.any(mask):
+                            idx = assignments[mask].to(torch.long)
+                            weight_vals = weight[mask]
+                            weight_hist.scatter_add_(0, idx.reshape(-1), weight_vals.reshape(-1))
+                    elif weight.dim() > 0 and weight.size(-1) == num_routes:
+                        flat = weight.view(-1, num_routes)
+                        weight_hist += flat.sum(dim=0)
+                    weight_total = weight_hist.sum().item()
+
+                count_sum = count_hist.sum().item()
+                if count_sum > 0:
+                    logs[f"router/{key}/tokens_total"] = count_sum
+                    shares = (count_hist / count_sum).tolist()
+                    for idx, share in enumerate(shares):
+                        logs[f"router/{key}/tokens_share_e{idx}"] = float(share)
+
+                if weight_total > 0:
+                    logs[f"router/{key}/weight_total"] = weight_total
+                    weight_shares = (weight_hist / weight_total).tolist()
+                    for idx, share in enumerate(weight_shares):
+                        logs[f"router/{key}/weight_share_e{idx}"] = float(share)
+        return logs
