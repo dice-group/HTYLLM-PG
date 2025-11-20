@@ -41,3 +41,18 @@ The baseline job uses only one A/B matrix pair, whereas the “PiSSA” job stac
 1. Track `throughput` and `effective_tokens_per_sec` from the live training logs (`trainer_log.jsonl` and `train_results.json`) once the runs complete to see whether realized tokens/s match the ~0.63 s forward-pass timing.
 2. If you intend to benchmark other adapter layouts (different `num_A/num_B`, expert counts, or MoE top‑k), reuse this profiling workflow to confirm they do not inflate FLOPs unexpectedly.
 3. Consider pinning `TRITON_CACHE_DIR` to a local SSD (the profiler emitted an NFS warning at `docs/train_compute_test_pissa_330027.txt:9`) to avoid cache stalls during repeated runs.
+
+
+# I am actually a bit confused
+How good is the resutls
+1,979 TFLOPs is peak right
+half of it is realistic, physiacal peak
+and i am at ~ 407.27 TFLOPs/s so lets say ~40% of phyiscal peak.
+
+I thought this is bad 
+but in other articles tehy state AI labs are acheiving 35-40% MFU (Model Flop Utilization) 
+https://newsletter.semianalysis.com/p/100000-h100-clusters-power-network
+
+But i cannot imaginge having same compute efficiency as bigger AI labs
+
+here https://arxiv.org/html/2407.12117v1 they have MFU of 52.30% but i am also not using MegatronLM or sth like that

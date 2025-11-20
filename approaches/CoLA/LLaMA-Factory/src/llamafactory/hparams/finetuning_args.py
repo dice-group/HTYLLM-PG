@@ -425,6 +425,7 @@ class FinetuningArguments(
     hydralora_debug: bool = field(default=False, metadata={"help": "Enable verbose HydraLoRA debugging output."})
     language_column: Optional[str] = field(
         default=None,
+        init=False,
         metadata={
             "help": (
                 "Name of the dataset column that contains the language identifier per example. "
@@ -434,6 +435,7 @@ class FinetuningArguments(
     )
     language_map: Optional[str] = field(
         default=None,
+        init=False,
         metadata={
             "help": (
                 "JSON string or path to a JSON file mapping languages to families, e.g. "

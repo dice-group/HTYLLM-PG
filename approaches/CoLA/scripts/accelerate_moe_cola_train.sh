@@ -163,6 +163,25 @@ if [[ -n "${COLA_INIT_LORA_WEIGHTS}" ]]; then
   COLA_INIT_ARGS+=(--cola_init_lora_weights "${COLA_INIT_LORA_WEIGHTS}")
 fi
 
+# TODO: extra script to seperate concerns, should be started by this maybe? on separate GPU node i would say
+#   but with some nice trakcing to bring it into save wandb project
+# echo "[INFO] Profiling model FLOPs at $(date)"
+# python ./LLaMA-Factory/scripts/stat_utils/cal_flops.py \
+#   --model_name_or_path "${MODEL_NAME_OR_PATH}" \
+#   --batch_size ${PER_DEVICE_TRAIN_BATCH_SIZE} \
+#   --seq_length ${CUTOFF_LEN} \
+#   --flash_attn auto \
+#   --finetuning_type "${FINETUNING_TYPE}" \
+#   --use_cola_experts ${USE_COLA_EXPERTS} \
+#   --cola_num_experts ${COLA_NUM_EXPERTS} \
+#   --cola_top_k ${COLA_TOP_K} \
+#   --num_a ${NUM_A} \
+#   --num_b ${NUM_B} \
+#   --lora_rank ${LORA_RANK} \
+#   --lora_alpha ${LORA_ALPHA} \
+#   --use_cola_pissa_init ${USE_COLA_PISSA_INIT} \
+#   "${COLA_INIT_ARGS[@]}" | tee "${FLOPS_LOG}"
+
 echo "[INFO] Starting Accelerate-backed MoE CoLA training at $(date)"
 accelerate launch \
   --config_file "${ACCEL_CONFIG}" \
@@ -204,9 +223,11 @@ accelerate launch \
   --disable_tqdm ${DISABLE_TQDM} \
   --logging_steps ${LOGGING_STEPS} \
   --logging_first_step ${LOGGING_FIRST_STEP} \
+  --include_num_input_tokens_seen true \
   --cola_debug \
   --dataloader_num_workers 8 \
   --preprocessing_num_workers 16 \
+  --include_effective_tokens_per_second true \
   --report_to wandb \
   --ddp_find_unused_parameters False \
   "${TOKENIZED_ARGS[@]}"
