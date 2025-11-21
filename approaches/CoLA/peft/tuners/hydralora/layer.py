@@ -450,9 +450,13 @@ class Linear(nn.Module, HydraLoraLayer):
             
                 result = result.to(torch_result_dtype)
             else:
-                logits = self.router(x.to(torch.float32)).to(x.dtype)
+                router_dtype = getattr(self.router.weight, "dtype", x.dtype)
+                logits = self.router(x.to(router_dtype)).to(x.dtype)
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
                 weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
+                # logits = self.router(x.to(torch.float32)).to(x.dtype)
+                # topv, topi = torch.topk(logits, self.top_k, dim=-1)
+                # weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
 
                 if getattr(self, "hydralora_debug", False):
                     with torch.no_grad():
