@@ -1,5 +1,5 @@
 compute_environment: LOCAL_MACHINE
-debug: true
+debug: false
 distributed_type: FSDP
 downcast_bf16: 'no'
 fsdp_config:
@@ -10,6 +10,7 @@ fsdp_config:
   fsdp_offload_params: false
   #fsdp_sharding_strategy: SHARD_GRAD_OP
   fsdp_sharding_strategy: FULL_SHARD
+  #fsdp_state_dict_type: SHARDED_STATE_DICT
   fsdp_state_dict_type: FULL_STATE_DICT
   fsdp_sync_module_states: true
   fsdp_use_orig_params: true

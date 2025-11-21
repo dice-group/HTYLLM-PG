@@ -37,7 +37,9 @@ FINETUNING_TYPE=hydralora
 OUTPUT_DIR=/scratch/hpc-prf-merlin/sashreek/moe_study/saves/hydralora_moe_llama31_8b_acc
 MODEL_NAME_OR_PATH=meta-llama/Llama-3.1-8B
 ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml
-export ACCELERATE_USE_FSDP=1
+#ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/ddp_4gpu_config.yaml
+#export ACCELERATE_USE_FSDP=1
+#export ACCELERATE_LOG_LEVEL=info
 #TRAIN_LOG=logs/train_moe_hydralora_${SLURM_JOB_ID:-manual}.log
 TOKENIZED_PATH=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter/llama-3.1-8B_tokenizer/5_langs
 
@@ -56,8 +58,8 @@ NUM_TRAIN_EPOCHS=1
 LEARNING_RATE=5e-5
 LR_SCHEDULER_TYPE=cosine
 WARMUP_RATIO=0.06
-PER_DEVICE_TRAIN_BATCH_SIZE=16
-PER_DEVICE_EVAL_BATCH_SIZE=16
+PER_DEVICE_TRAIN_BATCH_SIZE=32
+PER_DEVICE_EVAL_BATCH_SIZE=32
 GRADIENT_ACCUMULATION_STEPS=1
 LORA_NUM=4
 LORA_RANK=4
@@ -215,11 +217,11 @@ accelerate launch \
     --disable_tqdm ${DISABLE_TQDM} \
     --logging_steps ${LOGGING_STEPS} \
     --logging_first_step ${LOGGING_FIRST_STEP} \
-    --hydralora_debug \
     --dataloader_num_workers 8 \
     --preprocessing_num_workers 16 \
     --report_to wandb \
-    --ddp_find_unused_parameters False \
+    --ddp_find_unused_parameters True \
+    --gradient_checkpointing False \
     "${TOKENIZED_ARGS[@]}"
 
 echo "[INFO] Training finished at $(date)"
