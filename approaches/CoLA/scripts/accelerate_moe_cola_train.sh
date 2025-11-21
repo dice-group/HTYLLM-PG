@@ -3,7 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
-#SBATCH --gres=gpu:h100:4
+#SBATCH --gres=gpu:h100:1
 #SBATCH --time=35:00:00
 #SBATCH --mem=256G
 #SBATCH --output=logs/train_acc_moe_cola_%j.log
@@ -21,7 +21,7 @@ export CUDA_DEVICE_ORDER=PCI_BUS_ID
 export PYTHONUNBUFFERED=1
 python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count());"
 
-export WANDB_PROJECT="llama3.1-8b_moe_cola_training_accelerate"
+export WANDB_PROJECT="test_routing_ratio_llama3.1-8b_moe_cola_training_accelerate"
 export WANDB_RUN_GROUP="cola_moe_accelerate"
 
 DATASET_DIR=./LLaMA-Factory/data
@@ -29,10 +29,10 @@ DATASET_NAME=c4
 FINETUNING_TYPE=cola
 OUTPUT_DIR=${OUTPUT_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/saves/cola_moe_llama31_8b_acc}
 MODEL_NAME_OR_PATH=meta-llama/Llama-3.1-8B
-ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml
-export ACCELERATE_USE_FSDP=1
+#ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml
+#export ACCELERATE_USE_FSDP=1
 #ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/ddp_4gpu_config.yaml
-#ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/single_gpu.yaml
+ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/single_gpu.yaml
 TOKENIZED_PATH=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter/llama-3.1-8B_tokenizer/5_langs
 LM_EVAL_TASKS=${LM_EVAL_TASKS:-belebele}
 LM_EVAL_BATCH_SIZE=${LM_EVAL_BATCH_SIZE:-auto}

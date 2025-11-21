@@ -17,8 +17,9 @@
 
 import json
 import os
+from collections import defaultdict, deque
 from types import MethodType
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -59,6 +60,10 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
 
         super().__init__(**kwargs)
         self.finetuning_args = finetuning_args
+        self._router_history_maxlen = 200
+        self._router_line_history: DefaultDict[str, deque[tuple[int, List[float]]]] = defaultdict(
+            lambda: deque(maxlen=self._router_history_maxlen)
+        )
 
         if processor is not None:
             self.add_callback(SaveProcessorCallback(processor))
@@ -218,54 +223,71 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
     def _flush_router_usage_stats(self) -> Dict[str, float]:
         logs: Dict[str, float] = {}
         track_usage = getattr(self.finetuning_args, "log_router_usage", False)
+        if not track_usage:
+            for module in self.model.modules():
+                pop_fn = getattr(module, "pop_router_usage_stats", None)
+                if callable(pop_fn):
+                    pop_fn()
+            return logs
+
         for module in self.model.modules():
-            pop_fn = getattr(module, "pop_router_usage_batches", None)
+            pop_fn = getattr(module, "pop_router_usage_stats", None)
             if not callable(pop_fn):
                 continue
-            batches = pop_fn()
-            if not batches or not track_usage:
+            stats = pop_fn()
+            if not stats:
                 continue
-            for key, num_routes, assignments, weights in batches:
-                if num_routes <= 0:
+            for flavor, label, hist in stats:
+                if hist is None:
                     continue
-                count_hist = torch.zeros(num_routes, dtype=torch.float64)
-                weight_hist = torch.zeros(num_routes, dtype=torch.float64)
-                weight_total = 0.0
-
-                if assignments is not None:
-                    assign = assignments.to(torch.long).reshape(-1)
-                    valid = (assign >= 0) & (assign < num_routes)
-                    if torch.any(valid):
-                        idx = assign[valid]
-                        count_hist.scatter_add_(0, idx, torch.ones_like(idx, dtype=torch.float64))
-                        tokens_total = count_hist.sum().item()
-
-                if weights is not None:
-                    weight = weights.to(torch.float64)
-                    if (
-                        assignments is not None
-                        and weight.shape == assignments.shape
-                    ):
-                        mask = (assignments >= 0) & (assignments < num_routes)
-                        if torch.any(mask):
-                            idx = assignments[mask].to(torch.long)
-                            weight_vals = weight[mask]
-                            weight_hist.scatter_add_(0, idx.reshape(-1), weight_vals.reshape(-1))
-                    elif weight.dim() > 0 and weight.size(-1) == num_routes:
-                        flat = weight.view(-1, num_routes)
-                        weight_hist += flat.sum(dim=0)
-                    weight_total = weight_hist.sum().item()
-
-                count_sum = count_hist.sum().item()
-                if count_sum > 0:
-                    logs[f"router/{key}/tokens_total"] = count_sum
-                    shares = (count_hist / count_sum).tolist()
-                    for idx, share in enumerate(shares):
-                        logs[f"router/{key}/tokens_share_e{idx}"] = float(share)
-
-                if weight_total > 0:
-                    logs[f"router/{key}/weight_total"] = weight_total
-                    weight_shares = (weight_hist / weight_total).tolist()
-                    for idx, share in enumerate(weight_shares):
-                        logs[f"router/{key}/weight_share_e{idx}"] = float(share)
+                hist = hist.to(torch.float64)
+                total = float(hist.sum().item())
+                path = f"{flavor}/{label}"
+                if total <= 0:
+                    continue
+                probs = hist / total
+                self._append_router_series(path, probs.tolist())
         return logs
+
+    def _append_router_series(self, path: str, shares: List[float]) -> None:
+        if not self._should_log_router_series():
+            return
+        history = self._router_line_history[path]
+        history.append((self.state.global_step, shares))
+        self._log_router_line_series(path, history)
+
+    def _log_router_line_series(
+        self, path: str, history: deque[tuple[int, List[float]]]
+    ) -> None:
+        if len(history) < 2:
+            return
+        wandb = self._require_wandb()
+        if wandb is None:
+            return
+
+        xs = [step for step, _ in history]
+        max_len = max(len(values) for _, values in history)
+        ys: List[List[float]] = []
+        keys: List[str] = []
+        for idx in range(max_len):
+            ys.append([values[idx] if idx < len(values) else float("nan") for _, values in history])
+            keys.append(f"expert_{idx}")
+
+        plot = wandb.plot.line_series(
+            xs=xs,
+            ys=ys,
+            keys=keys,
+            title=f"Router usage: {path}",
+            xname="step",
+        )
+        wandb.log({f"router_plots/{path}": plot}, commit=False)
+
+    def _should_log_router_series(self) -> bool:
+        return "wandb" in (self.args.report_to or [])
+
+    def _require_wandb(self):
+        try:
+            import wandb  # type: ignore
+        except ImportError:
+            return None
+        return wandb
