@@ -98,9 +98,16 @@ TOKENIZERS=(
 SUBSETS=(
   "5_langs|five_representatives_mediods"
   "10_langs|ten_representatives_mediods"
+  "22_langs|twenty_two_representatives_mediods"
   "46_langs|fourty_six_representatives_mediods"
   "95_langs|ninty_five_representatives_mediods"
   "199_langs|hundred_ninty_nine_representatives_mediods"
+  "eng_plus_5_langs|english_plus_five"
+  "eng_plus_10_langs|english_plus_ten"
+  "eng_plus_22_langs|english_plus_twenty_two"
+  "eng_plus_46_langs|english_plus_forty_six"
+  "eng_plus_95_langs|english_plus_ninety_five"
+  "eng_plus_199_langs|english_plus_hundred_ninety_nine"
 )
 
 for tok_entry in "${TOKENIZERS[@]}"; do
