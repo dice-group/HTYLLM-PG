@@ -1,5 +1,3 @@
-# NOTE: english not contained in here
-
 five_representatives_mediods = [
     "wbm_Latn",
     "tel_Telu",
@@ -801,6 +799,13 @@ belebele_languages = [
     "zul_Latn"
 ]
 
+english_plus_five = five_representatives_mediods + ["english_600000_sentences"]
+english_plus_ten  = ten_representatives_mediods  + ["english_600000_sentences"]
+english_plus_twenty_two = twenty_two_representatives_mediods + ["english_600000_sentences"]
+english_plus_forty_six = fourty_six_representatives_mediods + ["english_4500000_sentences"]
+english_plus_ninety_five = ninty_five_representatives_mediods + ["english_4500000_sentences"]
+english_plus_hundred_ninety_nine = hundred_ninty_nine_representatives_mediods + ["english_7000000_sentences"]
+
 LANGUAGE_SUBSET_MAP = {
     "five_representatives_mediods": five_representatives_mediods,
     "ten_representatives_mediods": ten_representatives_mediods,
@@ -811,4 +816,10 @@ LANGUAGE_SUBSET_MAP = {
     "hierarchical_four_families": hierarchical_four_families,
     "hierarchical_low_resource_clusters": hierarchical_low_resource_clusters,
     "belebele_balanced_clusters": belebele_balanced_clusters,
+    "english_plus_five": english_plus_five,
+    "english_plus_ten": english_plus_ten,
+    "english_plus_twenty_two": english_plus_twenty_two,
+    "english_plus_forty_six": english_plus_forty_six,
+    "english_plus_ninety_five": english_plus_ninety_five,
+    "english_plus_hundred_ninety_nine": english_plus_hundred_ninety_nine,
 }
