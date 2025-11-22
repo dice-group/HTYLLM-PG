@@ -10,7 +10,23 @@ from typing import Iterator, List, Optional, Tuple
 from datasets import Dataset
 from transformers import AutoTokenizer
 
-from language_subsets import LANGUAGE_SUBSET_MAP
+from language_subsets import (
+    english_plus_five,
+    english_plus_ten,
+    english_plus_twenty_two,
+    english_plus_forty_six,
+    english_plus_ninety_five,
+    english_plus_hundred_ninety_nine,
+)
+
+LANGUAGE_SUBSET_MAP = {
+    "english_plus_five": english_plus_five,
+    "english_plus_ten": english_plus_ten,
+    "english_plus_twenty_two": english_plus_twenty_two,
+    "english_plus_forty_six": english_plus_forty_six,
+    "english_plus_ninety_five": english_plus_ninety_five,
+    "english_plus_hundred_ninety_nine": english_plus_hundred_ninety_nine,
+}
 
 
 def _resolve_rank_world(rank: Optional[int], world_size: Optional[int]) -> tuple[int, int]:
