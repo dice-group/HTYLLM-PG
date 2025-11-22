@@ -17,9 +17,9 @@
 
 import json
 import os
-from collections import defaultdict, deque
+from collections import defaultdict
 from types import MethodType
-from typing import TYPE_CHECKING, Any, DefaultDict, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -60,11 +60,6 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
 
         super().__init__(**kwargs)
         self.finetuning_args = finetuning_args
-        self._router_history_maxlen = 200
-        self._router_line_history: DefaultDict[str, deque[tuple[int, List[float]]]] = defaultdict(
-            lambda: deque(maxlen=self._router_history_maxlen)
-        )
-
         if processor is not None:
             self.add_callback(SaveProcessorCallback(processor))
 
@@ -143,10 +138,17 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
 
     @override
     def log(self, logs: Dict[str, float]) -> None:
-        router_logs = self._flush_router_usage_stats()
-        if router_logs:
-            logs.update(router_logs)
+        metrics_logs = self._flush_tracked_metrics()
+        if metrics_logs:
+            logs.update(metrics_logs)
         super().log(logs)
+
+    def _flush_tracked_metrics(self) -> Dict[str, float]:
+        try:
+            from peft.metrics import pop_tracked_metrics
+        except ImportError:
+            return {}
+        return pop_tracked_metrics()
 
     def save_predictions(
         self, dataset: "Dataset", predict_results: "PredictionOutput", skip_special_tokens: bool = True
@@ -219,75 +221,3 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
             if callable(pop_fn):
                 caches.extend(pop_fn())
         return caches
-
-    def _flush_router_usage_stats(self) -> Dict[str, float]:
-        logs: Dict[str, float] = {}
-        track_usage = getattr(self.finetuning_args, "log_router_usage", False)
-        if not track_usage:
-            for module in self.model.modules():
-                pop_fn = getattr(module, "pop_router_usage_stats", None)
-                if callable(pop_fn):
-                    pop_fn()
-            return logs
-
-        for module in self.model.modules():
-            pop_fn = getattr(module, "pop_router_usage_stats", None)
-            if not callable(pop_fn):
-                continue
-            stats = pop_fn()
-            if not stats:
-                continue
-            for flavor, label, hist in stats:
-                if hist is None:
-                    continue
-                hist = hist.to(torch.float64)
-                total = float(hist.sum().item())
-                path = f"{flavor}/{label}"
-                if total <= 0:
-                    continue
-                probs = hist / total
-                self._append_router_series(path, probs.tolist())
-        return logs
-
-    def _append_router_series(self, path: str, shares: List[float]) -> None:
-        if not self._should_log_router_series():
-            return
-        history = self._router_line_history[path]
-        history.append((self.state.global_step, shares))
-        self._log_router_line_series(path, history)
-
-    def _log_router_line_series(
-        self, path: str, history: deque[tuple[int, List[float]]]
-    ) -> None:
-        if len(history) < 2:
-            return
-        wandb = self._require_wandb()
-        if wandb is None:
-            return
-
-        xs = [step for step, _ in history]
-        max_len = max(len(values) for _, values in history)
-        ys: List[List[float]] = []
-        keys: List[str] = []
-        for idx in range(max_len):
-            ys.append([values[idx] if idx < len(values) else float("nan") for _, values in history])
-            keys.append(f"expert_{idx}")
-
-        plot = wandb.plot.line_series(
-            xs=xs,
-            ys=ys,
-            keys=keys,
-            title=f"Router usage: {path}",
-            xname="step",
-        )
-        wandb.log({f"router_plots/{path}": plot}, commit=False)
-
-    def _should_log_router_series(self) -> bool:
-        return "wandb" in (self.args.report_to or [])
-
-    def _require_wandb(self):
-        try:
-            import wandb  # type: ignore
-        except ImportError:
-            return None
-        return wandb

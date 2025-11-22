@@ -199,8 +199,6 @@ class ColaModel(BaseTuner):
             "cola_num_experts": lora_config.cola_num_experts,
             "cola_top_k": lora_config.cola_top_k,
             "cola_debug": lora_config.cola_debug,
-            "track_router_usage": lora_config.track_router_usage,
-            "routing_label": current_key,
             "language_list": lora_config.language_list,
             "family_list": lora_config.family_list,
             "language_to_family_ids": lora_config.language_to_family_ids,
@@ -214,10 +212,6 @@ class ColaModel(BaseTuner):
 
 
         if isinstance(target, ColaLayer):
-            if getattr(target, "track_router_usage", False) or lora_config.track_router_usage:
-                target.track_router_usage = True
-                if not getattr(target, "_routing_label", None):
-                    target._routing_label = current_key
             target.update_layer(
                 adapter_name,
                 r,

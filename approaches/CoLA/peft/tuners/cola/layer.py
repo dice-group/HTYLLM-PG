@@ -30,6 +30,7 @@ from transformers.pytorch_utils import Conv1D
 
 from peft.tuners.tuners_utils import BaseTunerLayer, check_adapters_to_merge
 from peft.utils.other import transpose
+from peft.metrics import record_cola_metrics
 
 from .config import ColaConfig
 import sys
@@ -80,9 +81,6 @@ class ColaLayer(BaseTunerLayer):
         self._disable_adapters = False
         self.merged_adapters = []
         self._caches: dict[str, Any] = {}
-        self.track_router_usage: bool = kwargs.pop("track_router_usage", False)
-        self._routing_label: Optional[str] = kwargs.pop("routing_label", None)
-        self._router_usage: dict[tuple[str, str], torch.Tensor] = {}
         self.ephemeral_gpu_offload: bool = ephemeral_gpu_offload
         setattr(self, "_active_adapters", [])
         self.kwargs = kwargs
@@ -493,36 +491,6 @@ class ColaLayer(BaseTunerLayer):
         value = self._caches.pop(key, None)
         return value
 
-    def _router_usage_bucket(self, key: tuple[str, str], size: int) -> torch.Tensor:
-        hist = self._router_usage.get(key)
-        if hist is None or hist.numel() != size:
-            hist = torch.zeros(size, dtype=torch.float64)
-            self._router_usage[key] = hist
-        return hist
-
-    def _record_router_usage(
-        self,
-        flavor: str,
-        num_routes: int,
-        assignments: Optional[torch.Tensor],
-    ) -> None:
-        if not self.track_router_usage or num_routes <= 0:
-            return
-        if assignments is None:
-            return
-
-        key = (flavor, self._routing_label or self.__class__.__name__)
-        hist = self._router_usage_bucket(key, num_routes)
-        assign = assignments.detach().to(torch.long).reshape(-1)
-        valid = (assign >= 0) & (assign < num_routes)
-        if not torch.any(valid):
-            return
-        assign = assign[valid]
-        count_hist = torch.zeros(num_routes, dtype=torch.float64, device=assign.device)
-        ones = torch.ones_like(assign, dtype=torch.float64)
-        count_hist.scatter_add_(0, assign, ones)
-        hist += count_hist.cpu()
-
     def _move_router_to_device_of_base_layer(self) -> None:
         if not hasattr(self, "router") or self.router is None:
             return
@@ -825,7 +793,31 @@ class Linear(nn.Module, ColaLayer):
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
                 weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
                 topi, weights = self._enforce_language_routing(topi, weights, language_targets)
-                self._record_router_usage("cola_expert", self.num_experts, topi)
+                with torch.no_grad():
+                    token_count = topi.numel()
+                    if token_count > 0:
+                        flat_indices = topi.reshape(-1)
+                        counts = torch.bincount(flat_indices, minlength=self.num_experts).to(torch.float32)
+                        active_frac = float((counts > 0).float().mean().item())
+                        mean_load = counts.mean().item()
+                        if mean_load > 0:
+                            load_cv = float((counts.std(unbiased=False) / (mean_load + 1e-6)).item())
+                        else:
+                            load_cv = 0.0
+
+                        router_probs = torch.softmax(logits.to(torch.float32), dim=-1)
+                        entropy = float((-router_probs * torch.log(router_probs + 1e-8)).sum(dim=-1).mean().item())
+                        weight_mean = float(weights.mean().item())
+
+                        record_cola_metrics(
+                            {
+                                "expert_load_cv": load_cv,
+                                "active_expert_frac": active_frac,
+                                "router_entropy": entropy,
+                                "topk_weight_mean": weight_mean,
+                            },
+                            weight=float(token_count),
+                        )
 
                 expert_outs = [self._adapter_delta(x, f"expert_{e}") for e in range(self.num_experts)]
                 expert_outs = torch.stack(expert_outs, dim=-1)  # [B, S, D_out, E]
@@ -959,13 +951,6 @@ class Linear(nn.Module, ColaLayer):
         # ensure we clear stale metadata
         self._cache_pop("cola_router_language_ids")
         return caches
-
-    def pop_router_usage_stats(self) -> list[tuple[str, str, torch.Tensor]]:
-        stats: list[tuple[str, str, torch.Tensor]] = []
-        for (flavor, label), hist in self._router_usage.items():
-            stats.append((flavor, label, hist.clone()))
-        self._router_usage.clear()
-        return stats
 
 
 class Embedding(nn.Module, ColaLayer):

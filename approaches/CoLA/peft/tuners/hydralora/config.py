@@ -187,10 +187,6 @@ class HydraLoraConfig(PeftConfig):
         default=None,
         metadata={"help": "Per-language indices into `family_list` indicating membership."},
     )
-    track_router_usage: bool = field(
-        default=False,
-        metadata={"help": "Enable accumulation of routing statistics for Hydra experts/heads."},
-    )
     layers_to_transform: Optional[Union[list[int], int]] = field(
         default=None,
         metadata={

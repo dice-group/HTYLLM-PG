@@ -378,7 +378,6 @@ def _setup_cola_tuning(
             "cola_num_experts": finetuning_args.cola_num_experts,
             "cola_top_k": finetuning_args.cola_top_k,
             "cola_debug": finetuning_args.cola_debug,
-            "track_router_usage": finetuning_args.log_router_usage,
             # "cola_type": finetuning_args.cola_type,
             # "expert_num": finetuning_args.expert_num,
             "modules_to_save": finetuning_args.additional_target,
@@ -775,7 +774,6 @@ def _setup_hydralora_tuning(
             "num_experts": finetuning_args.hydralora_num_experts,
             "top_k": finetuning_args.hydralora_top_k,
             "hydralora_debug": finetuning_args.hydralora_debug,
-            "track_router_usage": finetuning_args.log_router_usage,
 
             "modules_to_save": finetuning_args.additional_target,
         }
