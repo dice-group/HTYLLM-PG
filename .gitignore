@@ -1,6 +1,7 @@
 approaches/adapter/language_adapters/xlora/
 approaches/adapter/evaluation/*.log
 approaches/CoLA/LLaMA-Factory/saves
+approaches/CoLA/papers/further
 
 
 __pycache__/
