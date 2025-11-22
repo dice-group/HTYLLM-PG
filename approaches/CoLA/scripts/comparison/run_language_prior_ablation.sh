@@ -10,7 +10,7 @@ LOG_DIR="${LOG_DIR:-${CALL_DIR}/logs/lpr_ablation}"
 cd "${REPO_ROOT}"
 
 CONDA_BASE=${CONDA_BASE:-/opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3}
-CONDA_ENV=${CONDA_ENV:-moe_study_factory}
+CONDA_ENV=${CONDA_ENV:-cola_llama_factory}
 MODULE_INIT=${MODULE_INIT:-module purge && module load toolchain/foss/2024a system/CUDA/12.6.0 lib/NCCL/2.22.3-GCCcore-13.3.0-CUDA-12.6.0}
 
 MODEL_NAME_OR_PATH=${MODEL_NAME_OR_PATH:-meta-llama/Llama-3.2-1B}
