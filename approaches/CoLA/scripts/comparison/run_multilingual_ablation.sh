@@ -85,14 +85,62 @@ COLA_VARIANTS=(
   "colafamily-lpr|True|1|3|fully|hard|0.3|5.0|1"
 )
 
+# Resource mappings
+DEFAULT_GPU_TYPE=${DEFAULT_GPU_TYPE:-h100}
+DEFAULT_GPU_COUNT=${DEFAULT_GPU_COUNT:-1}
+DEFAULT_WALLTIME=${DEFAULT_WALLTIME:-08:00:00}
+DEFAULT_PARTITION=${DEFAULT_PARTITION:-gpu}
+
+declare -A MODEL_GPU_MAP=(
+  ["meta-llama_Llama-3.2-1B"]=1
+  ["meta-llama_Llama-3.2-3B"]=2
+  ["meta-llama_Llama-3.1-8B"]=4
+)
+
+declare -A MODEL_GPU_TYPE_MAP=(
+  ["meta-llama_Llama-3.2-1B"]="${DEFAULT_GPU_TYPE}"
+  ["meta-llama_Llama-3.2-3B"]="${DEFAULT_GPU_TYPE}"
+  ["meta-llama_Llama-3.1-8B"]="${DEFAULT_GPU_TYPE}"
+)
+
+declare -A MODEL_PARTITION_MAP=(
+  ["meta-llama_Llama-3.2-1B"]="${DEFAULT_PARTITION}"
+  ["meta-llama_Llama-3.2-3B"]="${DEFAULT_PARTITION}"
+  ["meta-llama_Llama-3.1-8B"]="${DEFAULT_PARTITION}"
+)
+
+declare -A TIER_WALLTIME_MAP=(
+  ["tier22"]="08:00:00"
+  ["tier95"]="16:00:00"
+  ["tier199"]="24:00:00"
+)
+
+select_resources() {
+  local -n out_ref=$1
+  local model_slug=$2
+  local tier_id=$3
+  local gpu_type=${MODEL_GPU_TYPE_MAP[$model_slug]:-${DEFAULT_GPU_TYPE}}
+  local gpu_count=${MODEL_GPU_MAP[$model_slug]:-${DEFAULT_GPU_COUNT}}
+  local partition=${MODEL_PARTITION_MAP[$model_slug]:-${DEFAULT_PARTITION}}
+  local walltime=${TIER_WALLTIME_MAP[$tier_id]:-${DEFAULT_WALLTIME}}
+  out_ref=(
+    "--partition=${partition}"
+    "--gres=gpu:${gpu_type}:${gpu_count}"
+    "--time=${walltime}"
+  )
+}
+
 echo "[INFO] Launching multilingual ablation runs into ${OUTPUT_ROOT}"
 
 submit_job() {
   local name=$1
   local script=$2
   local log_prefix=$3
-  shift 3
-  local env_assignments=("$@")
+  local env_array_name=$4
+  local sbatch_array_name=$5
+  shift 5
+  local -n env_assignments=$env_array_name
+  local -n sbatch_assignments=$sbatch_array_name
   local cmd=(env)
   for assignment in "${env_assignments[@]}"; do
     cmd+=("${assignment}")
@@ -101,6 +149,11 @@ submit_job() {
   if [[ -n "${SBATCH_ARGS:-}" ]]; then
     cmd+=(${SBATCH_ARGS})
   fi
+  for arg in "${sbatch_assignments[@]}"; do
+    if [[ -n "${arg}" ]]; then
+      cmd+=("${arg}")
+    fi
+  done
   cmd+=("${script}")
   local output
   if ! output=$("${cmd[@]}"); then
@@ -147,6 +200,8 @@ for model_spec in "${MODEL_VARIANTS[@]}"; do
       else
         hydra_num_experts=1
       fi
+      declare -a hydra_sbatch=()
+      select_resources hydra_sbatch "${model_slug}" "${tier_id}"
 
       hydra_output="${OUTPUT_ROOT}/${model_slug}/${tier_slug}/hydra_${variant_slug}_${timestamp}"
       hydra_wandb="${label}-${model_slug}-${tier_id}-${timestamp}"
@@ -169,7 +224,7 @@ for model_spec in "${MODEL_VARIANTS[@]}"; do
       )
 
       hydra_job=$(submit_job "Hydra-${label}-${model_slug}-${tier_id}" \
-        "${COMPARISON_DIR}/hydralora_lpr_job.sh" "${hydra_log}" "${hydra_env[@]}")
+        "${COMPARISON_DIR}/hydralora_lpr_job.sh" "${hydra_log}" hydra_env hydra_sbatch)
       JOB_IDS["hydra-${label}-${model_slug}-${tier_id}"]="${hydra_job}"
     done
 
@@ -182,6 +237,8 @@ for model_spec in "${MODEL_VARIANTS[@]}"; do
       else
         cola_num_experts=1
       fi
+      declare -a cola_sbatch=()
+      select_resources cola_sbatch "${model_slug}" "${tier_id}"
 
       cola_output="${OUTPUT_ROOT}/${model_slug}/${tier_slug}/cola_${variant_slug}_${timestamp}"
       cola_wandb="${label}-${model_slug}-${tier_id}-${timestamp}"
@@ -206,7 +263,7 @@ for model_spec in "${MODEL_VARIANTS[@]}"; do
       )
 
       cola_job=$(submit_job "CoLA-${label}-${model_slug}-${tier_id}" \
-        "${COMPARISON_DIR}/cola_lpr_job.sh" "${cola_log}" "${cola_env[@]}")
+        "${COMPARISON_DIR}/cola_lpr_job.sh" "${cola_log}" cola_env cola_sbatch)
       JOB_IDS["cola-${label}-${model_slug}-${tier_id}"]="${cola_job}"
     done
   done
