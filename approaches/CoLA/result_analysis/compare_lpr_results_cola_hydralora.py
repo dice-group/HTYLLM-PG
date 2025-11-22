@@ -121,7 +121,6 @@ RUN_TYPES = {
         "prefix": "colaflat-",
         "required_metrics": [
             "train/loss",
-            "train/cola/language_target_hit_rate",
         ],
         "optional_metrics": [
             "train/learning_rate",

@@ -18,6 +18,7 @@ import warnings
 import logging
 
 logger = logging.getLogger(__name__)
+
 from typing import Any, Optional, Union
 
 import torch
@@ -119,6 +120,7 @@ class HydraLoraLayer(BaseTunerLayer):
         self.language_to_family_ids = kwargs.pop("language_to_family_ids", None)
         self.language_router_mode = kwargs.pop("language_router_mode", "learned")
         self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
+        self.language_column = kwargs.pop("language_column", None)
         self._language_to_idx = {lang: idx for idx, lang in enumerate(self.language_list)} if self.language_list else {}
         language_expert_mapping = (
             torch.arange(len(self.language_list), dtype=torch.long) if self.language_list else torch.empty(0,
@@ -143,6 +145,7 @@ class HydraLoraLayer(BaseTunerLayer):
                     f"[HYDRA DEBUG] Initialized router in {self.__class__.__name__} "
                     f"(in={self.in_features}, experts={self.num_experts}, top_k={self.top_k})"
                 )
+        self._missing_language_warning_emitted: set[str] = set()
 
     def update_layer(
             self, adapter_name, r, lora_alpha, lora_dropout, lora_num, init_lora_weights
@@ -417,6 +420,82 @@ class HydraLoraLayer(BaseTunerLayer):
             expert_ids[valid] = mapping[language_ids[valid]]
         return expert_ids
 
+    def _log_missing_language_targets(self, prefix: str, reason: str) -> None:
+        key = f"{prefix}:{reason}"
+        if key in self._missing_language_warning_emitted:
+            return
+        column = self.language_column or "<unset>"
+        logger.warning(
+            "HydraLoRA layer '%s' missing %s routing metadata (%s). Verify dataset column '%s' and language_map.",
+            self.__class__.__name__,
+            prefix,
+            reason,
+            column,
+        )
+        self._missing_language_warning_emitted.add(key)
+
+    def _append_target_metrics(
+        self,
+        metrics: dict[str, float],
+        metrics_weight: float,
+        prefix: str,
+        target_tensor: Optional[torch.Tensor],
+        selection: torch.Tensor,
+        probs: torch.Tensor,
+        language_ids: Optional[torch.Tensor],
+        expect_targets: bool,
+    ) -> float:
+        if target_tensor is not None and torch.is_tensor(target_tensor):
+            valid_batch = target_tensor >= 0
+            seq_len = probs.size(1)
+            if valid_batch.any():
+                expanded_targets = target_tensor[valid_batch].view(-1, 1).expand(-1, seq_len)
+                top1 = selection[valid_batch]
+                target_hits = (top1 == expanded_targets).float()
+                target_probs = probs[valid_batch].gather(
+                    -1,
+                    target_tensor[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
+                ).squeeze(-1)
+                valid_tokens = target_probs.numel()
+                metrics.update(
+                    {
+                        f"{prefix}_target_hit_rate": float(target_hits.mean().item()),
+                        f"{prefix}_target_prob_mean": float(target_probs.mean().item()),
+                        f"{prefix}_target_token_frac": float(
+                            valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
+                        ),
+                    }
+                )
+                return float(valid_tokens if valid_tokens > 0 else metrics_weight)
+
+            metrics.update(
+                {
+                    f"{prefix}_target_hit_rate": 0.0,
+                    f"{prefix}_target_prob_mean": 0.0,
+                    f"{prefix}_target_token_frac": 0.0,
+                }
+            )
+            if expect_targets:
+                self._log_missing_language_targets(prefix, "targets were all pad ids")
+            return metrics_weight
+
+        if expect_targets:
+            metrics.update(
+                {
+                    f"{prefix}_target_hit_rate": 0.0,
+                    f"{prefix}_target_prob_mean": 0.0,
+                    f"{prefix}_target_token_frac": 0.0,
+                }
+            )
+            if language_ids is None:
+                reason = "no language_ids tensor provided"
+            elif torch.is_tensor(language_ids) and (language_ids >= 0).any():
+                reason = "language_ids could not be mapped to targets"
+            else:
+                reason = "language_ids contained only pad ids"
+            self._log_missing_language_targets(prefix, reason)
+        return metrics_weight
+
     def _apply_language_bias_heads(
             self, logits: torch.Tensor, head_ids: Optional[torch.Tensor]
     ) -> torch.Tensor:
@@ -590,29 +669,16 @@ class Linear(nn.Module, HydraLoraLayer):
                                 "head_router_entropy": head_entropy,
                             }
                             metrics_weight = float(token_count)
-                            # Track how well routing follows language targets (if provided)
-                            if head_targets is not None and torch.is_tensor(head_targets):
-                                valid_batch = head_targets >= 0
-                                if valid_batch.any():
-                                    seq_len = route_weight.size(1)
-                                    expanded_targets = head_targets[valid_batch].view(-1, 1).expand(-1, seq_len)
-                                    head_top1 = head_assign.squeeze(-1)[valid_batch]
-                                    target_hits = (head_top1 == expanded_targets).float()
-                                    target_probs = route_weight[valid_batch].gather(
-                                        -1,
-                                        head_targets[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
-                                    ).squeeze(-1)
-                                    valid_tokens = target_probs.numel()
-                                    metrics.update(
-                                        {
-                                            "head_target_hit_rate": float(target_hits.mean().item()),
-                                            "head_target_prob_mean": float(target_probs.mean().item()),
-                                            "head_target_token_frac": float(
-                                                valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
-                                            ),
-                                        }
-                                    )
-                                    metrics_weight = float(valid_tokens if valid_tokens > 0 else token_count)
+                            metrics_weight = self._append_target_metrics(
+                                metrics=metrics,
+                                metrics_weight=metrics_weight,
+                                prefix="head",
+                                target_tensor=head_targets,
+                                selection=head_assign.squeeze(-1),
+                                probs=route_weight,
+                                language_ids=language_ids,
+                                expect_targets=self.language_list is not None,
+                            )
                             record_hydralora_metrics(metrics, weight=metrics_weight)
 
                     for i in range(self.lora_num[active_adapter]):
@@ -661,28 +727,16 @@ class Linear(nn.Module, HydraLoraLayer):
                             "expert_topk_weight_mean": weight_mean,
                         }
                         metrics_weight = float(token_count)
-                        if expert_targets is not None and torch.is_tensor(expert_targets):
-                            valid_batch = expert_targets >= 0
-                            if valid_batch.any():
-                                seq_len = topi.size(1)
-                                expanded_targets = expert_targets[valid_batch].view(-1, 1).expand(-1, seq_len)
-                                top1 = topi[valid_batch, :, 0]
-                                target_hits = (top1 == expanded_targets).float()
-                                target_probs = router_probs[valid_batch].gather(
-                                    -1,
-                                    expert_targets[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
-                                ).squeeze(-1)
-                                valid_tokens = target_probs.numel()
-                                metrics.update(
-                                    {
-                                        "expert_target_hit_rate": float(target_hits.mean().item()),
-                                        "expert_target_prob_mean": float(target_probs.mean().item()),
-                                        "expert_target_token_frac": float(
-                                            valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
-                                        ),
-                                    }
-                                )
-                                metrics_weight = float(valid_tokens if valid_tokens > 0 else token_count)
+                        metrics_weight = self._append_target_metrics(
+                            metrics=metrics,
+                            metrics_weight=metrics_weight,
+                            prefix="expert",
+                            target_tensor=expert_targets,
+                            selection=topi[:, :, 0],
+                            probs=router_probs,
+                            language_ids=language_ids,
+                            expect_targets=self.language_list is not None,
+                        )
                         record_hydralora_metrics(metrics, weight=metrics_weight)
 
                 expert_outs = [self._adapter_delta(x, f"expert_{e}") for e in range(self.num_experts)]

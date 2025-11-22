@@ -61,6 +61,20 @@ RANDOM_ID=$(printf "%04d" $((RANDOM % 10000)))
 RUN_NAME="${WANDB_NAME}_ep${TRAIN_EPOCHS}_bs${TRAIN_BS}x${GRAD_ACC}_lr${TRAIN_LR}_heads${LORA_NUM}_${RANDOM_ID}"
 export WANDB_NAME="${RUN_NAME}"
 
+# Explicitly log routing params to W&B config
+export WANDB_CONFIG_JSON=$(cat <<EOF
+{
+  "language_router_mode": "${LANGUAGE_ROUTER_MODE}",
+  "language_prior_weight": ${LANGUAGE_PRIOR_WEIGHT},
+  "language_bias_value": ${LANGUAGE_BIAS_VALUE},
+  "use_hydralora_experts": ${USE_HYDRALORA_EXPERTS},
+  "hydralora_num_experts": ${HYDRALORA_NUM_EXPERTS},
+  "hydralora_top_k": ${HYDRALORA_TOP_K},
+  "lora_num": ${LORA_NUM}
+}
+EOF
+)
+
 echo "[INFO] Running HydraLoRA LPR training into ${OUTPUT_DIR}"
 
 llamafactory-cli train \
@@ -109,3 +123,4 @@ llamafactory-cli train \
   --include_num_input_tokens_seen true
 
 echo "[INFO] HydraLoRA LPR job completed"
+touch "${OUTPUT_DIR}/.training_complete"

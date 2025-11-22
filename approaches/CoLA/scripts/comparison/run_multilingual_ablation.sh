@@ -115,6 +115,17 @@ declare -A TIER_WALLTIME_MAP=(
   ["tier199"]="24:00:00"
 )
 
+ENABLE_LM_EVAL_LISTENER=${ENABLE_LM_EVAL_LISTENER:-false}
+CHECKPOINT_LISTENER_SCRIPT=${CHECKPOINT_LISTENER_SCRIPT:-${REPO_ROOT}/scripts/checkpoint_listener.sh}
+LM_EVAL_SCRIPT=${LM_EVAL_SCRIPT:-${REPO_ROOT}/scripts/lm_eval_checkpoint.sh}
+LM_EVAL_TASKS=${LM_EVAL_TASKS:-"belebele,flores200,arc_challenge,mmlu,hellaswag"}
+LM_EVAL_BATCH_SIZE=${LM_EVAL_BATCH_SIZE:-auto}
+LM_EVAL_POLL_INTERVAL=${LM_EVAL_POLL_INTERVAL:-300}
+LM_EVAL_WANDB_PROJECT=${LM_EVAL_WANDB_PROJECT:-llama31_multilingual_eval_belebele}
+LM_EVAL_WANDB_PREFIX=${LM_EVAL_WANDB_PREFIX:-lm_eval}
+LM_EVAL_EXTRA_ARGS=${LM_EVAL_EXTRA_ARGS:-}
+LISTENER_SBATCH_ARGS=${LISTENER_SBATCH_ARGS:-}
+
 select_resources() {
   local -n out_ref=$1
   local model_slug=$2
@@ -171,11 +182,61 @@ submit_job() {
   printf "%s" "${job_id}"
 }
 
+submit_listener_job() {
+  local listener_label=$1
+  local watch_dir=$2
+  local model_path=$3
+  if [[ "${ENABLE_LM_EVAL_LISTENER}" != "true" ]]; then
+    return
+  fi
+  if [[ ! -f "${CHECKPOINT_LISTENER_SCRIPT}" ]]; then
+    echo "[WARN] CHECKPOINT_LISTENER_SCRIPT not found at ${CHECKPOINT_LISTENER_SCRIPT}; skipping listener launch" >&2
+    return
+  fi
+  if [[ ! -f "${LM_EVAL_SCRIPT}" ]]; then
+    echo "[WARN] LM_EVAL_SCRIPT not found at ${LM_EVAL_SCRIPT}; skipping listener launch" >&2
+    return
+  fi
+  local log_path="${LOG_DIR}/${listener_label}_listener_%j.log"
+  local cmd=(sbatch "--output=${log_path}")
+  if [[ -n "${LISTENER_SBATCH_ARGS}" ]]; then
+    cmd+=(${LISTENER_SBATCH_ARGS})
+  fi
+  cmd+=(
+    "${CHECKPOINT_LISTENER_SCRIPT}"
+    --watch-dir "${watch_dir}"
+    --eval-script "${LM_EVAL_SCRIPT}"
+    --tokenizer "${model_path}"
+    --tasks "${LM_EVAL_TASKS}"
+    --batch-size "${LM_EVAL_BATCH_SIZE}"
+    --poll-interval "${LM_EVAL_POLL_INTERVAL}"
+    --wandb-project "${LM_EVAL_WANDB_PROJECT}"
+    --wandb-prefix "${LM_EVAL_WANDB_PREFIX}_${listener_label}"
+  )
+  if [[ -n "${LM_EVAL_EXTRA_ARGS}" ]]; then
+    cmd+=(--extra-args "${LM_EVAL_EXTRA_ARGS}")
+  fi
+  local output
+  if ! output=$("${cmd[@]}"); then
+    echo "[WARN] Failed to submit listener for ${listener_label}" >&2
+    return
+  fi
+  if [[ "${output}" != *"Submitted batch job"* ]]; then
+    echo "[WARN] Listener submission returned unexpected output: ${output}" >&2
+    return
+  fi
+  local job_id
+  job_id=$(awk '{print $4}' <<<"${output}")
+  echo "[INFO] Submitted checkpoint listener ${job_id} for ${listener_label}"
+  LISTENER_JOB_IDS["listener-${listener_label}"]="${job_id}"
+}
+
 sanitize() {
   echo "$1" | tr '/ ' '__'
 }
 
 declare -A JOB_IDS=()
+declare -A LISTENER_JOB_IDS=()
 
 for model_spec in "${MODEL_VARIANTS[@]}"; do
   IFS='|' read -r tokenizer_dir model_path <<<"${model_spec}"
@@ -226,6 +287,7 @@ for model_spec in "${MODEL_VARIANTS[@]}"; do
       hydra_job=$(submit_job "Hydra-${label}-${model_slug}-${tier_id}" \
         "${COMPARISON_DIR}/hydralora_lpr_job.sh" "${hydra_log}" hydra_env hydra_sbatch)
       JOB_IDS["hydra-${label}-${model_slug}-${tier_id}"]="${hydra_job}"
+      submit_listener_job "hydra-${label}-${model_slug}-${tier_id}" "${hydra_output}" "${model_path}"
     done
 
     # CoLA runs
@@ -265,6 +327,7 @@ for model_spec in "${MODEL_VARIANTS[@]}"; do
       cola_job=$(submit_job "CoLA-${label}-${model_slug}-${tier_id}" \
         "${COMPARISON_DIR}/cola_lpr_job.sh" "${cola_log}" cola_env cola_sbatch)
       JOB_IDS["cola-${label}-${model_slug}-${tier_id}"]="${cola_job}"
+      submit_listener_job "cola-${label}-${model_slug}-${tier_id}" "${cola_output}" "${model_path}"
     done
   done
 done
@@ -273,6 +336,7 @@ cat <<SUMMARY
 ========================================
 Submitted multilingual ablation jobs at ${timestamp}
 $(for key in "${!JOB_IDS[@]}"; do printf "  %-32s : %s\n" "${key}" "${JOB_IDS[${key}]}"; done | sort)
+$(for key in "${!LISTENER_JOB_IDS[@]}"; do printf "  %-32s : %s\n" "${key}" "${LISTENER_JOB_IDS[${key}]}"; done | sort)
 
 Outputs stored under ${OUTPUT_ROOT}
 Tokenized corpora read from ${TOKENIZED_BASE_DIR}

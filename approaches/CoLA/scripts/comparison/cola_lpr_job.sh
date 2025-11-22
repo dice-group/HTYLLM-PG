@@ -61,6 +61,20 @@ RANDOM_ID=$(printf "%04d" $((RANDOM % 10000)))
 RUN_NAME="${WANDB_NAME}_ep${TRAIN_EPOCHS}_bs${TRAIN_BS}x${GRAD_ACC}_lr${TRAIN_LR}_nexp${NUM_EXPERTS}_k${TOP_K}_${STRATEGY}_${RANDOM_ID}"
 export WANDB_NAME="${RUN_NAME}"
 
+# Explicitly log routing params to W&B config
+export WANDB_CONFIG_JSON=$(cat <<EOF
+{
+  "language_router_mode": "${LANGUAGE_ROUTER_MODE}",
+  "language_prior_weight": ${LANGUAGE_PRIOR_WEIGHT},
+  "language_bias_value": ${LANGUAGE_BIAS_VALUE},
+  "cola_strategy": "${STRATEGY}",
+  "use_cola_experts": ${USE_COLA_EXPERTS},
+  "cola_num_experts": ${NUM_EXPERTS},
+  "cola_top_k": ${TOP_K}
+}
+EOF
+)
+
 echo "[INFO] Running CoLA LPR training into ${OUTPUT_DIR}"
 
 llamafactory-cli train \
@@ -112,3 +126,4 @@ llamafactory-cli train \
   --include_num_input_tokens_seen true
 
 echo "[INFO] CoLA LPR job completed"
+touch "${OUTPUT_DIR}/.training_complete"

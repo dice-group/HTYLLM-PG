@@ -17,6 +17,7 @@ import math
 import os
 import warnings
 import logging
+
 logger = logging.getLogger(__name__)
 
 from typing import Any, Optional, Union
@@ -126,6 +127,7 @@ class ColaLayer(BaseTunerLayer):
         self.language_to_family_ids = kwargs.pop("language_to_family_ids", None)
         self.language_router_mode = kwargs.pop("language_router_mode", "learned")
         self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
+        self.language_column = kwargs.pop("language_column", None)
         self.cola_strategy = kwargs.pop("cola_strategy", "fully")
         if self.cola_strategy not in VALID_COLA_STRATEGIES:
             raise ValueError(f"Unknown CoLA collaboration strategy '{self.cola_strategy}'.")
@@ -151,6 +153,7 @@ class ColaLayer(BaseTunerLayer):
                     self.top_k = self.num_experts
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
             self._move_router_to_device_of_base_layer()
+        self._missing_language_warning_emitted = False
 
 
     def _fsdp_summon_is_active(self) -> bool:
@@ -627,6 +630,78 @@ class ColaLayer(BaseTunerLayer):
             expert_ids[valid] = mapping[language_ids[valid]]
         return expert_ids
 
+    def _log_missing_language_metadata(self, reason: str) -> None:
+        if self._missing_language_warning_emitted:
+            return
+        column = self.language_column or "<unset>"
+        logger.warning(
+            "CoLA layer '%s' is missing language routing metadata (%s). Check dataset column '%s' and language_map.",
+            self.__class__.__name__,
+            reason,
+            column,
+        )
+        self._missing_language_warning_emitted = True
+
+    def _append_language_target_metrics(
+        self,
+        metrics: dict[str, float],
+        metrics_weight: float,
+        language_targets: Optional[torch.Tensor],
+        language_ids: Optional[torch.Tensor],
+        router_probs: torch.Tensor,
+        top_indices: torch.Tensor,
+    ) -> float:
+        if language_targets is not None and torch.is_tensor(language_targets):
+            valid_batch = language_targets >= 0
+            seq_len = top_indices.size(1)
+            if valid_batch.any():
+                expanded_targets = language_targets[valid_batch].view(-1, 1).expand(-1, seq_len)
+                top1 = top_indices[valid_batch, :, 0]
+                target_hits = (top1 == expanded_targets).float()
+                target_probs = router_probs[valid_batch].gather(
+                    -1,
+                    language_targets[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
+                ).squeeze(-1)
+                valid_tokens = target_probs.numel()
+                metrics.update(
+                    {
+                        "language_target_hit_rate": float(target_hits.mean().item()),
+                        "language_target_prob_mean": float(target_probs.mean().item()),
+                        "language_target_token_frac": float(
+                            valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
+                        ),
+                    }
+                )
+                return float(valid_tokens if valid_tokens > 0 else metrics_weight)
+
+            metrics.update(
+                {
+                    "language_target_hit_rate": 0.0,
+                    "language_target_prob_mean": 0.0,
+                    "language_target_token_frac": 0.0,
+                }
+            )
+            if self.language_list:
+                self._log_missing_language_metadata("language targets were all pad ids")
+            return metrics_weight
+
+        if self.language_list:
+            metrics.update(
+                {
+                    "language_target_hit_rate": 0.0,
+                    "language_target_prob_mean": 0.0,
+                    "language_target_token_frac": 0.0,
+                }
+            )
+            if language_ids is None:
+                reason = "no language_ids tensor provided"
+            elif torch.is_tensor(language_ids) and (language_ids >= 0).any():
+                reason = "language_ids could not be mapped to experts"
+            else:
+                reason = "language_ids contained only pad ids"
+            self._log_missing_language_metadata(reason)
+        return metrics_weight
+
     def _apply_language_bias(self, logits: torch.Tensor, expert_ids: Optional[torch.Tensor]) -> torch.Tensor:
         if expert_ids is None or self.language_router_mode != "bias":
             return logits
@@ -839,28 +914,14 @@ class Linear(nn.Module, ColaLayer):
                             "topk_weight_mean": weight_mean,
                         }
                         metrics_weight = float(token_count)
-                        if language_targets is not None and torch.is_tensor(language_targets):
-                            valid_batch = language_targets >= 0
-                            if valid_batch.any():
-                                seq_len = topi.size(1)
-                                expanded_targets = language_targets[valid_batch].view(-1, 1).expand(-1, seq_len)
-                                top1 = topi[valid_batch, :, 0]
-                                target_hits = (top1 == expanded_targets).float()
-                                target_probs = router_probs[valid_batch].gather(
-                                    -1,
-                                    language_targets[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
-                                ).squeeze(-1)
-                                valid_tokens = target_probs.numel()
-                                metrics.update(
-                                    {
-                                        "language_target_hit_rate": float(target_hits.mean().item()),
-                                        "language_target_prob_mean": float(target_probs.mean().item()),
-                                        "language_target_token_frac": float(
-                                            valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
-                                        ),
-                                    }
-                                )
-                                metrics_weight = float(valid_tokens if valid_tokens > 0 else token_count)
+                        metrics_weight = self._append_language_target_metrics(
+                            metrics=metrics,
+                            metrics_weight=metrics_weight,
+                            language_targets=language_targets,
+                            language_ids=language_ids,
+                            router_probs=router_probs,
+                            top_indices=topi,
+                        )
                         record_cola_metrics(metrics, weight=metrics_weight)
 
                 expert_outs = [self._adapter_delta(x, f"expert_{e}") for e in range(self.num_experts)]
