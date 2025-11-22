@@ -162,6 +162,7 @@ CONFIG_FIELDS = [
     "use_hydralora_experts",
     "cola_num_experts",
     "cola_top_k",
+    "cola_strategy",
     "num_A",
     "num_B",
     "lora_rank",

@@ -111,6 +111,16 @@ class ColaConfig(PeftConfig):
     cola_num_experts: int = field(default=1, metadata={"help": "Number of experts per CoLA layer when MoE is enabled."})
     cola_top_k: int = field(default=1, metadata={"help": "Number of experts to route tokens to when MoE is enabled (top-k gating)."})
     cola_debug: bool = field(default=False, metadata={"help": "Enable additional CoLA debug diagnostics."})
+    cola_strategy: Literal["fully", "random", "heuristic"] = field(
+        default="fully",
+        metadata={
+            "help": (
+                "Collaboration strategy between A/B matrices. "
+                "'fully' corresponds to CoLA⊺, 'random' approximates CoLA† (random A-B pairing), "
+                "and 'heuristic' follows CoLA‡ (mix of one-to-one plus shared A)."
+            )
+        },
+    )
     fan_in_fan_out: bool = field(
         default=False,
         metadata={"help": "Set this to True if the layer to replace stores weight like (fan_in, fan_out)"},

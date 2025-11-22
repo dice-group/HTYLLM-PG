@@ -54,6 +54,7 @@ def debug(msg: str, enabled: bool = False):
 
 
 LANGUAGE_PAD_ID = -1
+VALID_COLA_STRATEGIES = {"fully", "random_ab", "random_ba", "heuristic"}
 
 
 class ColaLayer(BaseTunerLayer):
@@ -125,6 +126,9 @@ class ColaLayer(BaseTunerLayer):
         self.language_to_family_ids = kwargs.pop("language_to_family_ids", None)
         self.language_router_mode = kwargs.pop("language_router_mode", "learned")
         self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
+        self.cola_strategy = kwargs.pop("cola_strategy", "fully")
+        if self.cola_strategy not in VALID_COLA_STRATEGIES:
+            raise ValueError(f"Unknown CoLA collaboration strategy '{self.cola_strategy}'.")
         self._language_to_idx = {lang: idx for idx, lang in enumerate(self.language_list)} if self.language_list else {}
         self._family_to_idx = {fam: idx for idx, fam in enumerate(self.family_list)} if self.family_list else {}
         self._family_a_modules: dict[int, nn.ModuleList] = {}
@@ -750,38 +754,45 @@ class Linear(nn.Module, ColaLayer):
                 for active_adapter in self._active_adapters:
                     if active_adapter not in self.lora_A.keys():
                         continue
-                    # assert self.num_A[active_adapter] <= self.num_B[active_adapter], "The number of matrix A must not exceed the number of matrix B"
                     lora_A = self.lora_A[active_adapter]
                     lora_B = self.lora_B[active_adapter]
 
                     dropout = self.lora_dropout[active_adapter]
                     scaling = self.scaling[active_adapter]
-                    x = x.to(lora_A[0].weight.dtype)
+                    adapter_input = dropout(x.to(lora_A[0].weight.dtype))
+                    a_outputs = [layer(adapter_input) for layer in lora_A]
+                    if not a_outputs or len(lora_B) == 0:
+                        continue
 
-                    # Fully Collaborative Strategy
-                    for i in range(self.num_A[active_adapter]):
-                        for j in range(self.num_B[active_adapter]):
-                            result = result + lora_B[j](lora_A[i](dropout(x))) * scaling
-
-                    # Random Collaborative Strategy #TODO: make configurable which to use
-                    # import random
-                    # for i in range(self.num_A[active_adapter]):
-                    #     result = result + random.choice(lora_B)(lora_A[i](dropout(x))) * scaling
-
-                    # Random Collaborative Strategy (reversal)
-                    # import random
-                    # for i in range(self.num_B[active_adapter]):
-                    #     result = result + lora_B[i](random.choice(lora_A)(dropout(x))) * scaling
-
-                    # Heuristic Collaborative Strategy
-                    # lora_num = self.num_B[active_adapter] // self.num_A[active_adapter]
-                    # B_i = 0
-                    # for i in range(self.num_A[active_adapter]):
-                    #     for _ in range(lora_num):
-                    #         result = result + lora_B[B_i](lora_A[i](dropout(x))) * scaling
-                    #         B_i += 1
-                    # for i in range(B_i, self.num_B[active_adapter]):
-                    #     result = result + lora_B[i](lora_A[i-B_i](dropout(x))) * scaling
+                    if self.cola_strategy == "fully":
+                        for a_out in a_outputs:
+                            for B_layer in lora_B:
+                                result = result + B_layer(a_out) * scaling
+                    elif self.cola_strategy == "random_ab":
+                        for a_out in a_outputs:
+                            idx = torch.randint(len(lora_B), (1,), device=a_out.device).item()
+                            result = result + lora_B[idx](a_out) * scaling
+                    elif self.cola_strategy == "random_ba":
+                        for B_layer in lora_B:
+                            idx = torch.randint(len(a_outputs), (1,), device=a_outputs[0].device).item()
+                            result = result + B_layer(a_outputs[idx]) * scaling
+                    elif self.cola_strategy == "heuristic":
+                        num_a = len(a_outputs)
+                        num_b = len(lora_B)
+                        ratio = max(1, num_b // num_a) if num_a > 0 else num_b
+                        b_idx = 0
+                        for a_out in a_outputs:
+                            assigned = 0
+                            while assigned < ratio and b_idx < num_b:
+                                result = result + lora_B[b_idx](a_out) * scaling
+                                b_idx += 1
+                                assigned += 1
+                        while b_idx < num_b:
+                            target_idx = b_idx % num_a
+                            result = result + lora_B[b_idx](a_outputs[target_idx]) * scaling
+                            b_idx += 1
+                    else:
+                        raise ValueError(f"Unsupported CoLA strategy '{self.cola_strategy}'.")
 
             else:
                 router_dtype = self.router.weight.dtype

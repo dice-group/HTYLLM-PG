@@ -199,6 +199,7 @@ class ColaModel(BaseTuner):
             "cola_num_experts": lora_config.cola_num_experts,
             "cola_top_k": lora_config.cola_top_k,
             "cola_debug": lora_config.cola_debug,
+            "cola_strategy": lora_config.cola_strategy,
             "language_list": lora_config.language_list,
             "family_list": lora_config.family_list,
             "language_to_family_ids": lora_config.language_to_family_ids,

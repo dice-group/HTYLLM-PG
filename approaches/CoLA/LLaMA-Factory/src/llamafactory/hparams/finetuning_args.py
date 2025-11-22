@@ -418,6 +418,15 @@ class FinetuningArguments(
             )
         },
     )
+    cola_strategy: Literal["fully", "random", "heuristic"] = field(
+        default="fully",
+        metadata={
+            "help": (
+                "CoLA collaboration strategy. "
+                "'fully' = CoLA⊺, 'random' = CoLA† (random A/B pairing), 'heuristic' = CoLA‡ (hybrid)."
+            )
+        },
+    )
 
     use_hydralora_experts: bool = field(default=False, metadata={"help": "Enable mixture-of-experts routing for HydraLoRA adapters."})
     hydralora_num_experts: int = field(default=1, metadata={"help": "Number of experts per HydraLoRA layer when mixture-of-experts is enabled."})

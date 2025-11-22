@@ -378,6 +378,7 @@ def _setup_cola_tuning(
             "cola_num_experts": finetuning_args.cola_num_experts,
             "cola_top_k": finetuning_args.cola_top_k,
             "cola_debug": finetuning_args.cola_debug,
+            "cola_strategy": finetuning_args.cola_strategy,
             # "cola_type": finetuning_args.cola_type,
             # "expert_num": finetuning_args.expert_num,
             "modules_to_save": finetuning_args.additional_target,
