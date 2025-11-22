@@ -87,32 +87,32 @@ if [[ -n "${LANGUAGE_SUBSET}" ]]; then
   preset_merge_mem=""
   preset_merge_time=""
   case "${LANGUAGE_SUBSET}" in
-    five_representatives_mediods)
+    five_representatives_mediods|english_plus_five)
       preset_ranks=5
       preset_merge_mem=64G
       preset_merge_time=02:00:00
       ;;
-    ten_representatives_mediods)
+    ten_representatives_mediods|english_plus_ten)
       preset_ranks=10
       preset_merge_mem=80G
       preset_merge_time=03:00:00
       ;;
-    twenty_two_representatives_mediods)
+    twenty_two_representatives_mediods|english_plus_twenty_two)
       preset_ranks=22
       preset_merge_mem=96G
       preset_merge_time=04:00:00
       ;;
-    fourty_six_representatives_mediods)
+    fourty_six_representatives_mediods|english_plus_forty_six)
       preset_ranks=46
       preset_merge_mem=128G
       preset_merge_time=06:00:00
       ;;
-    ninty_five_representatives_mediods)
+    ninty_five_representatives_mediods|english_plus_ninety_five)
       preset_ranks=95
       preset_merge_mem=160G
       preset_merge_time=08:00:00
       ;;
-    hundred_ninty_nine_representatives_mediods)
+    hundred_ninty_nine_representatives_mediods|english_plus_hundred_ninety_nine)
       preset_ranks=100
       preset_merge_mem=192G
       preset_merge_time=10:00:00
