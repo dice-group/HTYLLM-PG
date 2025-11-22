@@ -162,6 +162,6 @@ Submitted Language-Prior ablation jobs at ${timestamp}
 $(for label in "${!JOB_IDS[@]}"; do printf "  %-18s : %s\n" "${label}" "${JOB_IDS[${label}]}"; done | sort)
 
 Outputs stored under ${OUTPUT_ROOT}
-Monitor metrics in W&B project ${WANDB_PROJECT:-moe-study-lpr}
+Monitor metrics in W&B project ${WANDB_PROJECT:-htyllm-adapter-lpr}
 ========================================
 SUMMARY
