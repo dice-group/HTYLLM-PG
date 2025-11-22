@@ -809,15 +809,36 @@ class Linear(nn.Module, ColaLayer):
                         entropy = float((-router_probs * torch.log(router_probs + 1e-8)).sum(dim=-1).mean().item())
                         weight_mean = float(weights.mean().item())
 
-                        record_cola_metrics(
-                            {
-                                "expert_load_cv": load_cv,
-                                "active_expert_frac": active_frac,
-                                "router_entropy": entropy,
-                                "topk_weight_mean": weight_mean,
-                            },
-                            weight=float(token_count),
-                        )
+                        metrics = {
+                            "expert_load_cv": load_cv,
+                            "active_expert_frac": active_frac,
+                            "router_entropy": entropy,
+                            "topk_weight_mean": weight_mean,
+                        }
+                        metrics_weight = float(token_count)
+                        if language_targets is not None and torch.is_tensor(language_targets):
+                            valid_batch = language_targets >= 0
+                            if valid_batch.any():
+                                seq_len = topi.size(1)
+                                expanded_targets = language_targets[valid_batch].view(-1, 1).expand(-1, seq_len)
+                                top1 = topi[valid_batch, :, 0]
+                                target_hits = (top1 == expanded_targets).float()
+                                target_probs = router_probs[valid_batch].gather(
+                                    -1,
+                                    language_targets[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
+                                ).squeeze(-1)
+                                valid_tokens = target_probs.numel()
+                                metrics.update(
+                                    {
+                                        "language_target_hit_rate": float(target_hits.mean().item()),
+                                        "language_target_prob_mean": float(target_probs.mean().item()),
+                                        "language_target_token_frac": float(
+                                            valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
+                                        ),
+                                    }
+                                )
+                                metrics_weight = float(valid_tokens if valid_tokens > 0 else token_count)
+                        record_cola_metrics(metrics, weight=metrics_weight)
 
                 expert_outs = [self._adapter_delta(x, f"expert_{e}") for e in range(self.num_experts)]
                 expert_outs = torch.stack(expert_outs, dim=-1)  # [B, S, D_out, E]

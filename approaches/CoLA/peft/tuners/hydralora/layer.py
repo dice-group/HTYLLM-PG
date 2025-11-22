@@ -583,14 +583,36 @@ class Linear(nn.Module, HydraLoraLayer):
                             head_entropy = float(
                                 (-route_weight * torch.log(route_weight + 1e-8)).sum(dim=-1).mean().item()
                             )
-                            record_hydralora_metrics(
-                                {
-                                    "head_load_cv": head_cv,
-                                    "head_active_frac": head_active,
-                                    "head_router_entropy": head_entropy,
-                                },
-                                weight=float(token_count),
-                            )
+                            metrics = {
+                                "head_load_cv": head_cv,
+                                "head_active_frac": head_active,
+                                "head_router_entropy": head_entropy,
+                            }
+                            metrics_weight = float(token_count)
+                            # Track how well routing follows language targets (if provided)
+                            if head_targets is not None and torch.is_tensor(head_targets):
+                                valid_batch = head_targets >= 0
+                                if valid_batch.any():
+                                    seq_len = route_weight.size(1)
+                                    expanded_targets = head_targets[valid_batch].view(-1, 1).expand(-1, seq_len)
+                                    head_top1 = head_assign.squeeze(-1)[valid_batch]
+                                    target_hits = (head_top1 == expanded_targets).float()
+                                    target_probs = route_weight[valid_batch].gather(
+                                        -1,
+                                        head_targets[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
+                                    ).squeeze(-1)
+                                    valid_tokens = target_probs.numel()
+                                    metrics.update(
+                                        {
+                                            "head_target_hit_rate": float(target_hits.mean().item()),
+                                            "head_target_prob_mean": float(target_probs.mean().item()),
+                                            "head_target_token_frac": float(
+                                                valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
+                                            ),
+                                        }
+                                    )
+                                    metrics_weight = float(valid_tokens if valid_tokens > 0 else token_count)
+                            record_hydralora_metrics(metrics, weight=metrics_weight)
 
                     for i in range(self.lora_num[active_adapter]):
                         result = result + torch.unsqueeze(route_weight[:, :, i], -1) * lora_B[i](
@@ -631,15 +653,36 @@ class Linear(nn.Module, HydraLoraLayer):
                         router_probs = torch.softmax(logits.to(torch.float32), dim=-1)
                         entropy = float((-router_probs * torch.log(router_probs + 1e-8)).sum(dim=-1).mean().item())
                         weight_mean = float(weights.mean().item())
-                        record_hydralora_metrics(
-                            {
-                                "expert_load_cv": load_cv,
-                                "expert_active_frac": active_frac,
-                                "expert_router_entropy": entropy,
-                                "expert_topk_weight_mean": weight_mean,
-                            },
-                            weight=float(token_count),
-                        )
+                        metrics = {
+                            "expert_load_cv": load_cv,
+                            "expert_active_frac": active_frac,
+                            "expert_router_entropy": entropy,
+                            "expert_topk_weight_mean": weight_mean,
+                        }
+                        metrics_weight = float(token_count)
+                        if expert_targets is not None and torch.is_tensor(expert_targets):
+                            valid_batch = expert_targets >= 0
+                            if valid_batch.any():
+                                seq_len = topi.size(1)
+                                expanded_targets = expert_targets[valid_batch].view(-1, 1).expand(-1, seq_len)
+                                top1 = topi[valid_batch, :, 0]
+                                target_hits = (top1 == expanded_targets).float()
+                                target_probs = router_probs[valid_batch].gather(
+                                    -1,
+                                    expert_targets[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
+                                ).squeeze(-1)
+                                valid_tokens = target_probs.numel()
+                                metrics.update(
+                                    {
+                                        "expert_target_hit_rate": float(target_hits.mean().item()),
+                                        "expert_target_prob_mean": float(target_probs.mean().item()),
+                                        "expert_target_token_frac": float(
+                                            valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
+                                        ),
+                                    }
+                                )
+                                metrics_weight = float(valid_tokens if valid_tokens > 0 else token_count)
+                        record_hydralora_metrics(metrics, weight=metrics_weight)
 
                 expert_outs = [self._adapter_delta(x, f"expert_{e}") for e in range(self.num_experts)]
                 expert_outs = torch.stack(expert_outs, dim=-1)  # [B, S, D_out, E]
