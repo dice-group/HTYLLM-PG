@@ -307,6 +307,8 @@ class ColaLayer(BaseTunerLayer):
         # call this before dora_init
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
+        # Ensure the newly added adapter becomes the only active adapter.
+        self._active_adapters = [adapter_name]
         self.set_adapter(self._active_adapters)
 
     def set_adapter(self, adapter_names: str | list[str]) -> None:
@@ -769,17 +771,27 @@ class Linear(nn.Module, ColaLayer):
                             for B_layer in lora_B:
                                 result = result + B_layer(a_out) * scaling
                     elif self.cola_strategy == "random_ab":
+                        if len(lora_B) == 0:
+                            continue
                         for a_out in a_outputs:
                             idx = torch.randint(len(lora_B), (1,), device=a_out.device).item()
                             result = result + lora_B[idx](a_out) * scaling
                     elif self.cola_strategy == "random_ba":
+                        if len(a_outputs) == 0:
+                            continue
                         for B_layer in lora_B:
                             idx = torch.randint(len(a_outputs), (1,), device=a_outputs[0].device).item()
                             result = result + B_layer(a_outputs[idx]) * scaling
                     elif self.cola_strategy == "heuristic":
                         num_a = len(a_outputs)
                         num_b = len(lora_B)
-                        ratio = max(1, num_b // num_a) if num_a > 0 else num_b
+                        if num_b < num_a or num_a == 0:
+                            # fall back to fully-collaborative if not enough B heads
+                            for a_out in a_outputs:
+                                for B_layer in lora_B:
+                                    result = result + B_layer(a_out) * scaling
+                            continue
+                        ratio = max(1, num_b // num_a)
                         b_idx = 0
                         for a_out in a_outputs:
                             assigned = 0
@@ -965,9 +977,51 @@ class Linear(nn.Module, ColaLayer):
         drop = self.lora_dropout[name]
         scale = self.scaling[name]
 
+        if not A_list or not B_list:
+            return torch.zeros_like(x, dtype=self.get_base_layer().weight.dtype)
+
         intermediate = drop(x.to(A_list[0].weight.dtype))
-        a_dot_x = sum(A(intermediate) for A in A_list)
-        out = sum(B(a_dot_x) for B in B_list)
+        a_outputs = [A(intermediate) for A in A_list]
+        num_a = len(a_outputs)
+        num_b = len(B_list)
+        strategy = getattr(self, "cola_strategy", "fully")
+        if strategy == "heuristic" and (num_b < num_a or num_a == 0):
+            strategy = "fully"
+        if strategy.startswith("random") and num_b == 0:
+            strategy = "fully"
+
+        out = 0
+        if strategy == "fully":
+            for a_out in a_outputs:
+                for b_layer in B_list:
+                    out = out + b_layer(a_out)
+        elif strategy == "random" or strategy == "random_ab":
+            if num_b == 0:
+                return torch.zeros_like(a_outputs[0])
+            for a_out in a_outputs:
+                idx = torch.randint(0, num_b, (1,), device=a_out.device).item()
+                out = out + B_list[idx](a_out)
+        elif strategy == "random_ba":
+            if num_a == 0:
+                return torch.zeros_like(B_list[0](intermediate))
+            for b_layer in B_list:
+                idx = torch.randint(0, num_a, (1,), device=a_outputs[0].device).item()
+                out = out + b_layer(a_outputs[idx])
+        elif strategy == "heuristic":
+            if num_a == 1:
+                shared = a_outputs[0]
+                for b_layer in B_list:
+                    out = out + b_layer(shared)
+            else:
+                limit = min(num_a - 1, num_b)
+                for i in range(limit):
+                    out = out + B_list[i](a_outputs[i])
+                shared = a_outputs[-1]
+                for j in range(limit, num_b):
+                    out = out + B_list[j](shared)
+        else:
+            raise ValueError(f"Unsupported CoLA strategy '{strategy}'.")
+
         return out * scale
 
     def __repr__(self) -> str:
