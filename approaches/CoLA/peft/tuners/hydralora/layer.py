@@ -213,6 +213,7 @@ class HydraLoraLayer(BaseTunerLayer):
         # call this before dora_init
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
+        self._active_adapters = [adapter_name]
         self.set_adapter(self._active_adapters)
 
     def set_adapter(self, adapter_names: Union[str, list[str]]) -> None:
