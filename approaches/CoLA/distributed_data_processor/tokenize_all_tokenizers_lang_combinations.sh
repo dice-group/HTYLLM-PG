@@ -89,8 +89,8 @@ fi
 
 MERGE_WORKERS="${MERGE_WORKERS:-${MERGE_CPUS}}"
 
+#"llama-3.1-8B_tokenizer|meta-llama/Llama-3.1-8B"
 TOKENIZERS=(
-  "llama-3.1-8B_tokenizer|meta-llama/Llama-3.1-8B"
   "llama-3.2-1B_tokenizer|meta-llama/Llama-3.2-1B"
   "llama-3.2-3B_tokenizer|meta-llama/Llama-3.2-3B"
 )
