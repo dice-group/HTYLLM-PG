@@ -21,7 +21,7 @@ if [[ -n "${CONDA_BASE:-}" && -n "${CONDA_ENV:-}" ]]; then
   conda activate "${CONDA_ENV}"
 fi
 
-export WANDB_PROJECT="${WANDB_PROJECT:-moe-study-lpr}"
+export WANDB_PROJECT="${WANDB_PROJECT:-htyllm-adapter-lpr}"
 export WANDB_ENTITY="${WANDB_ENTITY:-}"
 export WANDB_RUN_GROUP="${WANDB_RUN_GROUP:-lpr-ablation}"
 export WANDB_NAME="${WANDB_NAME:-hydralora-lpr}"

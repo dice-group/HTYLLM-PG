@@ -21,7 +21,7 @@ LANGUAGE_MAP=${LANGUAGE_MAP:-/scratch/hpc-prf-merlin/joel/moe-study/configs/moel
 LANGUAGE_COLUMN=${LANGUAGE_COLUMN:-language}
 
 OUTPUT_ROOT=${OUTPUT_ROOT:-/scratch/hpc-prf-merlin/project_data/moe_study/lpr_ablation}
-WANDB_PROJECT=${WANDB_PROJECT:-moe-study-lpr}
+WANDB_PROJECT=${WANDB_PROJECT:-htyllm-adapter-lpr}
 WANDB_ENTITY=${WANDB_ENTITY:-}
 default_wandb_group="lpr-ablation"
 if [[ -z "${WANDB_RUN_GROUP+x}" ]]; then
@@ -162,6 +162,6 @@ Submitted Language-Prior ablation jobs at ${timestamp}
 $(for label in "${!JOB_IDS[@]}"; do printf "  %-18s : %s\n" "${label}" "${JOB_IDS[${label}]}"; done | sort)
 
 Outputs stored under ${OUTPUT_ROOT}
-Monitor metrics in W&B project ${WANDB_PROJECT:-htyllm-adapter-lpr}
+Monitor metrics in W&B project ${WANDB_PROJECT:-moe-study-lpr}
 ========================================
 SUMMARY
