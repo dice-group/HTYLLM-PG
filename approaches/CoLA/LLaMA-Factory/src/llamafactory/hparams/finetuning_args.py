@@ -420,12 +420,7 @@ class FinetuningArguments(
     )
     cola_strategy: Literal["fully", "random", "heuristic"] = field(
         default="fully",
-        metadata={
-            "help": (
-                "CoLA collaboration strategy. "
-                "'fully' = CoLA⊺, 'random' = CoLA† (random A/B pairing), 'heuristic' = CoLA‡ (hybrid)."
-            )
-        },
+        metadata={"help": "CoLA collaboration strategy: 'fully'=CoLA⊺, 'random'=CoLA† (random A/B), 'heuristic'=CoLA‡ (hybrid)."},
     )
 
     use_hydralora_experts: bool = field(default=False, metadata={"help": "Enable mixture-of-experts routing for HydraLoRA adapters."})
@@ -435,34 +430,16 @@ class FinetuningArguments(
     language_column: Optional[str] = field(
         default=None,
         init=False,
-        metadata={
-            "help": (
-                "Name of the dataset column that contains the language identifier per example. "
-                "If unset, language-aware routing features remain disabled."
-            )
-        },
+        metadata={"help": "Dataset column containing language identifiers; if unset, language-aware routing is disabled."},
     )
     language_map: Optional[str] = field(
         default=None,
         init=False,
-        metadata={
-            "help": (
-                "JSON string or path to a JSON file mapping languages to families, e.g. "
-                "'{\"en\": \"germanic\", \"de\": \"germanic\", \"es\": \"romance\"}'. "
-                "Used by language-prior routing."
-            )
-        },
+        metadata={"help": "JSON string/path mapping languages to families (e.g., '{\"en\": \"germanic\"}') for language-prior routing."},
     )
     language_router_mode: Literal["learned", "bias", "hard"] = field(
         default="learned",
-        metadata={
-            "help": (
-                "Routing behavior when language metadata is available: "
-                "'learned' leaves router outputs untouched, "
-                "'bias' adds a fixed bonus to the target expert/head logits, "
-                "and 'hard' enforces one-hot routing."
-            )
-        },
+        metadata={"help": "Language routing mode: 'learned'=no intervention, 'bias'=fixed logit bonus, 'hard'=one-hot."},
     )
     language_prior_weight: float = field(
         default=0.0,
@@ -470,9 +447,7 @@ class FinetuningArguments(
     )
     language_bias_value: float = field(
         default=5.0,
-        metadata={
-            "help": "Additive logit bias applied in 'bias' routing mode when language metadata is present."
-        },
+        metadata={"help": "Logit bias value applied in 'bias' routing mode."},
     )
     def __post_init__(self):
         def split_arg(arg):
