@@ -1464,8 +1464,6 @@ class Conv2d(nn.Module, ColaLayer):
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         self._check_forward_args(x, *args, **kwargs)
         adapter_names = kwargs.pop("adapter_names", None)
-        kwargs.pop("language_ids", None)
-        kwargs.pop("language_ids", None)
 
         if self.disable_adapters:
             if self.merged:

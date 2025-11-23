@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Aggregate metrics for the Language-Prior ablation runs launched via
 `scripts/comparison/run_language_prior_ablation.sh`.
