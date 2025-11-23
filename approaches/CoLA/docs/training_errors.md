@@ -1,5 +1,7 @@
 # Training Errors
 
+maybe this helps in the future for debugging
+
 ## Error 1 – DDP parameter marked ready twice
 - Command/script: `accelerate_moe_cola_train.sh` using `LLaMA-Factory/examples/accelerate/ddp_4gpu_config.yaml`.
 - Hardware/setup: 4×H100 via Slurm, bf16, CoLA LoRA experts (`cola_num_experts=4`, `cola_top_k=1`, checkpointing enabled by default).

@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from transformers import DataCollatorForSeq2Seq
 
 from ..extras.constants import IGNORE_INDEX, IMAGE_PLACEHOLDER
+from ..extras.language import LANGUAGE_PAD_ID
 from ..extras.packages import is_pillow_available
 
 
@@ -92,6 +93,8 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
 
     def __call__(self, features: Sequence[Dict[str, Any]]) -> Dict[str, "torch.Tensor"]:
         batch_images, batch_videos, batch_imglens, batch_vidlens, batch_input_ids = [], [], [], [], []
+        batch_language_ids = []
+        have_language_ids = False
         for feature in features:
             images = feature.pop("images", None) or []
             videos = feature.pop("videos", None) or []
@@ -100,6 +103,11 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
             batch_imglens.append(len(images))
             batch_vidlens.append(len(videos))
             batch_input_ids.append(feature["input_ids"])
+            lang_raw = feature.pop("language_ids", None)
+            fam_raw = feature.pop("family_ids", None)
+            if lang_raw is not None or fam_raw is not None:
+                have_language_ids = True
+            batch_language_ids.append(lang_raw if lang_raw is not None else LANGUAGE_PAD_ID)
 
         if self.processor is not None and sum(batch_imglens) == 0:  # avoid process hanging in zero3/fsdp case
             fake_messages = [{"role": "user", "content": IMAGE_PLACEHOLDER}]
@@ -147,6 +155,9 @@ class MultiModalDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
             mm_inputs["cross_attention_mask"] = F.pad(cross_attention_mask, (0, 0, 0, 0, 0, seq_len - orig_len))
 
         features.update(mm_inputs)
+        if have_language_ids:
+            features["language_ids"] = torch.tensor(batch_language_ids, dtype=torch.long)
+
         if isinstance(features.get("pixel_values"), list):  # for pixtral inputs
             features = features.data  # use default_collate() instead of BatchEncoding.to()
 

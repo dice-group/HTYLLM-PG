@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Union
+from typing import Literal, Optional, Union, List
 
 from torch import nn
 
@@ -155,6 +155,38 @@ class HydraLoraConfig(PeftConfig):
             ),
         },
     )
+    language_map: Optional[dict[str, str]] = field(
+        default=None,
+        metadata={"help": "Mapping from language id to family id for language-prior routing."},
+    )
+    language_column: Optional[str] = field(
+        default=None,
+        metadata={"help": "Dataset column used for language ids; stored for reference."},
+    )
+    language_router_mode: Literal["learned", "bias", "hard"] = field(
+        default="learned",
+        metadata={"help": "Routing behavior when language metadata is present."},
+    )
+    language_prior_weight: float = field(
+        default=0.0,
+        metadata={"help": "Auxiliary loss weight encouraging router alignment with metadata."},
+    )
+    language_bias_value: float = field(
+        default=5.0,
+        metadata={"help": "Additive logit bonus applied in 'bias' routing mode."},
+    )
+    language_list: Optional[List[str]] = field(
+        default=None,
+        metadata={"help": "Sorted language ids used for language-prior routing."},
+    )
+    family_list: Optional[List[str]] = field(
+        default=None,
+        metadata={"help": "Sorted family ids corresponding to the languages."},
+    )
+    language_to_family_ids: Optional[List[int]] = field(
+        default=None,
+        metadata={"help": "Per-language indices into `family_list` indicating membership."},
+    )
     layers_to_transform: Optional[Union[list[int], int]] = field(
         default=None,
         metadata={
@@ -262,6 +294,15 @@ class HydraLoraConfig(PeftConfig):
         # path_initial_model_for_weight_conversionl). Therefore, we only warn but don't raise an error here.
 
         self._custom_modules: Optional[dict[type[nn.Mmodule], type[nn.Module]]] = None
+        if self.language_map is not None and not isinstance(self.language_map, dict):
+            raise ValueError("language_map must be a dict mapping language ids to family ids.")
+        if self.language_list is not None and self.language_to_family_ids is not None:
+            if len(self.language_list) != len(self.language_to_family_ids):
+                raise ValueError("`language_list` and `language_to_family_ids` must have identical lengths.")
+        if self.family_list is not None and self.language_to_family_ids is not None:
+            max_idx = len(self.family_list) - 1
+            if any(idx < 0 or idx > max_idx for idx in self.language_to_family_ids):
+                raise ValueError("`language_to_family_ids` entries must index into `family_list`.")
 
     def _register_custom_module(self, mapping: dict[type[nn.Mmodule], type[nn.Module]]) -> None:
         """

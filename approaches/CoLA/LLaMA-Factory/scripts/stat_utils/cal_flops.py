@@ -28,13 +28,42 @@ def calculate_flops(
     batch_size: int = 1,
     seq_length: int = 512,
     flash_attn: str = "auto",
+    finetuning_type: str = "lora",
+    use_cola_experts: bool = False,
+    cola_num_experts: int = 1,
+    cola_top_k: int = 1,
+    cola_strategy: str = "fully",
+    num_a: int = 1,
+    num_b: int = 1,
+    lora_rank: int = 8,
+    lora_alpha: int = 16,
+    use_cola_pissa_init: bool = True,
+    cola_init_lora_weights: str = "",
 ):
     r"""
     Calculates the flops of pre-trained models.
     Usage: python cal_flops.py --model_name_or_path path_to_model --batch_size 1 --seq_length 512
     """
     with get_accelerator().device(0):
-        chat_model = ChatModel(dict(model_name_or_path=model_name_or_path, template="empty", flash_attn=flash_attn))
+        infer_args = dict(
+            model_name_or_path=model_name_or_path,
+            template="empty",
+            flash_attn=flash_attn,
+            finetuning_type=finetuning_type,
+            use_cola_experts=use_cola_experts,
+            cola_num_experts=cola_num_experts,
+            cola_top_k=cola_top_k,
+            cola_strategy=cola_strategy,
+            num_A=num_a,
+            num_B=num_b,
+            lora_rank=lora_rank,
+            lora_alpha=lora_alpha,
+            use_cola_pissa_init=use_cola_pissa_init,
+        )
+        if cola_init_lora_weights:
+            infer_args["cola_init_lora_weights"] = cola_init_lora_weights
+
+        chat_model = ChatModel(infer_args)
         fake_input = torch.ones((batch_size, seq_length), dtype=torch.long, device=chat_model.engine.model.device)
         input_dict = {"input_ids": fake_input, "labels": fake_input.clone()}
         flops, macs, params = get_model_profile(

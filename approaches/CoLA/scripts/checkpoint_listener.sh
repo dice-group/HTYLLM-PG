@@ -22,6 +22,7 @@ evaluation jobs for each one.
 Options:
   --watch-dir DIR      Directory containing checkpoint-* folders
   --eval-script SCRIPT Script run via sbatch for evaluation
+  --tokenizer PATH     Tokenizer to pass to eval script (defaults to checkpoint)
   --tasks LIST         lm-eval tasks (default: belebele)
   --batch-size N       lm-eval batch size (default: auto)
   --output-dir DIR     Where to save eval outputs (default: watch-dir/lm_eval)
@@ -36,6 +37,7 @@ EOF
 
 TASKS="belebele"
 BS="auto"
+TOK=""
 POLL=120
 WANDB_PROJ="llama31_multilingual_eval_belebele"
 WANDB_PREF="cola_moe_acc"
@@ -51,6 +53,7 @@ while [[ $# -gt 0 ]]; do
     --watch-dir) WATCH=$2; shift 2; continue;;
     --eval-script) SCRIPT=$2; shift 2; continue;;
     --tasks) TASKS=$2; shift 2; continue;;
+    --tokenizer) TOK=$2; shift 2; continue;;
     --batch-size) BS=$2; shift 2; continue;;
     --output-dir) OUT=$2; shift 2; continue;;
     --wandb-project) WANDB_PROJ=$2; shift 2; continue;;
@@ -97,6 +100,7 @@ submit() {
     --batch-size "$BS" \
     --wandb-project "$WANDB_PROJ" \
     --wandb-prefix "${wandb_prefix}" \
+    ${TOK:+--tokenizer "$TOK"} \
     ${EXTRA:+--extra-args "$EXTRA"} \
   && mark "${ckpt_path}"
 }

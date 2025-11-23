@@ -17,6 +17,7 @@ import math
 import os
 import warnings
 import logging
+
 logger = logging.getLogger(__name__)
 
 from typing import Any, Optional, Union
@@ -30,6 +31,7 @@ from transformers.pytorch_utils import Conv1D
 
 from peft.tuners.tuners_utils import BaseTunerLayer, check_adapters_to_merge
 from peft.utils.other import transpose
+from peft.metrics import record_cola_metrics
 
 from .config import ColaConfig
 import sys
@@ -40,8 +42,20 @@ except ImportError:
     FSDP = None  # FSDP not always available (e.g. single-GPU runs)
 
 
-def debug(msg: str):
+_GLOBAL_DEBUG = os.environ.get("COLA_DEBUG", "").lower() in {"1", "true", "yes", "on"}
+_GLOBAL_DEBUG_SUPPRESS = os.environ.get("COLA_SUPPRESS_DEBUG", "").lower() in {"1", "true", "yes", "on"}
+
+
+def debug(msg: str, enabled: bool = False):
+    if _GLOBAL_DEBUG_SUPPRESS:
+        return
+    if not (enabled or _GLOBAL_DEBUG):
+        return
     print(f"[DEBUG] {msg}", file=sys.stderr, flush=True)
+
+
+LANGUAGE_PAD_ID = -1
+VALID_COLA_STRATEGIES = {"fully", "random_ab", "random_ba", "heuristic"}
 
 
 class ColaLayer(BaseTunerLayer):
@@ -108,10 +122,38 @@ class ColaLayer(BaseTunerLayer):
         self.num_experts = kwargs.pop("cola_num_experts", 1)
         self.cola_debug = kwargs.pop("cola_debug", False)
         self.top_k = kwargs.pop("cola_top_k", 1)
+        self.language_list = kwargs.pop("language_list", None)
+        self.family_list = kwargs.pop("family_list", None)
+        self.language_to_family_ids = kwargs.pop("language_to_family_ids", None)
+        self.language_router_mode = kwargs.pop("language_router_mode", "learned")
+        self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
+        self.language_column = kwargs.pop("language_column", None)
+        self.cola_strategy = kwargs.pop("cola_strategy", "fully")
+        if self.cola_strategy not in VALID_COLA_STRATEGIES:
+            raise ValueError(f"Unknown CoLA collaboration strategy '{self.cola_strategy}'.")
+        self._language_to_idx = {lang: idx for idx, lang in enumerate(self.language_list)} if self.language_list else {}
+        self._family_to_idx = {fam: idx for idx, fam in enumerate(self.family_list)} if self.family_list else {}
+        self._family_a_modules: dict[int, nn.ModuleList] = {}
+        self._expert_language_idx: dict[str, Optional[int]] = {}
+        language_mapping = (
+            torch.arange(len(self.language_list), dtype=torch.long) if self.language_list else torch.empty(0, dtype=torch.long)
+        )
+        self.register_buffer("language_id_to_expert", language_mapping, persistent=False)
+        family_mapping = (
+            torch.tensor(self.language_to_family_ids, dtype=torch.long)
+            if self.language_to_family_ids is not None
+            else torch.empty(0, dtype=torch.long)
+        )
+        self.register_buffer("language_id_to_family", family_mapping, persistent=False)
 
         if self.use_cola_experts:
+            if self.language_list:
+                self.num_experts = len(self.language_list)
+                if self.top_k > self.num_experts:
+                    self.top_k = self.num_experts
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
             self._move_router_to_device_of_base_layer()
+        self._missing_language_warning_emitted = False
 
 
     def _fsdp_summon_is_active(self) -> bool:
@@ -181,17 +223,37 @@ class ColaLayer(BaseTunerLayer):
             self._active_adapters = []
             adapter_names = []
 
+            language_order = self.language_list or []
             for e in range(self.num_experts):
                 name = f"expert_{e}"
                 adapter_names.append(name)
                 self._cola_expert_parent[name] = adapter_name
+                language_idx = None
+                family_idx = None
+                if self.language_list and e < len(language_order):
+                    language_idx = e
+                    if self.language_to_family_ids is not None and language_idx < len(self.language_to_family_ids):
+                        family_idx = self.language_to_family_ids[language_idx]
+                self._expert_language_idx[name] = language_idx
 
                 self.r[name] = r
                 self.lora_alpha[name] = lora_alpha
                 self.num_A[name] = num_A
                 self.num_B[name] = num_B
                 self.lora_dropout[name] = nn.Dropout(lora_dropout) if lora_dropout > 0 else nn.Identity()
-                self.lora_A[name] = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(num_A)])
+                if family_idx is not None:
+                    shared = self._family_a_modules.get(family_idx)
+                    if shared is None:
+                        shared = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(num_A)])
+                        self._family_a_modules[family_idx] = shared
+                    module_list = nn.ModuleList()
+                    for shared_layer in shared:
+                        wrapper = nn.Linear(self.in_features, r, bias=False)
+                        wrapper.weight = shared_layer.weight
+                        module_list.append(wrapper)
+                    self.lora_A[name] = module_list
+                else:
+                    self.lora_A[name] = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(num_A)])
                 self.lora_B[name] = nn.ModuleList([nn.Linear(r, self.out_features, bias=False) for _ in range(num_B)])
                 self.scaling[name] = lora_alpha / r
 
@@ -215,7 +277,10 @@ class ColaLayer(BaseTunerLayer):
             self._verify_cola_expert_init()
             self._cola_parent_children[adapter_name] = adapter_names
             self.set_adapter(adapter_name)
-            debug(f"[MoE-COLA] Created {self.num_experts} CoLA experts (r={r}, num_A={num_A}, num_B={num_B})")
+            debug(
+                f"[MoE-COLA] Created {self.num_experts} CoLA experts (r={r}, num_A={num_A}, num_B={num_B})",
+                enabled=self.cola_debug,
+            )
             return
 
         # This code works for linear layers, override for other layer types
@@ -245,6 +310,8 @@ class ColaLayer(BaseTunerLayer):
         # call this before dora_init
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
+        # Ensure the newly added adapter becomes the only active adapter.
+        self._active_adapters = [adapter_name]
         self.set_adapter(self._active_adapters)
 
     def set_adapter(self, adapter_names: str | list[str]) -> None:
@@ -306,10 +373,10 @@ class ColaLayer(BaseTunerLayer):
         rank, world_size = self._distributed_rank_world()
         nan_count = torch.isnan(weight).sum().item()
         inf_count = torch.isinf(weight).sum().item()
-        print(
+        debug(
             f"[PiSSA-DEBUG] rank={rank}/{world_size} layer={self.get_base_layer().__class__.__name__} "
             f"shape={tuple(weight.shape)} nan={nan_count} inf={inf_count}",
-            flush=True,
+            enabled=self.cola_debug,
         )
         if not torch.isfinite(weight).all():
             raise ValueError(
@@ -369,10 +436,10 @@ class ColaLayer(BaseTunerLayer):
         rank, world_size = self._distributed_rank_world()
         nan_count = torch.isnan(weight).sum().item()
         inf_count = torch.isinf(weight).sum().item()
-        print(
+        debug(
             f"[PiSSA-DEBUG] rank={rank}/{world_size} layer={self.get_base_layer().__class__.__name__} "
             f"shape={tuple(weight.shape)} nan={nan_count} inf={inf_count}",
-            flush=True,
+            enabled=self.cola_debug,
         )
         if not torch.isfinite(weight).all():
             raise ValueError(
@@ -430,7 +497,7 @@ class ColaLayer(BaseTunerLayer):
         self._caches[key] = value
 
     def _cache_pop(self, key: str) -> Any:
-        value = self._caches.pop(key)
+        value = self._caches.pop(key, None)
         return value
 
     def _move_router_to_device_of_base_layer(self) -> None:
@@ -524,12 +591,18 @@ class ColaLayer(BaseTunerLayer):
         if not getattr(self, "cola_debug", False):
             return
 
-        debug(f"[COLA DEBUG] Verifying CoLA experts in {self.__class__.__name__} ({self.num_experts} experts)")
+        debug(
+            f"[COLA DEBUG] Verifying CoLA experts in {self.__class__.__name__} ({self.num_experts} experts)",
+            enabled=self.cola_debug,
+        )
         for i in range(self.num_experts):
-            debug(f"  Expert {i}: "
-                  f"A_shapes={[a.weight.shape for a in self.lora_A[f'expert_{i}']]}, "
-                  f"B_shapes={[b.weight.shape for b in self.lora_B[f'expert_{i}']]}, "
-                  f"scaling={self.scaling[f'expert_{i}']}")
+            debug(
+                f"  Expert {i}: "
+                f"A_shapes={[a.weight.shape for a in self.lora_A[f'expert_{i}']]}, "
+                f"B_shapes={[b.weight.shape for b in self.lora_B[f'expert_{i}']]}, "
+                f"scaling={self.scaling[f'expert_{i}']}",
+                enabled=self.cola_debug,
+            )
         for i in range(self.num_experts - 1):
             a_equal = torch.allclose(
                 self.lora_A[f'expert_{i}'][0].weight,
@@ -539,8 +612,131 @@ class ColaLayer(BaseTunerLayer):
                 self.lora_B[f'expert_{i}'][0].weight,
                 self.lora_B[f'expert_{i + 1}'][0].weight
             )
-            debug(f"[COLA DEBUG] Experts {i} vs {i + 1}: A identical={a_equal}, B identical={b_equal}")
-        debug("=" * 60)
+            debug(
+                f"[COLA DEBUG] Experts {i} vs {i + 1}: A identical={a_equal}, B identical={b_equal}",
+                enabled=self.cola_debug,
+            )
+        debug("=" * 60, enabled=self.cola_debug)
+
+    def _language_expert_targets(self, language_ids: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+        if language_ids is None or self.language_id_to_expert.numel() == 0:
+            return None
+        if not torch.is_tensor(language_ids):
+            return None
+        mapping = self.language_id_to_expert.to(language_ids.device)
+        expert_ids = torch.full_like(language_ids, LANGUAGE_PAD_ID)
+        valid = (language_ids >= 0) & (language_ids < mapping.numel())
+        if valid.any():
+            expert_ids[valid] = mapping[language_ids[valid]]
+        return expert_ids
+
+    def _log_missing_language_metadata(self, reason: str) -> None:
+        if self._missing_language_warning_emitted:
+            return
+        column = self.language_column or "<unset>"
+        logger.warning(
+            "CoLA layer '%s' is missing language routing metadata (%s). Check dataset column '%s' and language_map.",
+            self.__class__.__name__,
+            reason,
+            column,
+        )
+        self._missing_language_warning_emitted = True
+
+    def _append_language_target_metrics(
+        self,
+        metrics: dict[str, float],
+        metrics_weight: float,
+        language_targets: Optional[torch.Tensor],
+        language_ids: Optional[torch.Tensor],
+        router_probs: torch.Tensor,
+        top_indices: torch.Tensor,
+    ) -> float:
+        if language_targets is not None and torch.is_tensor(language_targets):
+            valid_batch = language_targets >= 0
+            seq_len = top_indices.size(1)
+            if valid_batch.any():
+                expanded_targets = language_targets[valid_batch].view(-1, 1).expand(-1, seq_len)
+                top1 = top_indices[valid_batch, :, 0]
+                target_hits = (top1 == expanded_targets).float()
+                target_probs = router_probs[valid_batch].gather(
+                    -1,
+                    language_targets[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
+                ).squeeze(-1)
+                valid_tokens = target_probs.numel()
+                metrics.update(
+                    {
+                        "language_target_hit_rate": float(target_hits.mean().item()),
+                        "language_target_prob_mean": float(target_probs.mean().item()),
+                        "language_target_token_frac": float(
+                            valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
+                        ),
+                    }
+                )
+                return float(valid_tokens if valid_tokens > 0 else metrics_weight)
+
+            metrics.update(
+                {
+                    "language_target_hit_rate": 0.0,
+                    "language_target_prob_mean": 0.0,
+                    "language_target_token_frac": 0.0,
+                }
+            )
+            if self.language_list:
+                self._log_missing_language_metadata("language targets were all pad ids")
+            return metrics_weight
+
+        if self.language_list:
+            metrics.update(
+                {
+                    "language_target_hit_rate": 0.0,
+                    "language_target_prob_mean": 0.0,
+                    "language_target_token_frac": 0.0,
+                }
+            )
+            if language_ids is None:
+                reason = "no language_ids tensor provided"
+            elif torch.is_tensor(language_ids) and (language_ids >= 0).any():
+                reason = "language_ids could not be mapped to experts"
+            else:
+                reason = "language_ids contained only pad ids"
+            self._log_missing_language_metadata(reason)
+        return metrics_weight
+
+    def _apply_language_bias(self, logits: torch.Tensor, expert_ids: Optional[torch.Tensor]) -> torch.Tensor:
+        if expert_ids is None or self.language_router_mode != "bias":
+            return logits
+        valid = expert_ids >= 0
+        if not valid.any():
+            return logits
+        bias = torch.zeros(logits.size(0), logits.size(-1), device=logits.device, dtype=logits.dtype)
+        bias[valid, expert_ids[valid]] = self.language_bias_value
+        return logits + bias.unsqueeze(1)
+
+    def _enforce_language_routing(
+        self, topi: torch.Tensor, weights: torch.Tensor, expert_ids: Optional[torch.Tensor]
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if expert_ids is None or self.language_router_mode != "hard":
+            return topi, weights
+        valid = expert_ids >= 0
+        if not valid.any():
+            return topi, weights
+        seq_len = topi.size(1)
+        replacement = expert_ids[valid].view(-1, 1, 1).expand(-1, seq_len, self.top_k)
+        topi = topi.clone()
+        weights = weights.clone()
+        topi[valid] = replacement
+        weights[valid] = 0
+        weights[valid, :, 0] = 1
+        return topi, weights
+
+    def _cache_router_state(
+        self, logits: torch.Tensor, language_ids: Optional[torch.Tensor], expert_ids: Optional[torch.Tensor]
+    ) -> None:
+        self._cache_store("cola_router_logits", logits)
+        if language_ids is not None and torch.is_tensor(language_ids):
+            self._cache_store("cola_router_language_ids", language_ids)
+        if expert_ids is not None and torch.is_tensor(expert_ids):
+            self._cache_store("cola_router_targets", expert_ids)
 
 
 """
@@ -608,6 +804,15 @@ class Linear(nn.Module, ColaLayer):
 
         self._check_forward_args(x, *args, **kwargs)
         adapter_names = kwargs.pop("adapter_names", None)
+        language_ids = kwargs.pop("language_ids", None)
+        if isinstance(language_ids, torch.Tensor):
+            language_ids = language_ids.to(x.device).long()
+            if language_ids.dim() > 1:
+                language_ids = language_ids.view(language_ids.size(0))
+        else:
+            language_ids = None
+        # currently unused but popped to avoid leaking into base layer
+
         if self.disable_adapters:
             if self.merged:
                 self.unmerge()
@@ -626,43 +831,98 @@ class Linear(nn.Module, ColaLayer):
                 for active_adapter in self._active_adapters:
                     if active_adapter not in self.lora_A.keys():
                         continue
-                    # assert self.num_A[active_adapter] <= self.num_B[active_adapter], "The number of matrix A must not exceed the number of matrix B"
                     lora_A = self.lora_A[active_adapter]
                     lora_B = self.lora_B[active_adapter]
 
                     dropout = self.lora_dropout[active_adapter]
                     scaling = self.scaling[active_adapter]
-                    x = x.to(lora_A[0].weight.dtype)
+                    adapter_input = dropout(x.to(lora_A[0].weight.dtype))
+                    a_outputs = [layer(adapter_input) for layer in lora_A]
+                    if not a_outputs or len(lora_B) == 0:
+                        continue
 
-                    # Fully Collaborative Strategy
-                    for i in range(self.num_A[active_adapter]):
-                        for j in range(self.num_B[active_adapter]):
-                            result = result + lora_B[j](lora_A[i](dropout(x))) * scaling
-
-                    # Random Collaborative Strategy #TODO: make configurable which to use
-                    # import random
-                    # for i in range(self.num_A[active_adapter]):
-                    #     result = result + random.choice(lora_B)(lora_A[i](dropout(x))) * scaling
-
-                    # Random Collaborative Strategy (reversal)
-                    # import random
-                    # for i in range(self.num_B[active_adapter]):
-                    #     result = result + lora_B[i](random.choice(lora_A)(dropout(x))) * scaling
-
-                    # Heuristic Collaborative Strategy
-                    # lora_num = self.num_B[active_adapter] // self.num_A[active_adapter]
-                    # B_i = 0
-                    # for i in range(self.num_A[active_adapter]):
-                    #     for _ in range(lora_num):
-                    #         result = result + lora_B[B_i](lora_A[i](dropout(x))) * scaling
-                    #         B_i += 1
-                    # for i in range(B_i, self.num_B[active_adapter]):
-                    #     result = result + lora_B[i](lora_A[i-B_i](dropout(x))) * scaling
+                    if self.cola_strategy == "fully":
+                        for a_out in a_outputs:
+                            for B_layer in lora_B:
+                                result = result + B_layer(a_out) * scaling
+                    elif self.cola_strategy == "random_ab":
+                        if len(lora_B) == 0:
+                            continue
+                        for a_out in a_outputs:
+                            idx = torch.randint(len(lora_B), (1,), device=a_out.device).item()
+                            result = result + lora_B[idx](a_out) * scaling
+                    elif self.cola_strategy == "random_ba":
+                        if len(a_outputs) == 0:
+                            continue
+                        for B_layer in lora_B:
+                            idx = torch.randint(len(a_outputs), (1,), device=a_outputs[0].device).item()
+                            result = result + B_layer(a_outputs[idx]) * scaling
+                    elif self.cola_strategy == "heuristic":
+                        num_a = len(a_outputs)
+                        num_b = len(lora_B)
+                        if num_b < num_a or num_a == 0:
+                            # fall back to fully-collaborative if not enough B heads
+                            for a_out in a_outputs:
+                                for B_layer in lora_B:
+                                    result = result + B_layer(a_out) * scaling
+                            continue
+                        ratio = max(1, num_b // num_a)
+                        b_idx = 0
+                        for a_out in a_outputs:
+                            assigned = 0
+                            while assigned < ratio and b_idx < num_b:
+                                result = result + lora_B[b_idx](a_out) * scaling
+                                b_idx += 1
+                                assigned += 1
+                        while b_idx < num_b:
+                            target_idx = b_idx % num_a
+                            result = result + lora_B[b_idx](a_outputs[target_idx]) * scaling
+                            b_idx += 1
+                    else:
+                        raise ValueError(f"Unsupported CoLA strategy '{self.cola_strategy}'.")
 
             else:
-                logits = self.router(x.to(torch.float32)).to(x.dtype)
+                router_dtype = self.router.weight.dtype
+                router_inp = x.to(router_dtype)
+                logits = self.router(router_inp)
+                language_targets = self._language_expert_targets(language_ids)
+                self._cache_router_state(logits, language_ids, language_targets)
+                logits = self._apply_language_bias(logits, language_targets)
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
                 weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
+                topi, weights = self._enforce_language_routing(topi, weights, language_targets)
+                with torch.no_grad():
+                    token_count = topi.numel()
+                    if token_count > 0:
+                        flat_indices = topi.reshape(-1)
+                        counts = torch.bincount(flat_indices, minlength=self.num_experts).to(torch.float32)
+                        active_frac = float((counts > 0).float().mean().item())
+                        mean_load = counts.mean().item()
+                        if mean_load > 0:
+                            load_cv = float((counts.std(unbiased=False) / (mean_load + 1e-6)).item())
+                        else:
+                            load_cv = 0.0
+
+                        router_probs = torch.softmax(logits.to(torch.float32), dim=-1)
+                        entropy = float((-router_probs * torch.log(router_probs + 1e-8)).sum(dim=-1).mean().item())
+                        weight_mean = float(weights.mean().item())
+
+                        metrics = {
+                            "expert_load_cv": load_cv,
+                            "active_expert_frac": active_frac,
+                            "router_entropy": entropy,
+                            "topk_weight_mean": weight_mean,
+                        }
+                        metrics_weight = float(token_count)
+                        metrics_weight = self._append_language_target_metrics(
+                            metrics=metrics,
+                            metrics_weight=metrics_weight,
+                            language_targets=language_targets,
+                            language_ids=language_ids,
+                            router_probs=router_probs,
+                            top_indices=topi,
+                        )
+                        record_cola_metrics(metrics, weight=metrics_weight)
 
                 expert_outs = [self._adapter_delta(x, f"expert_{e}") for e in range(self.num_experts)]
                 expert_outs = torch.stack(expert_outs, dim=-1)  # [B, S, D_out, E]
@@ -778,14 +1038,66 @@ class Linear(nn.Module, ColaLayer):
         drop = self.lora_dropout[name]
         scale = self.scaling[name]
 
+        if not A_list or not B_list:
+            return torch.zeros_like(x, dtype=self.get_base_layer().weight.dtype)
+
         intermediate = drop(x.to(A_list[0].weight.dtype))
-        a_dot_x = sum(A(intermediate) for A in A_list)
-        out = sum(B(a_dot_x) for B in B_list)
+        a_outputs = [A(intermediate) for A in A_list]
+        num_a = len(a_outputs)
+        num_b = len(B_list)
+        strategy = getattr(self, "cola_strategy", "fully")
+        if strategy == "heuristic" and (num_b < num_a or num_a == 0):
+            strategy = "fully"
+        if strategy.startswith("random") and num_b == 0:
+            strategy = "fully"
+
+        out = 0
+        if strategy == "fully":
+            for a_out in a_outputs:
+                for b_layer in B_list:
+                    out = out + b_layer(a_out)
+        elif strategy == "random" or strategy == "random_ab":
+            if num_b == 0:
+                return torch.zeros_like(a_outputs[0])
+            for a_out in a_outputs:
+                idx = torch.randint(0, num_b, (1,), device=a_out.device).item()
+                out = out + B_list[idx](a_out)
+        elif strategy == "random_ba":
+            if num_a == 0:
+                return torch.zeros_like(B_list[0](intermediate))
+            for b_layer in B_list:
+                idx = torch.randint(0, num_a, (1,), device=a_outputs[0].device).item()
+                out = out + b_layer(a_outputs[idx])
+        elif strategy == "heuristic":
+            if num_a == 1:
+                shared = a_outputs[0]
+                for b_layer in B_list:
+                    out = out + b_layer(shared)
+            else:
+                limit = min(num_a - 1, num_b)
+                for i in range(limit):
+                    out = out + B_list[i](a_outputs[i])
+                shared = a_outputs[-1]
+                for j in range(limit, num_b):
+                    out = out + B_list[j](shared)
+        else:
+            raise ValueError(f"Unsupported CoLA strategy '{strategy}'.")
+
         return out * scale
 
     def __repr__(self) -> str:
         rep = super().__repr__()
         return "lora." + rep
+
+    def pop_language_router_cache(self) -> list[tuple[str, torch.Tensor, torch.Tensor]]:
+        caches: list[tuple[str, torch.Tensor, torch.Tensor]] = []
+        logits = self._cache_pop("cola_router_logits")
+        targets = self._cache_pop("cola_router_targets")
+        if logits is not None and targets is not None:
+            caches.append(("cola_expert", logits, targets))
+        # ensure we clear stale metadata
+        self._cache_pop("cola_router_language_ids")
+        return caches
 
 
 class Embedding(nn.Module, ColaLayer):

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Union
+from typing import Literal, Optional, Union, List
 
 from torch import nn
 
@@ -111,6 +111,16 @@ class ColaConfig(PeftConfig):
     cola_num_experts: int = field(default=1, metadata={"help": "Number of experts per CoLA layer when MoE is enabled."})
     cola_top_k: int = field(default=1, metadata={"help": "Number of experts to route tokens to when MoE is enabled (top-k gating)."})
     cola_debug: bool = field(default=False, metadata={"help": "Enable additional CoLA debug diagnostics."})
+    cola_strategy: Literal["fully", "random", "heuristic"] = field(
+        default="fully",
+        metadata={
+            "help": (
+                "Collaboration strategy between A/B matrices. "
+                "'fully' corresponds to CoLA⊺, 'random' approximates CoLA† (random A-B pairing), "
+                "and 'heuristic' follows CoLA‡ (mix of one-to-one plus shared A)."
+            )
+        },
+    )
     fan_in_fan_out: bool = field(
         default=False,
         metadata={"help": "Set this to True if the layer to replace stores weight like (fan_in, fan_out)"},
@@ -139,6 +149,48 @@ class ColaConfig(PeftConfig):
                 "where [number of iters] indicates the number of subspace iterations to perform fsvd, and must be a nonnegative integer."
             ),
         },
+    )
+    language_map: Optional[dict[str, str]] = field(
+        default=None,
+        metadata={
+            "help": "Mapping from language id to family id used for language-prior routing."
+        },
+    )
+    language_column: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Name of the dataset column that carries language ids. Stored for reference."
+        },
+    )
+    language_router_mode: Literal["learned", "bias", "hard"] = field(
+        default="learned",
+        metadata={
+            "help": "Routing behavior when language metadata is available."
+        },
+    )
+    language_prior_weight: float = field(
+        default=0.0,
+        metadata={
+            "help": "Auxiliary loss weight encouraging router alignment with language metadata."
+        },
+    )
+    language_bias_value: float = field(
+        default=5.0,
+        metadata={
+            "help": "Additive logit bias applied in 'bias' routing mode."
+        },
+    )
+    language_list: Optional[List[str]] = field(
+        default=None,
+        metadata={"help": "Sorted list of languages used for language-prior routing."},
+    )
+    family_list: Optional[List[str]] = field(
+        default=None,
+        metadata={"help": "Sorted list of language families used for language-prior routing."},
+    )
+    language_to_family_ids: Optional[List[int]] = field(
+        default=None,
+        metadata={"help": "For each language in `language_list`, the index of its family in `family_list`."},
     )
     layers_to_transform: Optional[Union[list[int], int]] = field(
         default=None,
@@ -247,6 +299,15 @@ class ColaConfig(PeftConfig):
         # path_initial_model_for_weight_conversionl). Therefore, we only warn but don't raise an error here.
 
         self._custom_modules: Optional[dict[type[nn.Mmodule], type[nn.Module]]] = None
+        if self.language_map is not None and not isinstance(self.language_map, dict):
+            raise ValueError("language_map must be a dict mapping language ids to family ids.")
+        if self.language_list is not None and self.language_to_family_ids is not None:
+            if len(self.language_list) != len(self.language_to_family_ids):
+                raise ValueError("`language_list` and `language_to_family_ids` must be the same length.")
+        if self.family_list is not None and self.language_to_family_ids is not None:
+            max_idx = len(self.family_list) - 1
+            if any(idx < 0 or idx > max_idx for idx in self.language_to_family_ids):
+                raise ValueError("Entries in `language_to_family_ids` must index into `family_list`.")
 
     def _register_custom_module(self, mapping: dict[type[nn.Mmodule], type[nn.Module]]) -> None:
         """

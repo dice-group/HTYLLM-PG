@@ -32,6 +32,13 @@ if TYPE_CHECKING:
 logger = logging.get_logger(__name__)
 
 
+def _extract_language(example: Dict[str, Any], dataset_attr: "DatasetAttr", data_args: "DataArguments") -> Optional[str]:
+    column = dataset_attr.language or data_args.language_column
+    if column and column in example and example[column] is not None:
+        return str(example[column])
+    return None
+
+
 def _convert_images(
     images: Union["ImageInput", Sequence["ImageInput"]],
     dataset_attr: "DatasetAttr",
@@ -130,6 +137,7 @@ def convert_alpaca(
         "_tools": example[dataset_attr.tools] if dataset_attr.tools else "",
         "_images": convert_images(example[dataset_attr.images]) if dataset_attr.images else None,
         "_videos": convert_videos(example[dataset_attr.videos]) if dataset_attr.videos else None,
+        "_language": _extract_language(example, dataset_attr, data_args),
     }
     return output
 
@@ -223,6 +231,7 @@ def convert_sharegpt(
         "_tools": example[dataset_attr.tools] if dataset_attr.tools else "",
         "_images": convert_images(example[dataset_attr.images]) if dataset_attr.images else None,
         "_videos": convert_videos(example[dataset_attr.videos]) if dataset_attr.videos else None,
+        "_language": _extract_language(example, dataset_attr, data_args),
     }
     return output
 

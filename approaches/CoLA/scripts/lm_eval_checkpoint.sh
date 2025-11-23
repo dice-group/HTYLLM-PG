@@ -39,7 +39,6 @@ module load toolchain/foss/2024a system/CUDA/12.6.0 lib/NCCL/2.22.3-GCCcore-13.3
 source /opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3/etc/profile.d/conda.sh
 conda activate cola_llama_factory
 
-export CUDA_VISIBLE_DEVICES=${SLURM_JOB_GPUS:-0}
 export PYTHONUNBUFFERED=1
 
 # run params

@@ -16,7 +16,7 @@
 
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import torch
 
@@ -25,6 +25,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import is_fsdp_enabled
 
 from ..extras import logging
+from ..extras.language import load_language_map
 from .model_utils.misc import find_all_linear_modules, find_expanded_modules
 from .model_utils.quantization import QuantizationMethod
 from .model_utils.unsloth import get_unsloth_peft_model, load_unsloth_peft_model
@@ -39,6 +40,16 @@ if TYPE_CHECKING:
 
 
 logger = logging.get_logger(__name__)
+
+
+def _build_language_metadata(language_map: Optional[dict[str, str]]):
+    if not language_map:
+        return None, None, None
+    languages = sorted(language_map.keys())
+    families = sorted(set(language_map.values()))
+    family_to_idx = {family: idx for idx, family in enumerate(families)}
+    language_to_family_ids = [family_to_idx[language_map[lang]] for lang in languages]
+    return languages, families, language_to_family_ids
 
 
 def _setup_full_tuning(
@@ -367,10 +378,25 @@ def _setup_cola_tuning(
             "cola_num_experts": finetuning_args.cola_num_experts,
             "cola_top_k": finetuning_args.cola_top_k,
             "cola_debug": finetuning_args.cola_debug,
+            "cola_strategy": finetuning_args.cola_strategy,
             # "cola_type": finetuning_args.cola_type,
             # "expert_num": finetuning_args.expert_num,
             "modules_to_save": finetuning_args.additional_target,
         }
+        language_map = load_language_map(finetuning_args.language_map)
+        language_list, family_list, language_to_family = _build_language_metadata(language_map)
+        peft_kwargs.update(
+            {
+                "language_map": language_map,
+                "language_list": language_list,
+                "family_list": family_list,
+                "language_to_family_ids": language_to_family,
+                "language_column": finetuning_args.language_column,
+                "language_router_mode": finetuning_args.language_router_mode,
+                "language_prior_weight": finetuning_args.language_prior_weight,
+                "language_bias_value": finetuning_args.language_bias_value,
+            }
+        )
         init_lora_weights = finetuning_args.cola_init_lora_weights
         if init_lora_weights is None:
             if finetuning_args.use_cola_pissa_init:
@@ -752,6 +778,20 @@ def _setup_hydralora_tuning(
 
             "modules_to_save": finetuning_args.additional_target,
         }
+        language_map = load_language_map(finetuning_args.language_map)
+        language_list, family_list, language_to_family = _build_language_metadata(language_map)
+        peft_kwargs.update(
+            {
+                "language_map": language_map,
+                "language_list": language_list,
+                "family_list": family_list,
+                "language_to_family_ids": language_to_family,
+                "language_column": finetuning_args.language_column,
+                "language_router_mode": finetuning_args.language_router_mode,
+                "language_prior_weight": finetuning_args.language_prior_weight,
+                "language_bias_value": finetuning_args.language_bias_value,
+            }
+        )
 
         if model_args.use_unsloth:
             model = get_unsloth_peft_model(model, model_args, peft_kwargs)

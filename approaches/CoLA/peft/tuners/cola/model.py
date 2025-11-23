@@ -56,6 +56,14 @@ def _adapter_names_pre_forward_hook(target, args, kwargs, adapter_names):
     return args, kwargs
 
 
+def _language_ids_pre_forward_hook(target, args, kwargs, language_ids, family_ids):
+    if language_ids is not None:
+        kwargs["language_ids"] = language_ids
+    if family_ids is not None:
+        kwargs["family_ids"] = family_ids
+    return args, kwargs
+
+
 class ColaModel(BaseTuner):
     """
     Creates Low Rank Adapter (LoRA) model from a pretrained transformers model.
@@ -191,6 +199,12 @@ class ColaModel(BaseTuner):
             "cola_num_experts": lora_config.cola_num_experts,
             "cola_top_k": lora_config.cola_top_k,
             "cola_debug": lora_config.cola_debug,
+            "cola_strategy": lora_config.cola_strategy,
+            "language_list": lora_config.language_list,
+            "family_list": lora_config.family_list,
+            "language_to_family_ids": lora_config.language_to_family_ids,
+            "language_router_mode": lora_config.language_router_mode,
+            "language_bias_value": lora_config.language_bias_value,
             "fan_in_fan_out": lora_config.fan_in_fan_out,
             "init_lora_weights": lora_config.init_lora_weights,
             "loaded_in_8bit": getattr(self.model, "is_loaded_in_8bit", False),
@@ -394,27 +408,40 @@ class ColaModel(BaseTuner):
 
     @contextmanager
     def _enable_peft_forward_hooks(self, *args, **kwargs):
-        # If adapter_names is passed as an argument, we inject it into the forward arguments.
+        hook_handles = []
+        # adapter-specific hooks (inference only)
         adapter_names = kwargs.pop("adapter_names", None)
-        if adapter_names is None:
+        if adapter_names is not None:
+            if self.training:
+                raise ValueError("Cannot pass `adapter_names` when the model is in training mode.")
+            for module in self.modules():
+                if isinstance(module, ColaLayer):
+                    pre_forward = partial(_adapter_names_pre_forward_hook, adapter_names=adapter_names)
+                    handle = module.register_forward_pre_hook(pre_forward, with_kwargs=True)
+                    hook_handles.append(handle)
+
+        language_ids = kwargs.pop("language_ids", None)
+        if language_ids is not None:
+            for module in self.modules():
+                if isinstance(module, ColaLayer):
+                    pre_forward = partial(
+                        _language_ids_pre_forward_hook,
+                        language_ids=language_ids,
+                        family_ids=None,
+                    )
+                    handle = module.register_forward_pre_hook(pre_forward, with_kwargs=True)
+                    hook_handles.append(handle)
+
+        if not hook_handles:
             # nothing to do
             yield
             return
 
-        if self.training:
-            raise ValueError("Cannot pass `adapter_names` when the model is in training mode.")
-
-        hook_handles = []
-        for module in self.modules():
-            if isinstance(module, ColaLayer):
-                pre_forward = partial(_adapter_names_pre_forward_hook, adapter_names=adapter_names)
-                handle = module.register_forward_pre_hook(pre_forward, with_kwargs=True)
-                hook_handles.append(handle)
-
-        yield
-
-        for handle in hook_handles:
-            handle.remove()
+        try:
+            yield
+        finally:
+            for handle in hook_handles:
+                handle.remove()
 
     def _check_merge_allowed(self):
         """Verify that the configuration supports merging.

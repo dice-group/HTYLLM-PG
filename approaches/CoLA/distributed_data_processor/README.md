@@ -156,7 +156,20 @@ for clean up everythign if necessary:
 ```bash
 BASE=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter
 TOKENIZERS=(llama-3.1-8B_tokenizer llama-3.2-1B_tokenizer llama-3.2-3B_tokenizer)
-SUBSETS=(5_langs 10_langs 46_langs 95_langs 199_langs)
+SUBSETS=(
+  5_langs
+  10_langs
+  22_langs
+  46_langs
+  95_langs
+  199_langs
+  eng_plus_5_langs
+  eng_plus_10_langs
+  eng_plus_22_langs
+  eng_plus_46_langs
+  eng_plus_95_langs
+  eng_plus_199_langs
+)
 for tok in "${TOKENIZERS[@]}"; do
   for subset in "${SUBSETS[@]}"; do
     TARGET="${BASE}/${tok}/${subset}"
@@ -183,19 +196,31 @@ ls /scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter
 Only remove rank folders when you no longer need to re-run merges:
 
 ```bash
-  BASE=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter
-  TOKENIZERS=(llama-3.1-8B_tokenizer llama-3.2-1B_tokenizer llama-3.2-
-  3B_tokenizer)
-  SUBSETS=(5_langs 10_langs 46_langs 95_langs 199_langs)
-  for tok in "${TOKENIZERS[@]}"; do
-    for subset in "${SUBSETS[@]}"; do
-      TARGET="${BASE}/${tok}/${subset}_ranks" # we only remove ranks and keep combined datasets
-      if [[ -d "${TARGET}" ]]; then
-        echo "Removing ${TARGET}"
-        rm -rf "${TARGET}"
-      fi
-    done
+BASE=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter
+TOKENIZERS=(llama-3.1-8B_tokenizer llama-3.2-1B_tokenizer llama-3.2-3B_tokenizer)
+SUBSETS=(
+  5_langs
+  10_langs
+  22_langs
+  46_langs
+  95_langs
+  199_langs
+  eng_plus_5_langs
+  eng_plus_10_langs
+  eng_plus_22_langs
+  eng_plus_46_langs
+  eng_plus_95_langs
+  eng_plus_199_langs
+)
+for tok in "${TOKENIZERS[@]}"; do
+  for subset in "${SUBSETS[@]}"; do
+    TARGET="${BASE}/${tok}/${subset}_ranks" # we only remove ranks and keep combined datasets
+    if [[ -d "${TARGET}" ]]; then
+      echo "Removing ${TARGET}"
+      rm -rf "${TARGET}"
+    fi
   done
+done
 ```
 
 Rank directories persist by design so you can re-run `merge_tokenized_ranks.py` without re-tokenizing data. Delete them to save space only after the merged datasets are verified

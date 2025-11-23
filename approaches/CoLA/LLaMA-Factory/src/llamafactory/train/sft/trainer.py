@@ -17,11 +17,13 @@
 
 import json
 import os
+from collections import defaultdict
 from types import MethodType
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from transformers import Seq2SeqTrainer
 from typing_extensions import override
 
@@ -58,7 +60,6 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
 
         super().__init__(**kwargs)
         self.finetuning_args = finetuning_args
-
         if processor is not None:
             self.add_callback(SaveProcessorCallback(processor))
 
@@ -95,26 +96,17 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         r"""
         Fixes the loss value. See https://github.com/huggingface/transformers/pull/35438 for details.
         """
-        # if True:
-        #     outputs, router_logits = model(**inputs)
-        #     print(f'routes_logits: {router_logits}')
-        #     import sys
-        #     sys.exit()
-        #     loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
-        #     if kwargs.get("num_items_in_batch") and not getattr(self, "model_accepts_loss_kwargs", False):
-        #         if return_outputs:
-        #             loss = (loss[0] / self.args.gradient_accumulation_steps, *loss[1:])
-        #         else:
-        #             loss = loss / self.args.gradient_accumulation_steps
-        # else:
-        loss = super().compute_loss(model, inputs, return_outputs, **kwargs)
-        if kwargs.get("num_items_in_batch") and not getattr(self, "model_accepts_loss_kwargs", False):
-            if return_outputs:
-                loss = (loss[0] / self.args.gradient_accumulation_steps, *loss[1:])
-            else:
-                loss = loss / self.args.gradient_accumulation_steps
+        base = super().compute_loss(model, inputs, return_outputs, **kwargs)
+        language_loss = self._compute_language_prior_loss()
+        if language_loss is None:
+            return base
 
-        return loss
+        if return_outputs:
+            loss, outputs = base
+            loss = loss + language_loss
+            return loss, outputs
+
+        return base + language_loss
 
     @override
     def prediction_step(
@@ -143,6 +135,20 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
             generated_tokens = generated_tokens.contiguous()
 
         return loss, generated_tokens, labels
+
+    @override
+    def log(self, logs: Dict[str, float]) -> None:
+        metrics_logs = self._flush_tracked_metrics()
+        if metrics_logs:
+            logs.update(metrics_logs)
+        super().log(logs)
+
+    def _flush_tracked_metrics(self) -> Dict[str, float]:
+        try:
+            from peft.metrics import pop_tracked_metrics
+        except ImportError:
+            return {}
+        return pop_tracked_metrics()
 
     def save_predictions(
         self, dataset: "Dataset", predict_results: "PredictionOutput", skip_special_tokens: bool = True
@@ -179,3 +185,39 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         with open(output_prediction_file, "w", encoding="utf-8") as f:
             for text, pred, label in zip(decoded_inputs, decoded_preds, decoded_labels):
                 f.write(json.dumps({"prompt": text, "predict": pred, "label": label}, ensure_ascii=False) + "\n")
+
+    def _compute_language_prior_loss(self) -> Optional[torch.Tensor]:
+        weight = getattr(self.finetuning_args, "language_prior_weight", 0.0) or 0.0
+        if weight <= 0:
+            self._flush_language_router_cache()
+            return None
+
+        states = self._flush_language_router_cache()
+        if not states:
+            return None
+
+        losses = []
+        for _, logits, targets in states:
+            if logits is None or targets is None:
+                continue
+            if logits.dim() > 2:
+                logits = logits.mean(dim=1)
+            valid = targets >= 0
+            if not valid.any():
+                continue
+            losses.append(F.cross_entropy(logits[valid], targets[valid], reduction="mean"))
+
+        if not losses:
+            return None
+
+        aux = weight * sum(losses) / len(losses)
+        self.log({"language_prior_loss": aux.detach()})
+        return aux
+
+    def _flush_language_router_cache(self) -> list[tuple[str, torch.Tensor, torch.Tensor]]:
+        caches: list[tuple[str, torch.Tensor, torch.Tensor]] = []
+        for module in self.model.modules():
+            pop_fn = getattr(module, "pop_language_router_cache", None)
+            if callable(pop_fn):
+                caches.extend(pop_fn())
+        return caches

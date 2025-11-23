@@ -163,6 +163,19 @@ def _parse_eval_args(args: Optional[Dict[str, Any]] = None) -> _EVAL_CLS:
 
 def get_train_args(args: Optional[Dict[str, Any]] = None) -> _TRAIN_CLS:
     model_args, data_args, training_args, finetuning_args, generating_args = _parse_train_args(args)
+    if data_args.language_column is None:
+        data_args.language_column = finetuning_args.language_column
+    elif finetuning_args.language_column is None:
+        finetuning_args.language_column = data_args.language_column
+    elif data_args.language_column != finetuning_args.language_column:
+        raise ValueError("`language_column` mismatch between data and finetuning arguments.")
+
+    if data_args.language_map is None:
+        data_args.language_map = finetuning_args.language_map
+    elif finetuning_args.language_map is None:
+        finetuning_args.language_map = data_args.language_map
+    elif data_args.language_map != finetuning_args.language_map:
+        raise ValueError("`language_map` mismatch between data and finetuning arguments.")
 
     # Setup logging
     if training_args.should_log:

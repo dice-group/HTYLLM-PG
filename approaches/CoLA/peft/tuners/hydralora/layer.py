@@ -16,7 +16,9 @@ from __future__ import annotations
 import math
 import warnings
 import logging
+
 logger = logging.getLogger(__name__)
+
 from typing import Any, Optional, Union
 
 import torch
@@ -28,13 +30,19 @@ from transformers.pytorch_utils import Conv1D
 from peft.tuners.tuners_utils import BaseTunerLayer, check_adapters_to_merge
 from peft.utils.integrations import dequantize_module_weight, gather_params_ctx
 from peft.utils.other import transpose
+from peft.metrics import record_hydralora_metrics
 
 from .config import HydraLoraConfig
 
 import sys
 
+
 def debug(msg: str):
     print(f"[DEBUG] {msg}", file=sys.stderr, flush=True)
+
+
+LANGUAGE_PAD_ID = -1
+
 
 class HydraLoraLayer(BaseTunerLayer):
     # All names of layers that may contain (trainable) adapter weights
@@ -98,17 +106,39 @@ class HydraLoraLayer(BaseTunerLayer):
         self.in_features = in_features
         self.out_features = out_features
 
-        #self.W_V = None
-        #self.W_S = None
-        #self.Uh = None
+        # self.W_V = None
+        # self.W_S = None
+        # self.Uh = None
 
         # hierarchical design addition
         self.use_hydralora_experts = kwargs.pop("use_hydralora_experts", False)
         self.num_experts = kwargs.pop("hydralora_num_experts", 1)
         self.top_k = kwargs.pop("hydralora_top_k", 1)
         self.hydralora_debug = kwargs.pop("hydralora_debug", False)
+        self.language_list = kwargs.pop("language_list", None)
+        self.family_list = kwargs.pop("family_list", None)
+        self.language_to_family_ids = kwargs.pop("language_to_family_ids", None)
+        self.language_router_mode = kwargs.pop("language_router_mode", "learned")
+        self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
+        self.language_column = kwargs.pop("language_column", None)
+        self._language_to_idx = {lang: idx for idx, lang in enumerate(self.language_list)} if self.language_list else {}
+        language_expert_mapping = (
+            torch.arange(len(self.language_list), dtype=torch.long) if self.language_list else torch.empty(0,
+                                                                                                           dtype=torch.long)
+        )
+        self.register_buffer("language_id_to_expert", language_expert_mapping, persistent=False)
+        family_mapping = (
+            torch.tensor(self.language_to_family_ids, dtype=torch.long)
+            if self.language_to_family_ids is not None
+            else torch.empty(0, dtype=torch.long)
+        )
+        self.register_buffer("language_id_to_family", family_mapping, persistent=False)
 
         if self.use_hydralora_experts:
+            if self.language_list:
+                self.num_experts = len(self.language_list)
+                if self.top_k > self.num_experts:
+                    self.top_k = self.num_experts
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
             self._move_router_to_device_of_base_layer()
             if self.hydralora_debug:
@@ -116,10 +146,10 @@ class HydraLoraLayer(BaseTunerLayer):
                     f"[HYDRA DEBUG] Initialized router in {self.__class__.__name__} "
                     f"(in={self.in_features}, experts={self.num_experts}, top_k={self.top_k})"
                 )
-
+        self._missing_language_warning_emitted: set[str] = set()
 
     def update_layer(
-        self, adapter_name, r, lora_alpha, lora_dropout, lora_num, init_lora_weights
+            self, adapter_name, r, lora_alpha, lora_dropout, lora_num, init_lora_weights
     ):
         # Hierarchical HydraLoRA
         if self.use_hydralora_experts and adapter_name == getattr(self, "_active_adapter", adapter_name):
@@ -160,11 +190,11 @@ class HydraLoraLayer(BaseTunerLayer):
             # Use the *parent* name for external API; children are stored in _hydra_parent_children
             self.set_adapter(adapter_name)
             return
-        
+
         # This code works for linear layers, override for other layer types
         if r <= 0:
             raise ValueError(f"`r` should be a positive integer value but the value passed is {r}")
-        
+
         self.r[adapter_name] = r
         self.lora_alpha[adapter_name] = lora_alpha
         self.lora_num[adapter_name] = lora_num
@@ -176,7 +206,8 @@ class HydraLoraLayer(BaseTunerLayer):
         self.lora_dropout.update(nn.ModuleDict({adapter_name: lora_dropout_layer}))
         # Actual trainable parameters
         self.lora_A[adapter_name] = nn.Linear(self.in_features, r, bias=False)
-        self.lora_B[adapter_name] = nn.ModuleList([nn.Linear(r, self.out_features, bias=False) for _ in range(lora_num)])
+        self.lora_B[adapter_name] = nn.ModuleList(
+            [nn.Linear(r, self.out_features, bias=False) for _ in range(lora_num)])
         self.lora_route[adapter_name] = nn.Linear(self.in_features, lora_num, bias=False)
 
         self.scaling[adapter_name] = lora_alpha / r
@@ -186,6 +217,7 @@ class HydraLoraLayer(BaseTunerLayer):
         # call this before dora_init
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
+        self._active_adapters = [adapter_name]
         self.set_adapter(self._active_adapters)
 
     def set_adapter(self, adapter_names: Union[str, list[str]]) -> None:
@@ -242,12 +274,11 @@ class HydraLoraLayer(BaseTunerLayer):
             nn.init.zeros_(self.lora_embedding_A[adapter_name])
             nn.init.normal_(self.lora_embedding_B[adapter_name])
 
-
     def _cache_store(self, key: str, value: Any) -> None:
         self._caches[key] = value
 
     def _cache_pop(self, key: str) -> Any:
-        value = self._caches.pop(key)
+        value = self._caches.pop(key, None)
         return value
 
     def _move_router_to_device_of_base_layer(self) -> None:
@@ -305,7 +336,7 @@ class HydraLoraLayer(BaseTunerLayer):
             raise ValueError(msg)
 
     def _mixed_batch_forward(
-        self, x: torch.Tensor, *args: Any, adapter_names: list[str], **kwargs: Any
+            self, x: torch.Tensor, *args: Any, adapter_names: list[str], **kwargs: Any
     ) -> torch.Tensor:
         # This is a special method that handles the case when users pass the argument `adapter_names`. This is an
         # extra argument that allows mixing different adapters in the same batch at inference time.
@@ -373,7 +404,172 @@ class HydraLoraLayer(BaseTunerLayer):
                 f"B(mean={b_mean:.4e}, std={b_std:.4e}), "
                 f"route(mean={route_mean:.4e}, std={route_std:.4e})"
             )
-        debug("[HYDRA DEBUG] Expert verification complete\n" + "=" * 60)    
+        debug("[HYDRA DEBUG] Expert verification complete\n" + "=" * 60)
+
+    def _language_head_targets(
+            self, language_ids: Optional[torch.Tensor], adapter_name: str
+    ) -> Optional[torch.Tensor]:
+        if language_ids is None or self.language_list is None:
+            return None
+        head_count = self.lora_num.get(adapter_name)
+        if not head_count:
+            return None
+
+        head_ids = torch.full_like(language_ids, LANGUAGE_PAD_ID)
+        valid = (language_ids >= 0) & (language_ids < len(self.language_list))
+        if valid.any():
+            head_ids[valid] = language_ids[valid] % head_count
+        return head_ids
+
+    def _language_expert_targets(self, language_ids: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+        if language_ids is None or self.language_id_to_expert.numel() == 0:
+            return None
+        mapping = self.language_id_to_expert.to(language_ids.device)
+        expert_ids = torch.full_like(language_ids, LANGUAGE_PAD_ID)
+        valid = (language_ids >= 0) & (language_ids < mapping.numel())
+        if valid.any():
+            expert_ids[valid] = mapping[language_ids[valid]]
+        return expert_ids
+
+    def _log_missing_language_targets(self, prefix: str, reason: str) -> None:
+        key = f"{prefix}:{reason}"
+        if key in self._missing_language_warning_emitted:
+            return
+        column = self.language_column or "<unset>"
+        logger.warning(
+            "HydraLoRA layer '%s' missing %s routing metadata (%s). Verify dataset column '%s' and language_map.",
+            self.__class__.__name__,
+            prefix,
+            reason,
+            column,
+        )
+        self._missing_language_warning_emitted.add(key)
+
+    def _append_target_metrics(
+        self,
+        metrics: dict[str, float],
+        metrics_weight: float,
+        prefix: str,
+        target_tensor: Optional[torch.Tensor],
+        selection: torch.Tensor,
+        probs: torch.Tensor,
+        language_ids: Optional[torch.Tensor],
+        expect_targets: bool,
+    ) -> float:
+        if target_tensor is not None and torch.is_tensor(target_tensor):
+            valid_batch = target_tensor >= 0
+            seq_len = probs.size(1)
+            if valid_batch.any():
+                expanded_targets = target_tensor[valid_batch].view(-1, 1).expand(-1, seq_len)
+                top1 = selection[valid_batch]
+                target_hits = (top1 == expanded_targets).float()
+                target_probs = probs[valid_batch].gather(
+                    -1,
+                    target_tensor[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
+                ).squeeze(-1)
+                valid_tokens = target_probs.numel()
+                metrics.update(
+                    {
+                        f"{prefix}_target_hit_rate": float(target_hits.mean().item()),
+                        f"{prefix}_target_prob_mean": float(target_probs.mean().item()),
+                        f"{prefix}_target_token_frac": float(
+                            valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
+                        ),
+                    }
+                )
+                return float(valid_tokens if valid_tokens > 0 else metrics_weight)
+
+            metrics.update(
+                {
+                    f"{prefix}_target_hit_rate": 0.0,
+                    f"{prefix}_target_prob_mean": 0.0,
+                    f"{prefix}_target_token_frac": 0.0,
+                }
+            )
+            if expect_targets:
+                self._log_missing_language_targets(prefix, "targets were all pad ids")
+            return metrics_weight
+
+        if expect_targets:
+            metrics.update(
+                {
+                    f"{prefix}_target_hit_rate": 0.0,
+                    f"{prefix}_target_prob_mean": 0.0,
+                    f"{prefix}_target_token_frac": 0.0,
+                }
+            )
+            if language_ids is None:
+                reason = "no language_ids tensor provided"
+            elif torch.is_tensor(language_ids) and (language_ids >= 0).any():
+                reason = "language_ids could not be mapped to targets"
+            else:
+                reason = "language_ids contained only pad ids"
+            self._log_missing_language_targets(prefix, reason)
+        return metrics_weight
+
+    def _apply_language_bias_heads(
+            self, logits: torch.Tensor, head_ids: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        if head_ids is None or self.language_router_mode != "bias":
+            return logits
+        valid = head_ids >= 0
+        if not valid.any():
+            return logits
+        bias = torch.zeros(logits.size(0), logits.size(-1), device=logits.device, dtype=logits.dtype)
+        bias[valid, head_ids[valid]] = self.language_bias_value
+        return logits + bias.unsqueeze(1)
+
+    def _enforce_language_heads(
+            self, weights: torch.Tensor, head_ids: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        if head_ids is None or self.language_router_mode != "hard":
+            return weights
+        valid = head_ids >= 0
+        if not valid.any():
+            return weights
+        weights = weights.clone()
+        weights[valid] = 0
+        weights[valid, :, head_ids[valid]] = 1
+        return weights
+
+    def _apply_language_bias_experts(
+            self, logits: torch.Tensor, expert_ids: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        if expert_ids is None or self.language_router_mode != "bias":
+            return logits
+        valid = expert_ids >= 0
+        if not valid.any():
+            return logits
+        bias = torch.zeros(logits.size(0), logits.size(-1), device=logits.device, dtype=logits.dtype)
+        bias[valid, expert_ids[valid]] = self.language_bias_value
+        return logits + bias.unsqueeze(1)
+
+    def _enforce_language_experts(
+            self, topi: torch.Tensor, weights: torch.Tensor, expert_ids: Optional[torch.Tensor]
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if expert_ids is None or self.language_router_mode != "hard":
+            return topi, weights
+        valid = expert_ids >= 0
+        if not valid.any():
+            return topi, weights
+        seq_len = topi.size(1)
+        replacement = expert_ids[valid].view(-1, 1, 1).expand(-1, seq_len, self.top_k)
+        topi = topi.clone()
+        weights = weights.clone()
+        topi[valid] = replacement
+        weights[valid] = 0
+        weights[valid, :, 0] = 1
+        return topi, weights
+
+    def _cache_router_state(
+            self, logits: torch.Tensor, language_ids: Optional[torch.Tensor], prefix: str,
+            targets: Optional[torch.Tensor]
+    ) -> None:
+        self._cache_store(f"{prefix}_router_logits", logits)
+        if language_ids is not None and torch.is_tensor(language_ids):
+            self._cache_store(f"{prefix}_router_language_ids", language_ids)
+        if targets is not None and torch.is_tensor(targets):
+            self._cache_store(f"{prefix}_router_targets", targets)
 
 
 # Below code is based on https://github.com/microsoft/LoRA/blob/main/loralib/layers.py
@@ -389,17 +585,18 @@ class HydraLoraLayer(BaseTunerLayer):
 class Linear(nn.Module, HydraLoraLayer):
     # Lora implemented in a dense layer
     def __init__(
-        self,
-        base_layer,
-        adapter_name: str,
-        r: int = 0,
-        lora_alpha: int = 1,
-        lora_dropout: float = 0.0,
-        lora_num: int = 1,
-        fan_in_fan_out: bool = False,  # Set this to True if the layer to replace stores weight like (fan_in, fan_out)
-        is_target_conv_1d_layer: bool = False,
-        init_lora_weights: Union[bool, str] = True,
-        **kwargs,
+            self,
+            base_layer,
+            adapter_name: str,
+            r: int = 0,
+            lora_alpha: int = 1,
+            lora_dropout: float = 0.0,
+            lora_num: int = 1,
+            fan_in_fan_out: bool = False,
+            # Set this to True if the layer to replace stores weight like (fan_in, fan_out)
+            is_target_conv_1d_layer: bool = False,
+            init_lora_weights: Union[bool, str] = True,
+            **kwargs,
     ) -> None:
         super().__init__()
         HydraLoraLayer.__init__(self, base_layer, **kwargs)
@@ -418,6 +615,13 @@ class Linear(nn.Module, HydraLoraLayer):
     def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
         self._check_forward_args(x, *args, **kwargs)
         adapter_names = kwargs.pop("adapter_names", None)
+        language_ids = kwargs.pop("language_ids", None)
+        if isinstance(language_ids, torch.Tensor):
+            language_ids = language_ids.to(x.device).long()
+            if language_ids.dim() > 1:
+                language_ids = language_ids.view(language_ids.size(0))
+        else:
+            language_ids = None
         if self.disable_adapters:
             if self.merged:
                 self.unmerge()
@@ -429,7 +633,7 @@ class Linear(nn.Module, HydraLoraLayer):
         else:
             result = self.base_layer(x, *args, **kwargs)
             torch_result_dtype = result.dtype
-            
+
             if not getattr(self, "use_hydralora_experts", False):
                 for active_adapter in self._active_adapters:
                     if active_adapter not in self.lora_A.keys():
@@ -437,26 +641,73 @@ class Linear(nn.Module, HydraLoraLayer):
                     lora_A = self.lora_A[active_adapter]
                     lora_B = self.lora_B[active_adapter]
                     lora_route = self.lora_route[active_adapter]
-                    
+
                     dropout = self.lora_dropout[active_adapter]
                     scaling = self.scaling[active_adapter]
-                    
-            
+
                     x = x.to(lora_A.weight.dtype)
-                    route_weight = nn.functional.softmax(lora_route(x), dim=-1, dtype=torch.float32).to(result.dtype)
+                    route_logits = lora_route(x.to(torch.float32)).to(result.dtype)
+                    head_targets = self._language_head_targets(language_ids, active_adapter)
+                    self._cache_router_state(
+                        route_logits, language_ids, f"hydra_head_{active_adapter}", head_targets
+                    )
+                    route_logits = self._apply_language_bias_heads(route_logits, head_targets)
+                    route_weight = nn.functional.softmax(route_logits, dim=-1, dtype=torch.float32).to(result.dtype)
+                    route_weight = self._enforce_language_heads(route_weight, head_targets)
+                    head_assign = torch.argmax(route_weight, dim=-1, keepdim=True)
+                    with torch.no_grad():
+                        token_count = route_weight.numel() // route_weight.size(-1)
+                        if token_count > 0:
+                            flat_assign = head_assign.reshape(-1)
+                            head_counts = torch.bincount(
+                                flat_assign,
+                                minlength=self.lora_num[active_adapter],
+                            ).to(torch.float32)
+                            mean_head = head_counts.mean().item()
+                            if mean_head > 0:
+                                head_cv = float(
+                                    (head_counts.std(unbiased=False) / (mean_head + 1e-6)).item()
+                                )
+                            else:
+                                head_cv = 0.0
+                            head_active = float((head_counts > 0).float().mean().item())
+                            head_entropy = float(
+                                (-route_weight * torch.log(route_weight + 1e-8)).sum(dim=-1).mean().item()
+                            )
+                            metrics = {
+                                "head_load_cv": head_cv,
+                                "head_active_frac": head_active,
+                                "head_router_entropy": head_entropy,
+                            }
+                            metrics_weight = float(token_count)
+                            metrics_weight = self._append_target_metrics(
+                                metrics=metrics,
+                                metrics_weight=metrics_weight,
+                                prefix="head",
+                                target_tensor=head_targets,
+                                selection=head_assign.squeeze(-1),
+                                probs=route_weight,
+                                language_ids=language_ids,
+                                expect_targets=self.language_list is not None,
+                            )
+                            record_hydralora_metrics(metrics, weight=metrics_weight)
 
                     for i in range(self.lora_num[active_adapter]):
-                        result = result + torch.unsqueeze(route_weight[:,:,i], -1) * lora_B[i]((lora_A(dropout(x)))) * scaling
-            
+                        result = result + torch.unsqueeze(route_weight[:, :, i], -1) * lora_B[i](
+                            (lora_A(dropout(x)))) * scaling
+
                 result = result.to(torch_result_dtype)
             else:
-                router_dtype = getattr(self.router.weight, "dtype", x.dtype)
+                router_dtype = getattr(self.router.weight, "dtype", torch.float32)
                 logits = self.router(x.to(router_dtype)).to(x.dtype)
+                
+                expert_targets = self._language_expert_targets(language_ids)
+                self._cache_router_state(logits, language_ids, "hydra_expert", expert_targets)
+                logits = self._apply_language_bias_experts(logits, expert_targets)
+                
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
                 weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
-                # logits = self.router(x.to(torch.float32)).to(x.dtype)
-                # topv, topi = torch.topk(logits, self.top_k, dim=-1)
-                # weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
+                topi, weights = self._enforce_language_experts(topi, weights, expert_targets)
 
                 if getattr(self, "hydralora_debug", False):
                     with torch.no_grad():
@@ -469,6 +720,39 @@ class Linear(nn.Module, HydraLoraLayer):
                         sample_w = weights[0, 0].detach().cpu().tolist()
                         sample_i = topi[0, 0].detach().cpu().tolist()
                         debug(f"[HYDRA DEBUG] Sample routing: indices={sample_i}, weights={sample_w}")
+
+                with torch.no_grad():
+                    token_count = topi.numel()
+                    if token_count > 0:
+                        flat_indices = topi.reshape(-1)
+                        counts = torch.bincount(flat_indices, minlength=self.num_experts).to(torch.float32)
+                        active_frac = float((counts > 0).float().mean().item())
+                        mean_load = counts.mean().item()
+                        if mean_load > 0:
+                            load_cv = float((counts.std(unbiased=False) / (mean_load + 1e-6)).item())
+                        else:
+                            load_cv = 0.0
+                        router_probs = torch.softmax(logits.to(torch.float32), dim=-1)
+                        entropy = float((-router_probs * torch.log(router_probs + 1e-8)).sum(dim=-1).mean().item())
+                        weight_mean = float(weights.mean().item())
+                        metrics = {
+                            "expert_load_cv": load_cv,
+                            "expert_active_frac": active_frac,
+                            "expert_router_entropy": entropy,
+                            "expert_topk_weight_mean": weight_mean,
+                        }
+                        metrics_weight = float(token_count)
+                        metrics_weight = self._append_target_metrics(
+                            metrics=metrics,
+                            metrics_weight=metrics_weight,
+                            prefix="expert",
+                            target_tensor=expert_targets,
+                            selection=topi[:, :, 0],
+                            probs=router_probs,
+                            language_ids=language_ids,
+                            expect_targets=self.language_list is not None,
+                        )
+                        record_hydralora_metrics(metrics, weight=metrics_weight)
 
                 expert_outs = [self._adapter_delta(x, f"expert_{e}") for e in range(self.num_experts)]
                 expert_outs = torch.stack(expert_outs, dim=-1)  # [B, S, D_out, E]
@@ -500,7 +784,6 @@ class Linear(nn.Module, HydraLoraLayer):
         if not adapter_names:
             # no adapter to merge
             return
-
 
         for active_adapter in adapter_names:
             if active_adapter in self.lora_A.keys():
@@ -569,7 +852,7 @@ class Linear(nn.Module, HydraLoraLayer):
 
             # cast back the weights
             self.lora_A[adapter].weight.data = weight_A.to(dtype)
-            #self.lora_B[adapter].weight.data = weight_B.to(dtype)
+            # self.lora_B[adapter].weight.data = weight_B.to(dtype)
             for i in range(self.num_B[adapter]):
                 self.lora_B[adapter][i].weight.data = self.lora_B[adapter][i].weight.to(dtype)
 
@@ -584,35 +867,55 @@ class Linear(nn.Module, HydraLoraLayer):
           - lora_B[name]:      nn.ModuleList[nn.Linear(r, out_features)]
           - lora_dropout[name]: nn.Dropout / nn.Identity
         """
-        A = self.lora_A[name]              # nn.Linear
-        B_list = self.lora_B[name]         # ModuleList of nn.Linear
+        A = self.lora_A[name]  # nn.Linear
+        B_list = self.lora_B[name]  # ModuleList of nn.Linear
         drop = self.lora_dropout[name]
         scale = self.scaling[name]
 
         # Match A's dtype to avoid mixed-precision issues
         intermediate = drop(x.to(A.weight.dtype))  # [B, S, D_in]
-        a_dot_x = A(intermediate)                  # [B, S, r]
+        a_dot_x = A(intermediate)  # [B, S, r]
 
         # Sum over the multiple B heads for this adapter
-        out = sum(B(a_dot_x) for B in B_list)      # [B, S, D_out]
+        out = sum(B(a_dot_x) for B in B_list)  # [B, S, D_out]
         return out * scale
 
     def __repr__(self) -> str:
         rep = super().__repr__()
         return "lora." + rep
 
+    def pop_language_router_cache(self) -> list[tuple[str, torch.Tensor, torch.Tensor]]:
+        caches: list[tuple[str, torch.Tensor, torch.Tensor]] = []
+        # Head routers for standard Hydra adapters
+        head_keys = [
+            key for key in list(self._caches.keys()) if key.startswith("hydra_head_") and key.endswith("_router_logits")
+        ]
+        for key in head_keys:
+            logits = self._cache_pop(key)
+            targets = self._cache_pop(key.replace("_router_logits", "_router_targets"))
+            if logits is not None and targets is not None:
+                caches.append(("hydra_head", logits, targets))
+            self._cache_pop(key.replace("_router_logits", "_router_language_ids"))
+        # Global expert router
+        logits = self._cache_pop("hydra_expert_router_logits")
+        targets = self._cache_pop("hydra_expert_router_targets")
+        if logits is not None and targets is not None:
+            caches.append(("hydra_expert", logits, targets))
+        self._cache_pop("hydra_expert_router_language_ids")
+        return caches
+
 
 class Embedding(nn.Module, HydraLoraLayer):
     # LoRA implemented in a Embedding layer
     def __init__(
-        self,
-        base_layer: nn.Module,
-        adapter_name: str,
-        r: int = 0,
-        lora_alpha: int = 1,
-        lora_dropout: float = 0.0,
-        init_lora_weights: Union[bool, str] = True,
-        **kwargs,
+            self,
+            base_layer: nn.Module,
+            adapter_name: str,
+            r: int = 0,
+            lora_alpha: int = 1,
+            lora_dropout: float = 0.0,
+            init_lora_weights: Union[bool, str] = True,
+            **kwargs,
     ) -> None:
         super().__init__()
         HydraLoraLayer.__init__(self, base_layer)
@@ -735,7 +1038,7 @@ class Embedding(nn.Module, HydraLoraLayer):
         return output_tensor
 
     def _mixed_batch_forward(
-        self, x: torch.Tensor, *args: Any, adapter_names: list[str], **kwargs: Any
+            self, x: torch.Tensor, *args: Any, adapter_names: list[str], **kwargs: Any
     ) -> torch.Tensor:
         # This is a special method that handles the case when users pass the argument `adapter_names`. This is an
         # extra argument that allows mixing different adapters in the same batch at inference time.
@@ -780,6 +1083,7 @@ class Embedding(nn.Module, HydraLoraLayer):
         # TODO: no dtype conversion here, unlike in Linear, is that correct?
         self._check_forward_args(x, *args, **kwargs)
         adapter_names = kwargs.pop("adapter_names", None)
+        kwargs.pop("language_ids", None)
 
         if self.disable_adapters:
             if self.merged:
@@ -812,14 +1116,14 @@ class Embedding(nn.Module, HydraLoraLayer):
 class Conv2d(nn.Module, HydraLoraLayer):
     # Lora implemented in a conv2d layer
     def __init__(
-        self,
-        base_layer: nn.Module,
-        adapter_name: str,
-        r: int = 0,
-        lora_alpha: int = 1,
-        lora_dropout: float = 0.0,
-        init_lora_weights: Union[bool, str] = True,
-        **kwargs,
+            self,
+            base_layer: nn.Module,
+            adapter_name: str,
+            r: int = 0,
+            lora_alpha: int = 1,
+            lora_dropout: float = 0.0,
+            init_lora_weights: Union[bool, str] = True,
+            **kwargs,
     ) -> None:
         super().__init__()
         HydraLoraLayer.__init__(self, base_layer)
@@ -860,7 +1164,6 @@ class Conv2d(nn.Module, HydraLoraLayer):
         # call this before dora_init
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
-
         self.set_adapter(self._active_adapters)
 
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
@@ -899,7 +1202,7 @@ class Conv2d(nn.Module, HydraLoraLayer):
                 else:
                     delta_weight = self.get_delta_weight(active_adapter)
                     base_layer.weight.data += delta_weight
-                   
+
                 self.merged_adapters.append(active_adapter)
 
     def unmerge(self) -> None:
@@ -915,7 +1218,6 @@ class Conv2d(nn.Module, HydraLoraLayer):
                 weight = self.get_base_layer().weight
                 delta_weight = self.get_delta_weight(active_adapter)
                 weight.data -= delta_weight
-                
 
     def get_delta_weight(self, adapter) -> torch.Tensor:
         """
@@ -949,11 +1251,11 @@ class Conv2d(nn.Module, HydraLoraLayer):
         else:
             # conv2d 3x3
             output_tensor = (
-                F.conv2d(
-                    weight_A.permute(1, 0, 2, 3),
-                    weight_B,
-                ).permute(1, 0, 2, 3)
-                * self.scaling[adapter]
+                    F.conv2d(
+                        weight_A.permute(1, 0, 2, 3),
+                        weight_B,
+                    ).permute(1, 0, 2, 3)
+                    * self.scaling[adapter]
             )
 
         if cast_to_fp32:
@@ -1001,10 +1303,10 @@ class Conv2d(nn.Module, HydraLoraLayer):
 
 
 def dispatch_default(
-    target: torch.nn.Module,
-    adapter_name: str,
-    lora_config: HydraLoraConfig,
-    **kwargs,
+        target: torch.nn.Module,
+        adapter_name: str,
+        lora_config: HydraLoraConfig,
+        **kwargs,
 ) -> Optional[torch.nn.Module]:
     """
     target: Linear(in_features=3072, out_features=3072, bias=False)
