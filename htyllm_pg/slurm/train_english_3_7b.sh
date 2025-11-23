@@ -6,7 +6,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:h100:4             # 4 GPUs per node
-#SBATCH --mem=32GB
+#SBATCH --mem=128GB
 #SBATCH --account=hpc-prf-merlin
 
 set -e
