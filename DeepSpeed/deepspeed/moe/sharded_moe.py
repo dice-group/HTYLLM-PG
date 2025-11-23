@@ -503,9 +503,9 @@ def topanygating_opt(logits: Tensor, capacity_factor: float, min_capacity: int, 
 
 def topanygating_sparse(
     logits: Tensor,
-    capacity_factor: float,
-    min_capacity: int,
-    K: Tensor,
+    capacity_factor: float = 2,
+    min_capacity: int = 1,
+    K: Tensor = None,
     gate_tensor=None,
     expert_mask=None,
     ep_group=None,
@@ -516,14 +516,15 @@ def topanygating_sparse(
     """
     gates = logits                                   # [T, E] (binary)
     mask = gates.bool()                              # [T, E] (bool)
+    tokens_per_batch = logits.shape[0]
+    num_experts = logits.shape[1]
     exp_counts = mask.sum(dim=0)                     # [E]
+    cap_int = int(capacity_factor * tokens_per_batch / num_experts)
 
     # calculate capacity TODO: LF: we could consider putting a limit on capacity but this will drop tokens
-    new_capacity = exp_counts.max()
-    dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.get_world_group())
-    capacity = torch.clamp(new_capacity, min=1)
-    cap_int = int(capacity.item())
-    num_experts = int(gates.shape[1])
+    cap_int = max(cap_int, min_capacity)
+    #TODO: removed for now: dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.get_world_group())
+    # We might drop tokens now 
 
     # calculate L_aux
     if gate_tensor is None or expert_mask is None:
@@ -677,7 +678,8 @@ class GAMoEGateT(torch.nn.Module):
         logits = torch.sigmoid(torch.matmul(F.normalize(x, dim=1), F.normalize(sim_matrix, dim=0)) * logit_scale )  # similarity - threshold but negativ becomes zero (deactivated)
         # logits = logits * self.experts_mask # zero-out expert -> TODO: Currently this is not need as we do not implement dynamic epxert adding and removal
         gates = torch.sigmoid(self.gates * logit_scale) # put gates into [0 - 1]
-
+        gates = torch.clamp(gates, max=0.4) # prevents threshold from being too high
+        # LF: ghost layer issue
         if self.training:
             # training: thresholded + binarised
             logits = logits - gates 
