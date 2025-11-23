@@ -46,7 +46,7 @@ LANGUAGE_PAD_ID = -1
 
 class HydraLoraLayer(BaseTunerLayer):
     # All names of layers that may contain (trainable) adapter weights
-    adapter_layer_names = ("lora_A", "lora_B", "lora_embedding_A", "lora_embedding_B")
+    adapter_layer_names = ("lora_A", "lora_B", "lora_embedding_A", "lora_embedding_B", "lora_route")
     # All names of other parameters that may contain adapter-related parameters
     other_param_names = ("r", "lora_alpha", "scaling", "lora_dropout")
 
@@ -140,6 +140,7 @@ class HydraLoraLayer(BaseTunerLayer):
                 if self.top_k > self.num_experts:
                     self.top_k = self.num_experts
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
+            self._move_router_to_device_of_base_layer()
             if self.hydralora_debug:
                 debug(
                     f"[HYDRA DEBUG] Initialized router in {self.__class__.__name__} "
@@ -244,6 +245,7 @@ class HydraLoraLayer(BaseTunerLayer):
 
         # Router grads only when Hydra hierarchy is actually in use
         if self.use_hydralora_experts and hasattr(self, "router"):
+            self._move_router_to_device_of_base_layer()
             self.router.requires_grad_(any_hydra_parent_active)
 
         # Defer to BaseTunerLayer for actual bookkeeping
@@ -278,6 +280,15 @@ class HydraLoraLayer(BaseTunerLayer):
     def _cache_pop(self, key: str) -> Any:
         value = self._caches.pop(key, None)
         return value
+
+    def _move_router_to_device_of_base_layer(self) -> None:
+        if not hasattr(self, "router") or self.router is None:
+            return
+        base_layer = self.get_base_layer()
+        weight = getattr(base_layer, "weight", None)
+        if weight is None:
+            return
+        self.router.to(weight.device, dtype=weight.dtype)
 
     def set_scale(self, adapter, scale):
         if adapter not in self.scaling:
@@ -687,13 +698,17 @@ class Linear(nn.Module, HydraLoraLayer):
 
                 result = result.to(torch_result_dtype)
             else:
-                logits = self.router(x.to(torch.float32)).to(x.dtype)
+                router_dtype = getattr(self.router.weight, "dtype", torch.float32)
+                logits = self.router(x.to(router_dtype)).to(x.dtype)
+                
                 expert_targets = self._language_expert_targets(language_ids)
                 self._cache_router_state(logits, language_ids, "hydra_expert", expert_targets)
                 logits = self._apply_language_bias_experts(logits, expert_targets)
+                
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
                 weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
                 topi, weights = self._enforce_language_experts(topi, weights, expert_targets)
+
                 if getattr(self, "hydralora_debug", False):
                     with torch.no_grad():
                         debug(

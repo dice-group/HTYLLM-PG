@@ -4,7 +4,7 @@
 #SBATCH --ntasks=1          
 #SBATCH --cpus-per-task=32
 #SBATCH --gres=gpu:h100:4
-#SBATCH --time=35:00:00
+#SBATCH --time=12:00:00
 #SBATCH --mem=256G
 #SBATCH --output=logs/train_moe_hydralora_%j.log
 #SBATCH --partition=gpu
@@ -25,7 +25,9 @@ source /opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3/etc/profile.d/conda.
 conda activate hydralora_llama_factory
 export CUDA_DEVICE_ORDER=PCI_BUS_ID
 export PYTHONUNBUFFERED=1
-export CUDA_VISIBLE_DEVICES=${SLURM_JOB_GPUS:-0}
+if [[ -n "${SLURM_JOB_GPUS:-}" ]]; then
+  export CUDA_VISIBLE_DEVICES="${SLURM_JOB_GPUS}"
+fi
 python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count());"
 
 export WANDB_PROJECT="llama3.1-8b_moe_hydralora_training_accelerate"
@@ -36,10 +38,7 @@ DATASET_NAME=c4
 FINETUNING_TYPE=hydralora
 OUTPUT_DIR=/scratch/hpc-prf-merlin/sashreek/moe_study/saves/hydralora_moe_llama31_8b_acc
 MODEL_NAME_OR_PATH=meta-llama/Llama-3.1-8B
-ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml
-#ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/ddp_4gpu_config.yaml
-#export ACCELERATE_USE_FSDP=1
-#export ACCELERATE_LOG_LEVEL=info
+DEEPSPEED_CONFIG=./LLaMA-Factory/examples/deepspeed/ds_z3_config.json
 #TRAIN_LOG=logs/train_moe_hydralora_${SLURM_JOB_ID:-manual}.log
 TOKENIZED_PATH=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter/llama-3.1-8B_tokenizer/5_langs
 
@@ -58,8 +57,8 @@ NUM_TRAIN_EPOCHS=1
 LEARNING_RATE=5e-5
 LR_SCHEDULER_TYPE=cosine
 WARMUP_RATIO=0.06
-PER_DEVICE_TRAIN_BATCH_SIZE=32
-PER_DEVICE_EVAL_BATCH_SIZE=32
+PER_DEVICE_TRAIN_BATCH_SIZE=16
+PER_DEVICE_EVAL_BATCH_SIZE=16
 GRADIENT_ACCUMULATION_STEPS=1
 LORA_NUM=4
 LORA_RANK=4
@@ -76,11 +75,7 @@ FP16=False
 USE_HYDRALORA_EXPERTS=True
 USE_REENTRANT_GC=False
 if [[ -z "${PURE_BF16:-}" ]]; then
-  if [[ "${ACCEL_CONFIG}" == *"fsdp"* ]]; then
-    PURE_BF16=True
-  else
-    PURE_BF16=False
-  fi
+  PURE_BF16=False
 fi
 
 NUM_LANGS=$(echo "${TOKENIZED_PATH}" | sed -n 's#.*/\([0-9]\+\)_langs.*#\1#p')
@@ -120,8 +115,8 @@ JSON
 export WANDB_TAGS
 export WANDB_CONFIG_JSON
 
-if [[ ! -f "$ACCEL_CONFIG" ]]; then
-  echo "[ERROR] Accelerate config $ACCEL_CONFIG not found." >&2
+if [[ ! -f "$DEEPSPEED_CONFIG" ]]; then
+  echo "[ERROR] DeepSpeed config $DEEPSPEED_CONFIG not found." >&2
   exit 1
 fi
 
@@ -177,11 +172,36 @@ fi
 # echo "[INFO] Starting multi-node HydraLoRA training at $(date)"
 # echo "[INFO] MASTER_ADDR=${MASTER_ADDR}, MASTER_PORT=${MASTER_PORT}, NNODES=${NNODES}, NODE_RANK=${NODE_RANK}, GPUS_PER_NODE=${GPUS_PER_NODE}"
 
-# -------- Training with torchrun across nodes --------
+# -------- Torch distributed setup --------
 
-echo "[INFO] Starting Accelerate-backed MoE HydraLora training at $(date)"
-accelerate launch \
-  --config_file "${ACCEL_CONFIG}" \
+if [[ -n "${SLURM_JOB_NODELIST:-}" ]]; then
+  MASTER_ADDR=${MASTER_ADDR:-$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)}
+else
+  MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
+fi
+MASTER_PORT=${MASTER_PORT:-6000}
+NNODES=${SLURM_JOB_NUM_NODES:-${SLURM_NNODES:-1}}
+NODE_RANK=${SLURM_NODEID:-0}
+if [[ -n "${SLURM_GPUS_ON_NODE:-}" ]]; then
+  GPUS_PER_NODE=${SLURM_GPUS_ON_NODE}
+elif [[ -n "${SLURM_JOB_GPUS:-}" ]]; then
+  IFS=',' read -ra _gpu_list <<< "${SLURM_JOB_GPUS}"
+  GPUS_PER_NODE=${#_gpu_list[@]}
+else
+  GPUS_PER_NODE=4
+fi
+
+echo "[INFO] MASTER_ADDR=${MASTER_ADDR}, MASTER_PORT=${MASTER_PORT}, NNODES=${NNODES}, NODE_RANK=${NODE_RANK}, GPUS_PER_NODE=${GPUS_PER_NODE}"
+
+# -------- Training with torchrun + DeepSpeed --------
+
+echo "[INFO] Starting DeepSpeed-backed MoE HydraLoRA training at $(date)"
+torchrun \
+  --nnodes "${NNODES}" \
+  --nproc_per_node "${GPUS_PER_NODE}" \
+  --node_rank "${NODE_RANK}" \
+  --master_addr "${MASTER_ADDR}" \
+  --master_port "${MASTER_PORT}" \
   ./LLaMA-Factory/src/train.py \
     --stage sft \
     --do_train \
@@ -211,6 +231,7 @@ accelerate launch \
     --use_hydralora_experts ${USE_HYDRALORA_EXPERTS} \
     --hydralora_num_experts ${HYDRALORA_NUM_EXPERTS} \
     --hydralora_top_k ${HYDRALORA_TOP_K} \
+    --deepspeed "${DEEPSPEED_CONFIG}" \
     --bf16 $(echo "${BF16}" | tr '[:upper:]' '[:lower:]') \
     --fp16 $(echo "${FP16}" | tr '[:upper:]' '[:lower:]') \
     --pure_bf16 $(echo "${PURE_BF16}" | tr '[:upper:]' '[:lower:]') \
@@ -221,7 +242,6 @@ accelerate launch \
     --preprocessing_num_workers 16 \
     --report_to wandb \
     --ddp_find_unused_parameters True \
-    --gradient_checkpointing False \
     "${TOKENIZED_ARGS[@]}"
 
 echo "[INFO] Training finished at $(date)"
