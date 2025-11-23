@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
-"""Cluster cached embeddings to build benchmark language subsets."""
 import os
 import pandas as pd
 import numpy as np
+
 from sklearn.cluster import KMeans
 from sklearn.metrics import pairwise_distances, silhouette_score
 import plotly.express as px
@@ -16,12 +15,10 @@ PROCESSED_FILENAMES = {
     "llm_tsne": "llm_tsne.csv",
 }
 
-
 def require_file(path):
     if not os.path.exists(path):
         raise FileNotFoundError(f"Missing required artifact: {path}. Run preprocess_evaluable_languages.py first.")
     return path
-
 
 def load_processed_artifacts(processed_dir):
     """Load cached metadata, embeddings, and t-SNE coordinates."""
@@ -51,15 +48,9 @@ def farthest_first_ordering(dist_matrix):
     return ordered
 
 
-def select_optimal_sizes(
-    embeddings_df,
-    k_min=5,
-    k_max=100,
-    num_sizes=3,
-    include_full_sample=False,
-    total_langs=None,
-):
+def select_optimal_sizes(embeddings_df,k_min=5,k_max=100,num_sizes=3,include_full_sample=False,total_langs=None):
     """Pick representative sample sizes using silhouette peaks."""
+
     print(f"Analyzing cluster quality for k={k_min}..{k_max}...")
     scores = []
     for k in range(k_min, k_max + 1, 2):
@@ -87,24 +78,16 @@ def select_optimal_sizes(
     else:
         small_k = clamp_k(max(k_min, 10))
 
-    # Medium tier: prefer peaks >= target range
     MEDIUM_MIN = 40
     MEDIUM_TARGET = 64
     medium_k = None
-    for k in peak_ks:
-        if k == small_k:
-            continue
-        if total_langs and k >= total_langs:
-            continue
-        if k >= MEDIUM_MIN:
-            medium_k = clamp_k(k)
-            break
 
-    if medium_k is None:
-        for k in peak_ks:
-            if k != small_k and (not total_langs or k < total_langs):
-                medium_k = clamp_k(k)
-                break
+    valid_peaks = [
+        k for k in peak_ks if k != small_k and (not total_langs or k < total_langs)
+    ]
+    high_candidates = [k for k in valid_peaks if k >= MEDIUM_TARGET]
+    if high_candidates:
+        medium_k = clamp_k(min(high_candidates, key=lambda k: abs(k - MEDIUM_TARGET)))
 
     if medium_k is None:
         upper_bound = total_langs - 1 if total_langs else k_max
@@ -174,65 +157,22 @@ def create_medoid_trace(medoid_df):
 
 def show_tsne_viz(tsne_df, cluster_labels, medoid_indices, data_df, method_name, output_dir, k):
     """Save Plotly scatter mirroring fineweb2_medoid_clustering.py."""
+
     viz_df = create_viz_df(tsne_df, cluster_labels, medoid_indices, data_df)
-    hover_data = {
-        "resource_category": True,
-        "script": True,
-        "family": True,
-        "cluster_id": True,
-        "is_medoid": True,
-    }
-    fig = px.scatter(
-        viz_df,
-        x="TSNE1",
-        y="TSNE2",
-        color="cluster_id",
-        hover_name="name",
-        hover_data=hover_data,
-        color_continuous_scale="Viridis",
-    )
+    hover_data = { "resource_category": True, "script": True, "family": True, "cluster_id": True, "is_medoid": True, }
+
+    fig = px.scatter(viz_df, x="TSNE1", y="TSNE2", color="cluster_id", hover_name="name", hover_data=hover_data, color_continuous_scale="Viridis")
     fig.add_trace(create_medoid_trace(viz_df[viz_df["is_medoid"]]))
     fig.update_layout(coloraxis_showscale=False, title=f"{method_name.upper()} clusters (k={k}) with medoids")
+
     os.makedirs(output_dir, exist_ok=True)
     html_path = os.path.join(output_dir, f"{method_name}_k{k}_tsne.html")
     fig.write_html(html_path)
     print(f"Saved interactive t-SNE plot to {html_path}")
 
-
-def sample_cola_families(df, embeddings_df, num_clusters, langs_per_cluster, output_dir):
-    """Build CoLA-specific grouped samples from LLM embeddings."""
-    print(f"Generating CoLA optimal sample: {num_clusters} clusters × {langs_per_cluster} langs")
-    n_candidates = min(len(df), max(num_clusters * 3, 20))
-    kmeans = KMeans(n_clusters=n_candidates, init="k-means++", n_init="auto", random_state=42)
-    cluster_labels = kmeans.fit_predict(embeddings_df)
-    centroids = kmeans.cluster_centers_
-
-    centroid_dist = pairwise_distances(centroids, metric="euclidean")
-    selected_cluster_ids = farthest_first_ordering(centroid_dist)[:num_clusters]
-
-    dist_matrix = pairwise_distances(embeddings_df.values, metric="euclidean")
-    selected_indices = []
-    for clust_id in selected_cluster_ids:
-        member_idxs = np.where(cluster_labels == clust_id)[0]
-        if len(member_idxs) == 0:
-            continue
-        sub_dm = dist_matrix[np.ix_(member_idxs, member_idxs)]
-        medoid_rel_idx = np.argmin(sub_dm.sum(axis=1))
-        medoid_abs_idx = member_idxs[medoid_rel_idx]
-        sorted_rel = np.argsort(sub_dm[medoid_rel_idx])
-        take = min(len(member_idxs), langs_per_cluster)
-        top_abs = member_idxs[sorted_rel[:take]]
-        selected_indices.extend(top_abs)
-
-    sample_df = df.iloc[selected_indices].reset_index(drop=True)
-    os.makedirs(output_dir, exist_ok=True)
-    csv_name = os.path.join(output_dir, f"cola_optimal_{num_clusters}A_{langs_per_cluster}B_total{len(sample_df)}.csv")
-    sample_df.to_csv(csv_name, index=False)
-    print(f"Saved CoLA sample -> {csv_name}")
-
-
 def cluster_and_sample(df, embeddings_df, tsne_df, sample_sizes, method_name, output_dir):
     """Cluster embeddings, order medoids, export nested subsets + visualization."""
+    
     max_k = max(sample_sizes)
     if max_k > len(df):
         print(f"Requested k={max_k} but only {len(df)} languages. Capping…")
@@ -310,12 +250,6 @@ def main():
         "llm",
         os.path.join(data_dir, "llm_benchmark_samples"),
     )
-
-    # CoLA optimal subsets based on LLM embeddings
-    cola_dir = os.path.join(data_dir, "cola_optimal_samples")
-    for cfg in [(4, 4), (8, 4), (12, 4)]:
-        sample_cola_families(metadata_df, llm_embeddings, cfg[0], cfg[1], cola_dir)
-
 
 if __name__ == "__main__":
     main()
