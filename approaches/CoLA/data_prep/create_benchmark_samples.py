@@ -1,154 +1,41 @@
 #!/usr/bin/env python3
+"""Cluster cached embeddings to build benchmark language subsets."""
 import os
-import sys
 import pandas as pd
 import numpy as np
-import requests
 from sklearn.cluster import KMeans
 from sklearn.metrics import pairwise_distances, silhouette_score
-from enum import Enum
-from tqdm import tqdm
+import plotly.express as px
+import plotly.graph_objects as go
 
-# Add project root to path
-PROJECT_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
-sys.path.append(PROJECT_ROOT_DIR)
+PROCESSED_FILENAMES = {
+    "metadata": "filtered_languages.csv",
+    "onehot_embeddings": "onehot_embeddings.csv",
+    "llm_embeddings": "llm_embeddings.csv",
+    "onehot_tsne": "onehot_tsne.csv",
+    "llm_tsne": "llm_tsne.csv",
+}
 
-from approaches.CoLA.distributed_data_processor.language_subsets import fineweb2_benchmark_languages
 
-class ResourceCategory(str, Enum):
-    HIGH   = "high"
-    MEDIUM = "medium"
-    LOW    = "low"
+def require_file(path):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Missing required artifact: {path}. Run preprocess_evaluable_languages.py first.")
+    return path
 
-def load_and_filter_metadata(csv_path, benchmark_languages):
-    """Load Fineweb2 metadata and filter by benchmark languages."""
-    df = pd.read_csv(csv_path)
-    
-    # Initial filters from original script
-    mask = (
-        ~df["subset"].astype(str).str.endswith("_removed") &
-        (df["split"] == "train") &
-        (df["family"] != "-")
-    )
-    df = df.loc[mask].reset_index(drop=True)
-    
-    # added: filter by benchmark languages
-    df = df[df['subset'].isin(benchmark_languages)].reset_index(drop=True)
-    print(f"Loaded and filtered metadata: {len(df)} languages")
-    return df
 
-def add_resource_categories(df, resource_csv_path):
-    """Merge with resource categories and map to High/Medium/Low."""
-    res_df = pd.read_csv(resource_csv_path, sep="\t")
-    
-    # Filter invalid categories
-    res_df = res_df[~res_df['resource_category'].str.endswith('*', na=False)]
-    
-    # Prepare for merge
-    df['_subset_lc'] = df['subset'].astype(str).str.lower()
-    res_df['_lang_code_lc'] = res_df['lang_code'].astype(str).str.lower()
-    
-    # Merge
-    df = df.merge(
-        res_df[['_lang_code_lc', 'resource_category']],
-        left_on='_subset_lc',
-        right_on='_lang_code_lc',
-        how='left'
-    )
-    df.drop(columns=['_subset_lc', '_lang_code_lc'], inplace=True)
-    
-    # Sort and forward fill logic from original script
-    df = df.sort_values(by="documents", ascending=False).reset_index(drop=True)
-    
-    # Logic to propagate categories based on sorted order (simplified from original)
-    # The original script had a complex logic to fill categories based on "last index" of each category.
-    # Here we will assume the merge provided most categories and we might need to fill missing ones.
-    # However, to be faithful to the original logic which seemed to define "tiers" by document count:
-    
-    # Re-implementing the "tier" logic exactly as it seems crucial for the definition of High/Med/Low
-    # 1. Find last index of each category
-    last_idx_series = df.groupby("resource_category").apply(lambda grp: grp.index[-1])
-    last_idx_by_category = last_idx_series.to_dict()
-    
-    res_cat_tuples = []
-    for cat, idx in last_idx_by_category.items():
-        res_cat_tuples.append((cat, idx))
-    res_cat_tuples.sort(key=lambda tup: tup[1])
-    
-    # Map to Enum
-    MERGE_MAP = {
-        "high"      : ResourceCategory.HIGH,
-        "medhigh"   : ResourceCategory.MEDIUM,
-        "medlow"    : ResourceCategory.LOW,
-        "low"       : ResourceCategory.LOW,
-        "not_enough": ResourceCategory.LOW,
+def load_processed_artifacts(processed_dir):
+    """Load cached metadata, embeddings, and t-SNE coordinates."""
+    data = {}
+    for key, filename in PROCESSED_FILENAMES.items():
+        full_path = require_file(os.path.join(processed_dir, filename))
+        data[key] = pd.read_csv(full_path)
+    metadata = data["metadata"]
+    artifacts = {
+        "onehot": {"embeddings": data["onehot_embeddings"], "tsne": data["onehot_tsne"]},
+        "llm": {"embeddings": data["llm_embeddings"], "tsne": data["llm_tsne"]},
     }
-    
-    merged_tuples = [(MERGE_MAP[item[0]].value, item[1]) for item in res_cat_tuples]
-    
-    # Propagate
-    prev_end = 0
-    for cat, end_idx in merged_tuples:
-        df.loc[prev_end:end_idx, "resource_category"] = cat
-        prev_end = end_idx + 1
-        
-    if prev_end < len(df):
-        df.loc[prev_end:, "resource_category"] = df["resource_category"].ffill()
-        
-    return df
+    return metadata, artifacts
 
-def generate_onehot_embeddings(df):
-    """Generate one-hot embeddings for resource category, script, and family."""
-    rc_oh = pd.get_dummies(df["resource_category"], prefix="rc")
-    script_oh = pd.get_dummies(df["script"], prefix="script")
-    family_oh = pd.get_dummies(df["family"], prefix="family")
-    
-    features = pd.concat([rc_oh, script_oh, family_oh], axis=1)
-    return features
-
-def get_llm_embeddings(df):
-    """Generate LLM embeddings using the local endpoint."""
-    embedding_config = {
-        'endpoint': 'http://lola.cs.uni-paderborn.de:9292/v1',
-        'model_id': 'nomic-embed-text-v2-moe'
-    }
-    
-    embed_cache = {}
-
-    def get_embeddings_api(input_texts):
-        try:
-            resp = requests.post(
-                embedding_config['endpoint'] + '/embeddings', 
-                json={'input': input_texts, 'model': embedding_config['model_id']}
-            ).json()
-            return [d['embedding'] for d in resp['data']]
-        except Exception as e:
-            print(f"Error getting embeddings: {e}")
-            # Return zero vectors or handle error? 
-            # For now, let's assume it works or fail hard.
-            raise e
-
-    def get_cached(text):
-        if text not in embed_cache:
-            embed_cache[text] = get_embeddings_api([text])[0]
-        return embed_cache[text]
-
-    final_embeddings = []
-    BATCH_SIZE = 512
-    
-    print("Generating LLM embeddings...")
-    for i in tqdm(range(0, len(df), BATCH_SIZE)):
-        batch = df.iloc[i:i+BATCH_SIZE]
-        for _, row in batch.iterrows():
-            name_emb = get_cached(row["name"] or "")
-            cat_emb = get_cached(row["resource_category"] or "")
-            script_emb = get_cached(row["script"] or "")
-            family_emb = get_cached(row["family"] or "")
-            
-            combined = np.concatenate([name_emb, cat_emb, script_emb, family_emb])
-            final_embeddings.append(combined)
-            
-    return pd.DataFrame(final_embeddings)
 
 def farthest_first_ordering(dist_matrix):
     """Greedy farthest-point selection."""
@@ -156,188 +43,279 @@ def farthest_first_ordering(dist_matrix):
     start_idx = np.argmin(dist_matrix.sum(axis=1))
     ordered = [start_idx]
     remaining = set(range(n)) - {start_idx}
-    
     while remaining:
-        min_dists = {
-            i: min(dist_matrix[i, sel] for sel in ordered) for i in remaining
-        }
+        min_dists = {i: min(dist_matrix[i, sel] for sel in ordered) for i in remaining}
         next_idx = max(min_dists, key=min_dists.get)
         ordered.append(next_idx)
         remaining.remove(next_idx)
-        
     return ordered
 
-def select_optimal_sizes(embeddings_df, k_min=5, k_max=100, num_sizes=3):
-    """
-    Determine 3 'scientifically sound' sample sizes using Silhouette analysis.
-    We will look for local maxima in the Silhouette score.
-    If distinct peaks aren't found, we fall back to a geometric progression 
-    but guided by the score curve.
-    """
-    print(f"Analyzing cluster quality for k={k_min} to {k_max}...")
-    
+
+def select_optimal_sizes(
+    embeddings_df,
+    k_min=5,
+    k_max=100,
+    num_sizes=3,
+    include_full_sample=False,
+    total_langs=None,
+):
+    """Pick representative sample sizes using silhouette peaks."""
+    print(f"Analyzing cluster quality for k={k_min}..{k_max}...")
     scores = []
-    ks = range(k_min, k_max + 1, 2) # Step by 2 to save time
-    
-    for k in tqdm(ks, desc="Silhouette Analysis"):
+    for k in range(k_min, k_max + 1, 2):
         if k >= len(embeddings_df):
             break
-        kmeans = KMeans(n_clusters=k, init="k-means++", n_init='auto', random_state=42)
+        kmeans = KMeans(n_clusters=k, init="k-means++", n_init="auto", random_state=42)
         labels = kmeans.fit_predict(embeddings_df)
-        score = silhouette_score(embeddings_df, labels)
-        scores.append((k, score))
-        
-    # Find peaks (local maxima)
-    peaks = []
-    for i in range(1, len(scores) - 1):
-        if scores[i][1] > scores[i-1][1] and scores[i][1] > scores[i+1][1]:
-            peaks.append(scores[i])
-            
-    # Sort peaks by score descending
-    peaks.sort(key=lambda x: x[1], reverse=True)
-    
-    selected_sizes = []
-    
-    # Strategy: Pick the best peak, then one significantly smaller, and one larger (if available)
-    # Or simply pick the top 3 distinct peaks that are spread out.
-    
-    # Let's try to get a Small, Medium, Large spread.
-    # If we have enough peaks, pick ones that cover the range.
-    
-    if len(peaks) >= 3:
-        # Sort peaks by K to identify small/med/large candidates
-        peaks_by_k = sorted(peaks, key=lambda x: x[0])
-        
-        # Simple heuristic: 
-        # 1. Smallest K peak
-        # 2. Peak closest to geometric mean of min/max
-        # 3. Largest K peak (or best score if not included)
-        
-        # Actually, let's just pick the top 3 scoring peaks and sort them by size
-        top_peaks = sorted(peaks[:5], key=lambda x: x[1], reverse=True) # Take top 5 best scores
-        # Pick 3 from these that are most distinct in size?
-        # Let's just take the top 3 best scoring K's.
-        best_ks = sorted([p[0] for p in top_peaks[:3]])
-        selected_sizes = best_ks
-    else:
-        # Fallback: Pick best K, and then geometric neighbors
-        if peaks:
-            best_k = peaks[0][0]
-        else:
-            # No peaks? Just max score
-            best_k = max(scores, key=lambda x: x[1])[0]
-            
-        # Create 3 sizes around the best K or spreading out
-        # If best_k is small, add medium and large
-        # If best_k is large, add small and medium
-        
-        # Let's default to a geometric spread if peaks are insufficient, 
-        # but anchored on the best performing K if possible.
-        
-        # Actually, user wants "scientifically sound". 
-        # If the curve is flat, geometric spread is the most neutral "scientific" approach (log scale coverage).
-        # If there are peaks, those are "natural" scales.
-        
-        geom = np.geomspace(k_min, k_max, num=num_sizes)
-        selected_sizes = sorted(list(set([int(round(v)) for v in geom])))
-        
-        # If we had a best_k, try to swap the closest geometric one with best_k?
-        # Let's keep it simple: if peaks failed, geometric is robust.
-        
-    print(f"Silhouette analysis complete. Selected sizes: {selected_sizes}")
-    return selected_sizes
+        scores.append((k, silhouette_score(embeddings_df, labels)))
 
-def cluster_and_sample(df, embeddings_df, sample_sizes, method_name, output_dir):
-    """Cluster languages, find medoids, order them, and save samples."""
-    max_k = max(sample_sizes)
-    
-    # Ensure we don't ask for more clusters than data points
-    if max_k > len(df):
-        print(f"Warning: Requested {max_k} clusters but only have {len(df)} languages. Capping at {len(df)}.")
-        max_k = len(df)
-        sample_sizes = [s for s in sample_sizes if s <= max_k]
-    
-    print(f"Clustering ({method_name}) with k={max_k}...")
-    kmeans = KMeans(n_clusters=max_k, init="k-means++", n_init='auto', random_state=42)
-    cluster_labels = kmeans.fit_predict(embeddings_df)
-    
-    unique_labels = set(cluster_labels)
-    print(f"KMeans converged. Found {len(unique_labels)} unique clusters (requested {max_k}).")
-    
-    # Compute medoids
-    X = embeddings_df.values
-    dist_matrix = pairwise_distances(X, metric="euclidean")
-    medoid_indices = []
-    
-    for clust_id in range(max_k):
-        member_mask = (cluster_labels == clust_id)
-        member_idxs = np.where(member_mask)[0]
-        
-        if len(member_idxs) == 0:
-            print(f"Warning: Cluster {clust_id} is empty!")
+    peaks = []
+    for idx in range(1, len(scores) - 1):
+        if scores[idx][1] > scores[idx - 1][1] and scores[idx][1] > scores[idx + 1][1]:
+            peaks.append(scores[idx])
+    peaks_sorted = sorted(peaks, key=lambda x: x[1], reverse=True)
+    peak_ks = [p[0] for p in peaks_sorted]
+
+    def clamp_k(value):
+        if total_langs:
+            value = min(value, total_langs - 1)
+        return max(1, value)
+
+    # Small tier: best silhouette peak (or fallback to k_min)
+    if peak_ks:
+        small_k = clamp_k(peak_ks[0])
+    else:
+        small_k = clamp_k(max(k_min, 10))
+
+    # Medium tier: prefer peaks >= target range
+    MEDIUM_MIN = 40
+    MEDIUM_TARGET = 64
+    medium_k = None
+    for k in peak_ks:
+        if k == small_k:
             continue
-            
+        if total_langs and k >= total_langs:
+            continue
+        if k >= MEDIUM_MIN:
+            medium_k = clamp_k(k)
+            break
+
+    if medium_k is None:
+        for k in peak_ks:
+            if k != small_k and (not total_langs or k < total_langs):
+                medium_k = clamp_k(k)
+                break
+
+    if medium_k is None:
+        upper_bound = total_langs - 1 if total_langs else k_max
+        target = clamp_k(int(round(MEDIUM_TARGET)))
+        target = min(max(target, small_k + 1), upper_bound)
+        medium_k = clamp_k(target)
+
+    if medium_k <= small_k:
+        medium_k = clamp_k(small_k + 1)
+
+    selected = []
+    if small_k > 0:
+        selected.append(small_k)
+    if medium_k > 0 and medium_k not in selected:
+        selected.append(medium_k)
+
+    if include_full_sample and total_langs:
+        if total_langs not in selected:
+            selected.append(total_langs)
+
+    # Ensure exactly num_sizes if possible by padding geometric suggestions
+    if len(selected) < num_sizes:
+        geom = np.geomspace(max(1, k_min), max(k_min + 1, k_max), num=num_sizes)
+        for val in geom:
+            val = clamp_k(int(round(val)))
+            if val not in selected:
+                selected.append(val)
+            if len(selected) == num_sizes:
+                break
+
+    print(f"Silhouette analysis complete. Selected sizes: {selected}")
+    return sorted(selected)
+
+
+def create_viz_df(tsne_df, cluster_labels, medoid_indices, data_df):
+    """Attach metadata to cached t-SNE coordinates for plotting."""
+    viz_df = tsne_df.copy().reset_index(drop=True)
+    viz_df["cluster_id"] = cluster_labels
+    viz_df["is_medoid"] = False
+    viz_df.loc[medoid_indices, "is_medoid"] = True
+    meta_cols = data_df[["name", "resource_category", "script", "family"]].reset_index(drop=True)
+    return pd.concat([viz_df, meta_cols], axis=1)
+
+
+def create_medoid_trace(medoid_df):
+    hover_cols = ["resource_category", "script", "family", "cluster_id", "is_medoid", "TSNE1", "TSNE2"]
+    return go.Scatter(
+        x=medoid_df["TSNE1"],
+        y=medoid_df["TSNE2"],
+        mode="markers",
+        marker=dict(size=12, color="red", symbol="circle", line=dict(width=1, color="darkred")),
+        hovertext=medoid_df["name"],
+        customdata=medoid_df[hover_cols],
+        hovertemplate=(
+            "<b>%{hovertext}</b><br>"
+            "TSNE1: %{customdata[5]:.3f}<br>"
+            "TSNE2: %{customdata[6]:.3f}<br>"
+            "Resource: %{customdata[0]}<br>"
+            "Script: %{customdata[1]}<br>"
+            "Family: %{customdata[2]}<br>"
+            "Cluster: %{customdata[3]}<br>"
+            "Medoid: %{customdata[4]}<extra></extra>"
+        ),
+        name="Medoids",
+    )
+
+
+def show_tsne_viz(tsne_df, cluster_labels, medoid_indices, data_df, method_name, output_dir, k):
+    """Save Plotly scatter mirroring fineweb2_medoid_clustering.py."""
+    viz_df = create_viz_df(tsne_df, cluster_labels, medoid_indices, data_df)
+    hover_data = {
+        "resource_category": True,
+        "script": True,
+        "family": True,
+        "cluster_id": True,
+        "is_medoid": True,
+    }
+    fig = px.scatter(
+        viz_df,
+        x="TSNE1",
+        y="TSNE2",
+        color="cluster_id",
+        hover_name="name",
+        hover_data=hover_data,
+        color_continuous_scale="Viridis",
+    )
+    fig.add_trace(create_medoid_trace(viz_df[viz_df["is_medoid"]]))
+    fig.update_layout(coloraxis_showscale=False, title=f"{method_name.upper()} clusters (k={k}) with medoids")
+    os.makedirs(output_dir, exist_ok=True)
+    html_path = os.path.join(output_dir, f"{method_name}_k{k}_tsne.html")
+    fig.write_html(html_path)
+    print(f"Saved interactive t-SNE plot to {html_path}")
+
+
+def sample_cola_families(df, embeddings_df, num_clusters, langs_per_cluster, output_dir):
+    """Build CoLA-specific grouped samples from LLM embeddings."""
+    print(f"Generating CoLA optimal sample: {num_clusters} clusters × {langs_per_cluster} langs")
+    n_candidates = min(len(df), max(num_clusters * 3, 20))
+    kmeans = KMeans(n_clusters=n_candidates, init="k-means++", n_init="auto", random_state=42)
+    cluster_labels = kmeans.fit_predict(embeddings_df)
+    centroids = kmeans.cluster_centers_
+
+    centroid_dist = pairwise_distances(centroids, metric="euclidean")
+    selected_cluster_ids = farthest_first_ordering(centroid_dist)[:num_clusters]
+
+    dist_matrix = pairwise_distances(embeddings_df.values, metric="euclidean")
+    selected_indices = []
+    for clust_id in selected_cluster_ids:
+        member_idxs = np.where(cluster_labels == clust_id)[0]
+        if len(member_idxs) == 0:
+            continue
         sub_dm = dist_matrix[np.ix_(member_idxs, member_idxs)]
         medoid_rel_idx = np.argmin(sub_dm.sum(axis=1))
         medoid_abs_idx = member_idxs[medoid_rel_idx]
-        medoid_indices.append(medoid_abs_idx)
-        
-    # Order medoids
-    medoid_dist_matrix = dist_matrix[np.ix_(medoid_indices, medoid_indices)]
-    ordered_indices = np.array(medoid_indices)[farthest_first_ordering(medoid_dist_matrix)]
-    
-    # Save samples
+        sorted_rel = np.argsort(sub_dm[medoid_rel_idx])
+        take = min(len(member_idxs), langs_per_cluster)
+        top_abs = member_idxs[sorted_rel[:take]]
+        selected_indices.extend(top_abs)
+
+    sample_df = df.iloc[selected_indices].reset_index(drop=True)
     os.makedirs(output_dir, exist_ok=True)
-    for sz in sample_sizes:
-        nested_idxs = ordered_indices[:sz]
-        sample_df = df.iloc[nested_idxs].reset_index(drop=True)
-        csv_name = os.path.join(output_dir, f"{sz}_representative_mediods.csv")
-        sample_df.to_csv(csv_name, index=False)
-        print(f"Saved {sz}-sample to {csv_name}")
+    csv_name = os.path.join(output_dir, f"cola_optimal_{num_clusters}A_{langs_per_cluster}B_total{len(sample_df)}.csv")
+    sample_df.to_csv(csv_name, index=False)
+    print(f"Saved CoLA sample -> {csv_name}")
+
+
+def cluster_and_sample(df, embeddings_df, tsne_df, sample_sizes, method_name, output_dir):
+    """Cluster embeddings, order medoids, export nested subsets + visualization."""
+    max_k = max(sample_sizes)
+    if max_k > len(df):
+        print(f"Requested k={max_k} but only {len(df)} languages. Capping…")
+        max_k = len(df)
+        sample_sizes = [s for s in sample_sizes if s <= max_k]
+
+    print(f"Clustering ({method_name}) with k={max_k}…")
+    kmeans = KMeans(n_clusters=max_k, init="k-means++", n_init="auto", random_state=42)
+    cluster_labels = kmeans.fit_predict(embeddings_df)
+
+    dist_matrix = pairwise_distances(embeddings_df.values, metric="euclidean")
+    medoid_indices = []
+    for clust_id in range(max_k):
+        member_idxs = np.where(cluster_labels == clust_id)[0]
+        if len(member_idxs) == 0:
+            print(f"Warning: cluster {clust_id} empty.")
+            continue
+        sub_dm = dist_matrix[np.ix_(member_idxs, member_idxs)]
+        medoid_rel_idx = np.argmin(sub_dm.sum(axis=1))
+        medoid_indices.append(member_idxs[medoid_rel_idx])
+
+    medoid_dist = dist_matrix[np.ix_(medoid_indices, medoid_indices)]
+    ordered_indices = np.array(medoid_indices)[farthest_first_ordering(medoid_dist)]
+
+    show_tsne_viz(tsne_df, cluster_labels, medoid_indices, df, method_name, output_dir, max_k)
+
+    os.makedirs(output_dir, exist_ok=True)
+    for size in sample_sizes:
+        sample_df = df.iloc[ordered_indices[:size]].reset_index(drop=True)
+        csv_path = os.path.join(output_dir, f"{size}_representative_mediods.csv")
+        sample_df.to_csv(csv_path, index=False)
+        print(f"Saved {size}-sample -> {csv_path}")
+
 
 def main():
     data_dir = os.path.dirname(os.path.abspath(__file__))
-    metadata_path = os.path.join(data_dir, "fineweb2-language-distribution.csv")
-    resource_path = os.path.join(data_dir, "lang_resource_dataset.tsv")
-    
-    # 1. Load and Filter
-    df = load_and_filter_metadata(metadata_path, fineweb2_benchmark_languages)
-    
-    # 2. Add Resource Categories
-    df = add_resource_categories(df, resource_path)
-    
-    # 3. Embeddings
-    print("Generating One-Hot Embeddings...")
-    oh_embeddings = generate_onehot_embeddings(df)
-    
-    print("Generating LLM Embeddings...")
-    llm_embeddings = get_llm_embeddings(df)
-    
-    # 4. Cluster and Sample
-    
-    print("\n--- Processing One-Hot Embeddings ---")
-    # Determine sizes for One-Hot
-    oh_sizes = select_optimal_sizes(oh_embeddings, k_min=10, k_max=min(100, len(df)-1))
-    
-    cluster_and_sample(
-        df, 
-        oh_embeddings, 
-        oh_sizes, 
-        "onehot", 
-        os.path.join(data_dir, "onehot_benchmark_samples")
+    processed_dir = os.path.join(data_dir, "processed_artifacts")
+    metadata_df, embedding_map = load_processed_artifacts(processed_dir)
+    total_langs = len(metadata_df)
+
+    # One-hot embeddings
+    onehot_embeddings = embedding_map["onehot"]["embeddings"]
+    onehot_tsne = embedding_map["onehot"]["tsne"]
+    oh_sizes = select_optimal_sizes(
+        onehot_embeddings,
+        k_min=10,
+        k_max=min(100, max(10, total_langs - 1)),
+        include_full_sample=True,
+        total_langs=total_langs,
     )
-    
-    print("\n--- Processing LLM Embeddings ---")
-    # Determine sizes for LLM
-    llm_sizes = select_optimal_sizes(llm_embeddings, k_min=10, k_max=min(100, len(df)-1))
-    
     cluster_and_sample(
-        df, 
-        llm_embeddings, 
-        llm_sizes, 
-        "llm", 
-        os.path.join(data_dir, "llm_benchmark_samples")
+        metadata_df,
+        onehot_embeddings,
+        onehot_tsne,
+        oh_sizes,
+        "onehot",
+        os.path.join(data_dir, "onehot_benchmark_samples"),
     )
+
+    # LLM embeddings
+    llm_embeddings = embedding_map["llm"]["embeddings"]
+    llm_tsne = embedding_map["llm"]["tsne"]
+    llm_sizes = select_optimal_sizes(
+        llm_embeddings,
+        k_min=10,
+        k_max=min(100, max(10, total_langs - 1)),
+        include_full_sample=True,
+        total_langs=total_langs,
+    )
+    cluster_and_sample(
+        metadata_df,
+        llm_embeddings,
+        llm_tsne,
+        llm_sizes,
+        "llm",
+        os.path.join(data_dir, "llm_benchmark_samples"),
+    )
+
+    # CoLA optimal subsets based on LLM embeddings
+    cola_dir = os.path.join(data_dir, "cola_optimal_samples")
+    for cfg in [(4, 4), (8, 4), (12, 4)]:
+        sample_cola_families(metadata_df, llm_embeddings, cfg[0], cfg[1], cola_dir)
+
 
 if __name__ == "__main__":
     main()

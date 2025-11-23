@@ -553,6 +553,7 @@ english_plus_forty_six = fourty_six_representatives_mediods + ["english_4500000_
 english_plus_ninety_five = ninty_five_representatives_mediods + ["english_4500000_sentences"]
 english_plus_hundred_ninety_nine = hundred_ninty_nine_representatives_mediods + ["english_7000000_sentences"]
 
+# 191 languages, which are in fineweb and either belbele or flores
 # source data_prep/fineweb2-language-distribution.csv (only codes present in FLORES or Belebele)
 fineweb2_benchmark_languages = [
     "ace_Latn",

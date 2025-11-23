@@ -16,7 +16,3 @@ We want a dataset which is:
 2.1 The benchmarks with the most langs are (to my knowledge): flores and belebele (200 and 122 langs)
 3. available in fineweb. Fineweb is to our knowledge the largest multilingual dataset
 4. CoLA-expert optimal / optiomal for our novel approach. We need clusters of languages (e.g. 4 Romance, 4 Germanic) so shared A matrices can learn family patterns.
-
-**Opportunity & Decision:**
-Intersecting these requirements gives us a pool of **108 evaluatable languages**.
-From this pool, we will select **22 languages** using clustering to ensure we have both diversity and family clusters (CoLA-optimal).

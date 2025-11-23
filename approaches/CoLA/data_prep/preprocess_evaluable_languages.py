@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+"""Preprocess evaluable FineWeb-2 languages and cache embeddings + t-SNE coords."""
+import os
+import sys
+from enum import Enum
+
+import numpy as np
+import pandas as pd
+import requests
+from sklearn.manifold import TSNE
+from tqdm import tqdm
+import plotly.express as px
+
+PROJECT_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
+sys.path.append(PROJECT_ROOT_DIR)
+
+from approaches.CoLA.distributed_data_processor.language_subsets import fineweb2_benchmark_languages
+
+
+class ResourceCategory(str, Enum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+def load_and_filter_metadata(csv_path, benchmark_languages):
+    """Load FineWeb-2 metadata and keep only evaluable languages."""
+    df = pd.read_csv(csv_path)
+    mask = (
+        ~df["subset"].astype(str).str.endswith("_removed")
+        & (df["split"] == "train")
+        & (df["family"] != "-")
+    )
+    df = df.loc[mask].reset_index(drop=True)
+    df = df[df["subset"].isin(benchmark_languages)].reset_index(drop=True)
+    print(f"Loaded {len(df)} evaluable languages.")
+    return df
+
+
+def add_resource_categories(df, resource_csv_path):
+    """Attach High/Medium/Low resource categories by mirroring the reference script."""
+    res_df = pd.read_csv(resource_csv_path, sep="\t")
+    res_df = res_df[~res_df["resource_category"].str.endswith("*", na=False)]
+
+    df["_subset_lc"] = df["subset"].astype(str).str.lower()
+    res_df["_lang_code_lc"] = res_df["lang_code"].astype(str).str.lower()
+
+    df = df.merge(
+        res_df[["_lang_code_lc", "resource_category"]],
+        left_on="_subset_lc",
+        right_on="_lang_code_lc",
+        how="left",
+    )
+    df.drop(columns=["_subset_lc", "_lang_code_lc"], inplace=True)
+    df = df.sort_values(by="documents", ascending=False).reset_index(drop=True)
+
+    last_rows = df.groupby("resource_category", dropna=False).tail(1)
+    last_idx_by_category = {row["resource_category"]: row.name for _, row in last_rows.iterrows()}
+
+    MERGE_MAP = {
+        "high": ResourceCategory.HIGH,
+        "medhigh": ResourceCategory.MEDIUM,
+        "medlow": ResourceCategory.LOW,
+        "low": ResourceCategory.LOW,
+        "not_enough": ResourceCategory.LOW,
+    }
+
+    tuples = sorted(
+        [(MERGE_MAP.get(k, ResourceCategory.LOW).value, v) for k, v in last_idx_by_category.items()],
+        key=lambda x: x[1],
+    )
+
+    prev = 0
+    for cat, end_idx in tuples:
+        df.loc[prev:end_idx, "resource_category"] = cat
+        prev = end_idx + 1
+    if prev < len(df):
+        df.loc[prev:, "resource_category"] = df["resource_category"].ffill()
+    return df
+
+
+def summarize_metadata(df):
+    """Print quick stats for sanity checking."""
+    print("\nResource tiers:")
+    print(df["resource_category"].value_counts())
+    print("\nTop scripts:")
+    print(df["script"].value_counts().head(10))
+    print("\nTop families:")
+    print(df["family"].value_counts().head(10))
+
+
+def generate_onehot_embeddings(df):
+    """One-hot encode tier/script/family."""
+    rc = pd.get_dummies(df["resource_category"], prefix="rc")
+    script = pd.get_dummies(df["script"], prefix="script")
+    family = pd.get_dummies(df["family"], prefix="family")
+    return pd.concat([rc, script, family], axis=1)
+
+
+def get_llm_embeddings(df):
+    """Call the local embedding endpoint for semantic features."""
+    embedding_config = {
+        "endpoint": "http://lola.cs.uni-paderborn.de:9292/v1",
+        "model_id": "nomic-embed-text-v2-moe",
+    }
+    cache = {}
+
+    def fetch(text):
+        resp = requests.post(
+            embedding_config["endpoint"] + "/embeddings",
+            json={"input": [text], "model": embedding_config["model_id"]},
+        ).json()
+        return resp["data"][0]["embedding"]
+
+    def get_cached(text):
+        if text not in cache:
+            cache[text] = fetch(text)
+        return cache[text]
+
+    rows = []
+    batch_size = 512
+    print("Generating LLM embeddings...")
+    for idx in tqdm(range(0, len(df), batch_size)):
+        batch = df.iloc[idx : idx + batch_size]
+        for _, row in batch.iterrows():
+            name_emb = get_cached(row["name"] or "")
+            cat_emb = get_cached(row["resource_category"] or "")
+            script_emb = get_cached(row["script"] or "")
+            family_emb = get_cached(row["family"] or "")
+            rows.append(np.concatenate([name_emb, cat_emb, script_emb, family_emb]))
+    return pd.DataFrame(rows)
+
+
+def compute_tsne(embeddings_df):
+    """Deterministic t-SNE projection for visualization reuse."""
+    if len(embeddings_df) < 2:
+        return pd.DataFrame(columns=["TSNE1", "TSNE2"])
+    tsne = TSNE(n_components=2, random_state=42, perplexity=min(30, len(embeddings_df) - 1))
+    reduced = tsne.fit_transform(embeddings_df)
+    return pd.DataFrame(reduced, columns=["TSNE1", "TSNE2"])
+
+
+def save_dataframe(df, path, name):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    df.to_csv(path, index=False)
+    print(f"Saved {name} -> {path}")
+
+
+def save_tsne_overview(tsne_df, df, color_col, path, title):
+    """Persist a quick Plotly t-SNE scatter for sanity checking."""
+    if tsne_df.empty or color_col not in df.columns:
+        return
+    viz = tsne_df.copy().reset_index(drop=True)
+    viz[color_col] = df[color_col].reset_index(drop=True)
+    viz["name"] = df["name"].reset_index(drop=True)
+    fig = px.scatter(
+        viz,
+        x="TSNE1",
+        y="TSNE2",
+        color=color_col,
+        hover_name="name",
+        color_discrete_sequence=px.colors.qualitative.Bold,
+    )
+    fig.update_traces(
+        marker=dict(size=6, line=dict(width=0)),
+        hovertemplate=(
+            "<b>%{hovertext}</b><br>"
+            "TSNE1: %{x:.3f}<br>"
+            "TSNE2: %{y:.3f}<br>"
+            f"{color_col.replace('_', ' ').title()}: "+"%{marker.color}<extra></extra>"
+        ),
+    )
+    fig.update_layout(
+        title=title,
+        width=1500,
+        height=1000,
+        legend_title=color_col.replace("_", " ").title(),
+        hoverlabel=dict(bgcolor="white", font_size=12, font_family="Arial"),
+    )
+    fig.write_html(path)
+    print(f"Saved t-SNE overview ({color_col}) -> {path}")
+
+
+def main():
+    data_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.join(data_dir, "base_data")
+    processed_dir = os.path.join(data_dir, "processed_artifacts")
+
+    metadata_path = os.path.join(base_dir, "fineweb2-language-distribution.csv")
+    resource_path = os.path.join(base_dir, "lang_resource_dataset.tsv")
+
+    df = load_and_filter_metadata(metadata_path, fineweb2_benchmark_languages)
+    df = add_resource_categories(df, resource_path)
+    summarize_metadata(df)
+
+    onehot_embeddings = generate_onehot_embeddings(df)
+    llm_embeddings = get_llm_embeddings(df)
+
+    onehot_tsne = compute_tsne(onehot_embeddings)
+    llm_tsne = compute_tsne(llm_embeddings)
+
+    save_dataframe(df, os.path.join(processed_dir, "filtered_languages.csv"), "filtered metadata")
+    save_dataframe(onehot_embeddings, os.path.join(processed_dir, "onehot_embeddings.csv"), "one-hot embeddings")
+    save_dataframe(llm_embeddings, os.path.join(processed_dir, "llm_embeddings.csv"), "LLM embeddings")
+    save_dataframe(onehot_tsne, os.path.join(processed_dir, "onehot_tsne.csv"), "one-hot t-SNE")
+    save_dataframe(llm_tsne, os.path.join(processed_dir, "llm_tsne.csv"), "LLM t-SNE")
+
+    save_tsne_overview(
+        onehot_tsne,
+        df,
+        "resource_category",
+        os.path.join(processed_dir, "onehot_tsne_resource.html"),
+        "One-hot embeddings t-SNE (colored by resource tier)",
+    )
+    save_tsne_overview(
+        llm_tsne,
+        df,
+        "resource_category",
+        os.path.join(processed_dir, "llm_tsne_resource.html"),
+        "LLM embeddings t-SNE (colored by resource tier)",
+    )
+
+
+if __name__ == "__main__":
+    main()
