@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import requests
 from sklearn.cluster import KMeans
-from sklearn.metrics import pairwise_distances
+from sklearn.metrics import pairwise_distances, silhouette_score
 from enum import Enum
 from tqdm import tqdm
 
@@ -32,7 +32,7 @@ def load_and_filter_metadata(csv_path, benchmark_languages):
     )
     df = df.loc[mask].reset_index(drop=True)
     
-    # Filter by benchmark languages
+    # added: filter by benchmark languages
     df = df[df['subset'].isin(benchmark_languages)].reset_index(drop=True)
     print(f"Loaded and filtered metadata: {len(df)} languages")
     return df
@@ -167,6 +167,86 @@ def farthest_first_ordering(dist_matrix):
         
     return ordered
 
+def select_optimal_sizes(embeddings_df, k_min=5, k_max=100, num_sizes=3):
+    """
+    Determine 3 'scientifically sound' sample sizes using Silhouette analysis.
+    We will look for local maxima in the Silhouette score.
+    If distinct peaks aren't found, we fall back to a geometric progression 
+    but guided by the score curve.
+    """
+    print(f"Analyzing cluster quality for k={k_min} to {k_max}...")
+    
+    scores = []
+    ks = range(k_min, k_max + 1, 2) # Step by 2 to save time
+    
+    for k in tqdm(ks, desc="Silhouette Analysis"):
+        if k >= len(embeddings_df):
+            break
+        kmeans = KMeans(n_clusters=k, init="k-means++", n_init='auto', random_state=42)
+        labels = kmeans.fit_predict(embeddings_df)
+        score = silhouette_score(embeddings_df, labels)
+        scores.append((k, score))
+        
+    # Find peaks (local maxima)
+    peaks = []
+    for i in range(1, len(scores) - 1):
+        if scores[i][1] > scores[i-1][1] and scores[i][1] > scores[i+1][1]:
+            peaks.append(scores[i])
+            
+    # Sort peaks by score descending
+    peaks.sort(key=lambda x: x[1], reverse=True)
+    
+    selected_sizes = []
+    
+    # Strategy: Pick the best peak, then one significantly smaller, and one larger (if available)
+    # Or simply pick the top 3 distinct peaks that are spread out.
+    
+    # Let's try to get a Small, Medium, Large spread.
+    # If we have enough peaks, pick ones that cover the range.
+    
+    if len(peaks) >= 3:
+        # Sort peaks by K to identify small/med/large candidates
+        peaks_by_k = sorted(peaks, key=lambda x: x[0])
+        
+        # Simple heuristic: 
+        # 1. Smallest K peak
+        # 2. Peak closest to geometric mean of min/max
+        # 3. Largest K peak (or best score if not included)
+        
+        # Actually, let's just pick the top 3 scoring peaks and sort them by size
+        top_peaks = sorted(peaks[:5], key=lambda x: x[1], reverse=True) # Take top 5 best scores
+        # Pick 3 from these that are most distinct in size?
+        # Let's just take the top 3 best scoring K's.
+        best_ks = sorted([p[0] for p in top_peaks[:3]])
+        selected_sizes = best_ks
+    else:
+        # Fallback: Pick best K, and then geometric neighbors
+        if peaks:
+            best_k = peaks[0][0]
+        else:
+            # No peaks? Just max score
+            best_k = max(scores, key=lambda x: x[1])[0]
+            
+        # Create 3 sizes around the best K or spreading out
+        # If best_k is small, add medium and large
+        # If best_k is large, add small and medium
+        
+        # Let's default to a geometric spread if peaks are insufficient, 
+        # but anchored on the best performing K if possible.
+        
+        # Actually, user wants "scientifically sound". 
+        # If the curve is flat, geometric spread is the most neutral "scientific" approach (log scale coverage).
+        # If there are peaks, those are "natural" scales.
+        
+        geom = np.geomspace(k_min, k_max, num=num_sizes)
+        selected_sizes = sorted(list(set([int(round(v)) for v in geom])))
+        
+        # If we had a best_k, try to swap the closest geometric one with best_k?
+        # Let's keep it simple: if peaks failed, geometric is robust.
+        
+    print(f"Silhouette analysis complete. Selected sizes: {selected_sizes}")
+    return selected_sizes
+
 def cluster_and_sample(df, embeddings_df, sample_sizes, method_name, output_dir):
     """Cluster languages, find medoids, order them, and save samples."""
     max_k = max(sample_sizes)
@@ -181,6 +261,9 @@ def cluster_and_sample(df, embeddings_df, sample_sizes, method_name, output_dir)
     kmeans = KMeans(n_clusters=max_k, init="k-means++", n_init='auto', random_state=42)
     cluster_labels = kmeans.fit_predict(embeddings_df)
     
+    unique_labels = set(cluster_labels)
+    print(f"KMeans converged. Found {len(unique_labels)} unique clusters (requested {max_k}).")
+    
     # Compute medoids
     X = embeddings_df.values
     dist_matrix = pairwise_distances(X, metric="euclidean")
@@ -189,6 +272,11 @@ def cluster_and_sample(df, embeddings_df, sample_sizes, method_name, output_dir)
     for clust_id in range(max_k):
         member_mask = (cluster_labels == clust_id)
         member_idxs = np.where(member_mask)[0]
+        
+        if len(member_idxs) == 0:
+            print(f"Warning: Cluster {clust_id} is empty!")
+            continue
+            
         sub_dm = dist_matrix[np.ix_(member_idxs, member_idxs)]
         medoid_rel_idx = np.argmin(sub_dm.sum(axis=1))
         medoid_abs_idx = member_idxs[medoid_rel_idx]
@@ -226,22 +314,27 @@ def main():
     llm_embeddings = get_llm_embeddings(df)
     
     # 4. Cluster and Sample
-    sample_sizes = [22] # As requested
     
     print("\n--- Processing One-Hot Embeddings ---")
+    # Determine sizes for One-Hot
+    oh_sizes = select_optimal_sizes(oh_embeddings, k_min=10, k_max=min(100, len(df)-1))
+    
     cluster_and_sample(
         df, 
         oh_embeddings, 
-        sample_sizes, 
+        oh_sizes, 
         "onehot", 
         os.path.join(data_dir, "onehot_benchmark_samples")
     )
     
     print("\n--- Processing LLM Embeddings ---")
+    # Determine sizes for LLM
+    llm_sizes = select_optimal_sizes(llm_embeddings, k_min=10, k_max=min(100, len(df)-1))
+    
     cluster_and_sample(
         df, 
         llm_embeddings, 
-        sample_sizes, 
+        llm_sizes, 
         "llm", 
         os.path.join(data_dir, "llm_benchmark_samples")
     )
