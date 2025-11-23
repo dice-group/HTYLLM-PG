@@ -22,6 +22,15 @@ module load compiler/GCCcore/12.3.0
 
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 
+mkdir -p /scratch/hpc-prf-merlin/luke/.cache/torch_extensions
+mkdir -p /scratch/hpc-prf-merlin/luke/.triton/autotune
+
+export TORCH_EXTENSIONS_DIR="/scratch/hpc-prf-merlin/luke/.cache/torch_extensions"
+
+export TRITON_CACHE_DIR="/scratch/hpc-prf-merlin/luke/.triton/autotune"
+
+export XDG_CACHE_HOME="/scratch/hpc-prf-merlin/luke/.cache"
+
 
 GPUS_PER_NODE=1   
 
