@@ -73,5 +73,6 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --topany-gating-impl "sparse" \
       --use-gradient-checkpointing \
       --use-flash-attention \
+      --ep-size 16 \
       --data-dir /scratch/hpc-prf-merlin/luke/tokenized_english_data
 '
