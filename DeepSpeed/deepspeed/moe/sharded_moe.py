@@ -574,7 +574,7 @@ def topanygating_sparse(
     destination_idx = (expert_idx * cap_int) + slot_idx
 
     # Return tuple required for sparse scatter/gather in MOELayer
-    return l_aux, sample_idx, destination_idx, gate_weights, exp_counts.to('cpu'), cap_int
+    return l_aux, sample_idx, destination_idx, gate_weights, exp_counts, cap_int
 
 
 class GAMoEGateSignBackward(torch.autograd.Function):
