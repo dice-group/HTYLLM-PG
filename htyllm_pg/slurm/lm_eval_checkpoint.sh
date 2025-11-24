@@ -27,8 +27,6 @@ done
 TASKS=${TASKS:-belebele}
 BS=${BS:-auto}
 TOK=${TOK:-$CKPT}
-WP=${WP:-llama31_multilingual_eval_belebele}
-PREF=${PREF:-cola_moe_acc}
 
 [[ -z "$CKPT" || -z "$OUTDIR" ]] && { echo "--checkpoint and --output-dir required"; exit 1; }
 [[ ! -d "$CKPT" ]] && { echo "Checkpoint not found: $CKPT"; exit 1; }
@@ -37,24 +35,23 @@ mkdir -p "$OUTDIR" logs
 module purge
 module load toolchain/foss/2024a system/CUDA/12.6.0 lib/NCCL/2.22.3-GCCcore-13.3.0-CUDA-12.6.0    #TODO verify that these work
 source /opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3/etc/profile.d/conda.sh
-conda activate #TODO conda enviroment
+conda activate test2
 
 export CUDA_VISIBLE_DEVICES=${SLURM_JOB_GPUS:-0}
 export PYTHONUNBUFFERED=1
 
-# run params
+# ---- Run lm_eval ----
 LABEL=$(basename "$CKPT")
 OUTFILE="${OUTDIR}/${LABEL}_lm_eval.jsonl"
-WANDB_NAME="${PREF}_${LABEL}"
 
-echo "Running lm-eval on $LABEL..."
+echo "Running lm_eval on $LABEL..."
+
 lm_eval \
   --model hf \
   --model_args "pretrained=$CKPT,tokenizer=$TOK" \
   --tasks "$TASKS" \
   --batch_size "$BS" \
   --output_path "$OUTFILE" \
-  --wandb_args "project=$WP,name=$WANDB_NAME" \
   $EXTRA
 
 echo "Done!"
