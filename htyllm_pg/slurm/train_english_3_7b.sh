@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=moe-multinode
-#SBATCH --nodes=4                    
+#SBATCH --nodes=16                   
 #SBATCH --ntasks-per-node=1           # 1 DeepSpeed launcher per node
 #SBATCH --cpus-per-task=4
-#SBATCH --time=12:00:00
+#SBATCH --time=96:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:h100:4             # 4 GPUs per node
 #SBATCH --mem=128GB
