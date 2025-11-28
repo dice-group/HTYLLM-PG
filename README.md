@@ -24,6 +24,36 @@ deepspeed htyllm_pg/train.py --deepspeed_config ds_config.json \
 sbatch htyllm_pg/slurm/train_test.sh
 ```
 
+## Model Conversion
+
+Convert DeepSpeed checkpoints to Hugging Face format for evaluation:
+
+```bash
+# Single checkpoint
+deepspeed htyllm_pg/conversion_scripts/convert_ds_to_hf.py \
+    --checkpoint_path checkpoints/step_1000 \
+    --output_dir hf_models/step_1000 \
+    --config_path htyllm_pg/conversion_scripts/config_3_7b.json
+
+# Batch conversion (SLURM)
+sbatch htyllm_pg/conversion_scripts/convert_all.sh
+```
+
+## Evaluation
+
+Run evaluation on English tasks using `lm-evaluation-harness`.
+Ensure you have converted your model first (see above).
+
+```bash
+# Quick test
+lm_eval --model hf \
+    --model_args pretrained=hf_models/step_1000,trust_remote_code=True,dtype=float16 \
+    --tasks arc_easy --device cuda:0 --batch_size 4
+
+# Batch evaluation (SLURM)
+sbatch htyllm_pg/slurm/run_lm_eval_english.sh
+```
+
 ## Model Builder Usage
 
 Build a Mixture-of-Experts Transformer using `moe_builder`:
@@ -58,5 +88,7 @@ model = moe_builder(
 
 ### Tokenizers
 
-- tokenizer_norm.json applies normalizers.Lowercase() and normalizers.StripAccents() which might not be a good idea since some languages rely on this (at least the second one)
-- tokenizer.json does not do this anymore (and hopefully is better) :v
+- `tokenizer.json` and `tokenizer_config.json` are required for evaluation. 
+- `tokenizer_norm.json` applies `normalizers.Lowercase()` and `normalizers.StripAccents()`.
+- `tokenizer.json` should be used for general purposes.
+
