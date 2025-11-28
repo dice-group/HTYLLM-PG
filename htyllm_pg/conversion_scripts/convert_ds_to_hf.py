@@ -4,10 +4,15 @@ import torch
 import argparse
 import deepspeed
 import inspect
+import sys
+
+# Ensure we can import from the project root
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import CausalLMOutputWithPast
-from htyllm_pg.model_builder import MoE_Transformer
+from htyllm_pg.model_builder import MoE_Transformer, moe_builder
 
 class HTYLLMConfig(PretrainedConfig):
     model_type = "htyllm_moe"
@@ -57,13 +62,27 @@ def convert(args):
     # 1. Load Config
     if args.config_path:
         with open(args.config_path, 'r') as f:
-            config = HTYLLMConfig(**json.load(f))
+            config_data = json.load(f)
+            config = HTYLLMConfig(**config_data)
     else:
         config = HTYLLMConfig()
     
     # 2. Instantiate HF Model (creates PyTorch model internally)
     print(f"Initializing model with config: {config}")
+    
+    # Use builder to match training exactly
+    builder_args = inspect.signature(moe_builder).parameters.keys()
+    builder_kwargs = {k: v for k, v in config.__dict__.items() if k in builder_args}
+    model_pytorch = moe_builder(**builder_kwargs)
+
     hf_model = HTYLLMForCausalLM(config)
+    hf_model.model = model_pytorch
+    
+    # CRITICAL: Add auto_map for trust_remote_code=True support
+    hf_model.config.auto_map = {
+        "AutoConfig": "modeling_htyllm.HTYLLMConfig",
+        "AutoModelForCausalLM": "modeling_htyllm.HTYLLMForCausalLM"
+    }
     
     # 3. Initialize DeepSpeed to load checkpoint
     ds_config = {
@@ -97,9 +116,30 @@ def convert(args):
             
     print("Checkpoint loaded successfully.")
 
-    # 5. Save HF Model (State dict is already in hf_model.model since it is shared with model_engine.module)
+    # 5. Save HF Model
     print(f"Saving to {args.output_dir}...")
     hf_model.save_pretrained(args.output_dir)
+    
+    # We read model_builder.py and append our wrapper classes
+    model_builder_path = os.path.join(os.path.dirname(__file__), "../model_builder.py")
+    with open(model_builder_path, "r") as f:
+        model_code = f.read()
+    
+    wrapper_code = f"""
+from transformers import PreTrainedModel, PretrainedConfig
+from transformers.modeling_outputs import CausalLMOutputWithPast
+import torch
+import inspect
+
+{inspect.getsource(HTYLLMConfig)}
+
+{inspect.getsource(HTYLLMForCausalLM)}
+"""
+    
+    with open(os.path.join(args.output_dir, "modeling_htyllm.py"), "w") as f:
+        f.write(model_code + "\n" + wrapper_code)
+
+    print(f"Saved modeling_htyllm.py to {args.output_dir}")
     print("Saved.")
 
     # 6. Verify
