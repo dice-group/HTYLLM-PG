@@ -53,6 +53,9 @@ for model_dir in "$HF_MODELS_DIR"/*; do
             continue
         fi
 
+        # Ensure tokenizer is present in model dir (using absolute path for tokenizer source)
+        cp tokenizer.json "$model_dir/" || echo "Warning: Could not copy tokenizer.json"
+
         # Run lm_eval
         lm_eval --model hf \
             --model_args pretrained="$model_dir",trust_remote_code=True,dtype=bfloat16 \

@@ -129,7 +129,13 @@ def convert(args):
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import CausalLMOutputWithPast
 import torch
+import deepspeed
 import inspect
+
+# Initialize DeepSpeed distributed backend if not already initialized
+# This is required for the MoE layer to function correctly during inference
+if not deepspeed.comm.is_initialized():
+    deepspeed.init_distributed(dist_backend="nccl")
 
 {inspect.getsource(HTYLLMConfig)}
 
