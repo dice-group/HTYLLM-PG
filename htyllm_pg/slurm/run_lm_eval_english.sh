@@ -20,8 +20,8 @@ module load system/CUDA/12.6.0
 module load compiler/GCCcore/12.3.0
 
 # Directory containing the converted HF models (subdirectories for each step)
-HF_MODELS_DIR="../hf_models"
-RESULTS_DIR="../eval_results"
+HF_MODELS_DIR="hf_models"
+RESULTS_DIR="eval_results"
 
 # English Tasks
 TASKS="hellaswag,winogrande,piqa,arc_easy,arc_challenge,boolq,openbookqa"
