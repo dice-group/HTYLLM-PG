@@ -28,9 +28,9 @@ export TRITON_CACHE_DIR="/scratch/hpc-prf-merlin/luke/.triton/autotune"
 export XDG_CACHE_HOME="/scratch/hpc-prf-merlin/luke/.cache"
 
 # Base directories
-CHECKPOINT_ROOT="../checkpoints"
-OUTPUT_ROOT="../hf_models"
-CONFIG_PATH="config_3_7b.json"
+CHECKPOINT_ROOT="checkpoints"
+OUTPUT_ROOT="hf_models"
+CONFIG_PATH="htyllm_pg/conversion_scripts/config_3_7b.json"
 
 # Ensure output directory exists
 mkdir -p "$OUTPUT_ROOT"
