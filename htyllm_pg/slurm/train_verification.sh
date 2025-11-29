@@ -82,6 +82,6 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --use-gradient-checkpointing \
       --use-flash-attention \
       --checkpoint-dir ./checkpoints_verification \
-      --checkpoint-steps 50 \
+      --checkpoint-steps 1000 \
       --data-dir ../tokenized_subsets/five_representatives_mediods
 '
