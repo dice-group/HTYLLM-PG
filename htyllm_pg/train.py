@@ -8,6 +8,7 @@ import deepspeed
 from deepspeed import comm
 import argparse
 import wandb
+import json
 from htyllm_pg.model_builder import moe_builder
 from htyllm_pg.dataset import create_dataloaders
 from tqdm.auto import tqdm
@@ -53,6 +54,41 @@ def chunked_cross_entropy(logits, targets, chunk_size=4096, ignore_index=-100):
 
     # Average the loss
     return total_loss / num_valid_tokens
+
+
+def save_config(args, output_dir):
+    """Saves the model configuration to a JSON file."""
+    config = {
+        "vocab_size": args.vocab_size,
+        "max_seq_len": args.max_seq_len,
+        "dim": args.dim,
+        "depth": args.depth,
+        "heads": args.heads,
+        "mlp_dim": args.mlp_dim,
+        "dim_head": args.dim_head,
+        "dropout": args.dropout,
+        "emb_dropout": args.emb_dropout,
+        "moe_layers": args.moe_layers,
+        "num_experts": args.num_experts,
+        "k": args.k,
+        "capacity_factor": args.capacity_factor,
+        "eval_capacity_factor": args.eval_capacity_factor,
+        "min_capacity": args.min_capacity,
+        "use_residual": args.use_residual,
+        "gate_backward": args.gate_backward,
+        "ep_size": args.ep_size,
+        "topany_gating_impl": args.topany_gating_impl,
+        "use_flash_attention": args.use_flash_attention,
+        "use_gradient_checkpointing": args.use_gradient_checkpointing,
+        "architectures": ["HTYLLMForCausalLM"],
+        "model_type": "htyllm_moe"
+    }
+    
+    os.makedirs(output_dir, exist_ok=True)
+    config_path = os.path.join(output_dir, "config.json")
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+    print(f"Saved configuration to {config_path}")
 
 
 def get_args() -> argparse.Namespace :
@@ -177,6 +213,9 @@ def main():
                 "total_trainable_params": pytorch_total_params,
             }
         )
+        
+        # Save config.json for conversion scripts
+        save_config(args, args.checkpoint_dir)
     
     # Load checkpoint if specified
     global_step = 0
