@@ -1,8 +1,9 @@
 import os
 import sys
 
+
 def fix_modeling_file(model_dir):
-    modeling_path = os.path.join(model_dir, "modeling_htyllm.py")
+    odeling_path = os.path.join(model_dir, "modeling_htyllm.py")
     if not os.path.exists(modeling_path):
         print(f"Error: {modeling_path} does not exist.")
         return False

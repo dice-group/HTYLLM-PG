@@ -1,6 +1,7 @@
 from numpy import argmax
 from torch import nn
 import torch
+import os
 from torch.utils.data import DataLoader, Dataset
 import torch.nn.functional as F
 import deepspeed
@@ -188,7 +189,9 @@ def main():
 
     # Use pad_token_id = 0 
     PAD_TOKEN_ID = 0
-    criterion = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN_ID).to(device)
+    # Ensure ignore_index matches dataset (-100)
+    print(f"PAD_TOKEN_ID: {PAD_TOKEN_ID}")
+    criterion = nn.CrossEntropyLoss(ignore_index=-100).to(device)
     
     # real data if data_dir provided otherwise dummy data
     if args.data_dir:
