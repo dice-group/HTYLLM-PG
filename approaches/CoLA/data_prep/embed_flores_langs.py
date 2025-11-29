@@ -47,12 +47,7 @@ def encode_batch(texts: List[str], tok, model, device):
     return torch.nn.functional.normalize(pooled, p=2, dim=1).cpu().numpy()
 
 
-def embed_language(subset: str, tok, model, device, bs: int) -> Optional[np.ndarray]:
-    try:
-        ds = load_dataset(DATASET_NAME, subset, split=SPLIT)
-    except Exception:
-        return None
-
+def embed_language(ds, tok, model, device, bs: int) -> Optional[np.ndarray]:
     texts = [row["text"] for row in ds]
     vecs = []
 
@@ -74,14 +69,18 @@ def parse_args():
     return p.parse_args()
 
 
-def run_embedding_job(key: str, languages, meta, bs: int):
+def run_embedding_job(key: str, languages, meta, datasets, bs: int):
     cfg = MODEL_CONFIGS[key]
     tok, model, device = load_model(cfg["model_name"])
 
     rows, embs, missing = [], [], []
 
     for subset in tqdm(languages, desc=key):
-        vec = embed_language(subset, tok, model, device, bs)
+        ds = datasets.get(subset)
+        if ds is None:
+            missing.append(subset)
+            continue
+        vec = embed_language(ds, tok, model, device, bs)
         if vec is None:
             missing.append(subset)
             continue
@@ -115,9 +114,16 @@ def main():
     meta = pd.read_csv(LANG_PATH)
     languages = meta["subset"].tolist()
 
+    datasets = {}
+    for subset in languages:
+        try:
+            datasets[subset] = load_dataset(DATASET_NAME, subset, split=SPLIT)
+        except Exception:
+            datasets[subset] = None
+
     keys = MODEL_CONFIGS.keys() if args.model_key == "all" else [args.model_key]
     for key in keys:
-        run_embedding_job(key, languages, meta, args.batch_size)
+        run_embedding_job(key, languages, meta, datasets, args.batch_size)
 
 
 if __name__ == "__main__":
