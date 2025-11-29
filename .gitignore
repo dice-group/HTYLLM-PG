@@ -22,6 +22,5 @@ dist/
 **/wandb/
 
 approaches/CoLA/data_prep/stratified_samples
-approaches/CoLA/data_prep/processed_artifacts
 approaches/CoLA/data_prep/onehot_benchmark_samples
 approaches/CoLA/data_prep/llm_benchmark_samples

@@ -39,12 +39,12 @@ def load_model(name: str):
 
 
 def encode_batch(texts: List[str], tok, model, device):
-    inp = tok(texts, return_tensors="pt", padding=True, truncation=True, max_length=512).to(device)
-    with torch.no_grad():
-        h = model(**inp).last_hidden_state
-    mask = inp["attention_mask"].unsqueeze(-1).expand_as(h).float()
-    pooled = (h * mask).sum(1) / mask.sum(1).clamp(min=1e-9)
-    return torch.nn.functional.normalize(pooled, p=2, dim=1).cpu().numpy()
+    inp = tok(texts, return_tensors="pt", padding=True, truncation=True, max_length=512).to(device) # tokenize and move to GPU
+    with torch.no_grad():                                                                           # disable gradients for speed
+        h = model(**inp).last_hidden_state                                                          # run model forward pass -> token mebeddings
+    mask = inp["attention_mask"].unsqueeze(-1).expand_as(h).float()                                 # expand mask to embedding size
+    pooled = (h * mask).sum(1) / mask.sum(1).clamp(min=1e-9)                                        # maksked mean-pool embeddings 
+    return torch.nn.functional.normalize(pooled, p=2, dim=1).cpu().numpy()                          # L2 normalize and move to CPU
 
 
 def embed_language(ds, tok, model, device, bs: int) -> Optional[np.ndarray]:
@@ -71,6 +71,7 @@ def parse_args():
 
 def run_embedding_job(key: str, languages, meta, datasets, bs: int):
     cfg = MODEL_CONFIGS[key]
+    print(f"[{key}] Loading model {cfg['model_name']}...")
     tok, model, device = load_model(cfg["model_name"])
 
     rows, embs, missing = [], [], []
@@ -95,9 +96,9 @@ def run_embedding_job(key: str, languages, meta, datasets, bs: int):
     out_df = pd.merge(pd.DataFrame(rows), meta, on="subset", how="left")
     pd.concat([out_df, emb_df], axis=1).to_csv(cfg["output"], index=False)
 
-    print(f"Saved {cfg['model_name']} to {cfg['output']}")
+    print(f"[{key}] Saved embeddings to {cfg['output']}")
     if missing:
-        print(f"Missing {len(missing)} languages")
+        print(f"[{key}] Missing {len(missing)} languages")
 
     del model
     if torch.cuda.is_available():
@@ -114,12 +115,14 @@ def main():
     meta = pd.read_csv(LANG_PATH)
     languages = meta["subset"].tolist()
 
+    print(f"Preloading FLORES '{SPLIT}' split for {len(languages)} languages...")
     datasets = {}
-    for subset in languages:
+    for subset in tqdm(languages, desc="Loading FLORES data"):
         try:
             datasets[subset] = load_dataset(DATASET_NAME, subset, split=SPLIT)
-        except Exception:
+        except Exception as exc:
             datasets[subset] = None
+            print(f"[warn] Failed to load subset {subset}: {exc}")
 
     keys = MODEL_CONFIGS.keys() if args.model_key == "all" else [args.model_key]
     for key in keys:
