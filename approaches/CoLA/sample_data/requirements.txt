@@ -1,0 +1,5 @@
+datatrove==0.6.0
+pandas==2.2.3
+pyarrow==17.0.0
+loguru==0.7.3
+orjson

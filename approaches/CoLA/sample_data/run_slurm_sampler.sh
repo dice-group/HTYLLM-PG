@@ -4,16 +4,10 @@
 #SBATCH --time=20:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=20G
+#SBATCH --output=logs/sample_%j.out
 
-set -euo pipefail
+PLAN_CSV="/scratch/hpc-prf-merlin/joel/HTYLLM-PG/approaches/CoLA/data_prep/processed_artifacts/filtered_languages.csv"
+MAX_SAMPLE="100_000"
+OUTPUT_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset"
 
-if [[ $# -lt 3 ]]; then
-    echo "Usage: $0 <plan_csv> <max_sample> <output_dir>"
-    exit 1
-fi
-
-PLAN_CSV="$1"
-MAX_SAMPLE="$2"
-OUTPUT_DIR="$3"
-
-srun python sample_data/sample_generator_datatrove.py "${PLAN_CSV}" "${MAX_SAMPLE}" "${OUTPUT_DIR}"
+srun python sample_generator_datatrove.py "${PLAN_CSV}" "${MAX_SAMPLE}" "${OUTPUT_DIR}"
