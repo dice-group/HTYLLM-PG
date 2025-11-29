@@ -135,7 +135,17 @@ import inspect
 # Initialize DeepSpeed distributed backend if not already initialized
 # This is required for the MoE layer to function correctly during inference
 if not deepspeed.comm.is_initialized():
-    deepspeed.init_distributed(dist_backend="nccl")
+    import os
+    # If running in a non-distributed environment (e.g. simple inference/eval),
+    # set up a single-process distributed environment to satisfy DeepSpeed requirements.
+    if "RANK" not in os.environ:
+        os.environ["RANK"] = "0"
+        os.environ["LOCAL_RANK"] = "0"
+        os.environ["WORLD_SIZE"] = "1"
+        os.environ["MASTER_ADDR"] = "127.0.0.1"
+        os.environ["MASTER_PORT"] = "29500"
+
+    deepspeed.init_distributed(dist_backend="nccl", auto_mpi_discovery=False)
 
 {inspect.getsource(HTYLLMConfig)}
 
