@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=hydralora-moe-train
-#SBATCH --nodes=1                    
-#SBATCH --ntasks=1          
+#SBATCH --job-name=hydralora-moe-train-ddp
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --gres=gpu:h100:4
 #SBATCH --time=12:00:00
 #SBATCH --mem=256G
-#SBATCH --output=logs/train_moe_hydralora_%j.log
+#SBATCH --output=logs/train_moe_hydralora_ddp_%j.log
 #SBATCH --partition=gpu
 
 set -euo pipefail
@@ -30,22 +30,22 @@ if [[ -n "${SLURM_JOB_GPUS:-}" ]]; then
 fi
 python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count());"
 
-export WANDB_PROJECT="llama3.1-8b_moe_hydralora_training_accelerate"
-export WANDB_RUN_GROUP="hydralora_moe_accelerate"
+export WANDB_PROJECT="llama3.1-8b_moe_hydralora_training_ddp"
+export WANDB_RUN_GROUP="hydralora_moe_ddp"
 
 DATASET_DIR=./LLaMA-Factory/data
 DATASET_NAME=c4
 FINETUNING_TYPE=hydralora
-OUTPUT_DIR=/scratch/hpc-prf-merlin/sashreek/moe_study/saves/hydralora_moe_llama31_8b_acc
+OUTPUT_DIR=/scratch/hpc-prf-merlin/sashreek/moe_study/saves/hydralora_moe_llama31_8b_ddp_fast
 MODEL_NAME_OR_PATH=meta-llama/Llama-3.1-8B
-DEEPSPEED_CONFIG=./LLaMA-Factory/examples/deepspeed/ds_z3_config.json
-#TRAIN_LOG=logs/train_moe_hydralora_${SLURM_JOB_ID:-manual}.log
+ACCEL_CONFIG=./LLaMA-Factory/examples/accelerate/ddp_4gpu_bf16_test.yaml
+#TRAIN_LOG=logs/train_moe_hydralora_ddp_${SLURM_JOB_ID:-manual}.log
 TOKENIZED_PATH=/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter/llama-3.1-8B_tokenizer/5_langs
 
 LM_EVAL_TASKS=${LM_EVAL_TASKS:-belebele}
 LM_EVAL_BATCH_SIZE=${LM_EVAL_BATCH_SIZE:-auto}
 LM_EVAL_WANDB_PROJECT=${LM_EVAL_WANDB_PROJECT:-llama31_multilingual_eval_belebele}
-LM_EVAL_WANDB_PREFIX=${LM_EVAL_WANDB_PREFIX:-hydralora_moe_acc}
+LM_EVAL_WANDB_PREFIX=${LM_EVAL_WANDB_PREFIX:-hydralora_moe_ddp}
 LM_EVAL_EXTRA_ARGS=${LM_EVAL_EXTRA_ARGS:-}
 LM_EVAL_POLL_INTERVAL=${LM_EVAL_POLL_INTERVAL:-120}
 ENABLE_LM_EVAL_LISTENER=${ENABLE_LM_EVAL_LISTENER:-1}
@@ -57,13 +57,13 @@ NUM_TRAIN_EPOCHS=1
 LEARNING_RATE=5e-5
 LR_SCHEDULER_TYPE=cosine
 WARMUP_RATIO=0.06
-PER_DEVICE_TRAIN_BATCH_SIZE=16
-PER_DEVICE_EVAL_BATCH_SIZE=16
-GRADIENT_ACCUMULATION_STEPS=1
-LORA_NUM=4
+PER_DEVICE_TRAIN_BATCH_SIZE=4
+PER_DEVICE_EVAL_BATCH_SIZE=4
+GRADIENT_ACCUMULATION_STEPS=4
+LORA_NUM=2
 LORA_RANK=4
 LORA_ALPHA=8
-HYDRALORA_NUM_EXPERTS=4
+HYDRALORA_NUM_EXPERTS=2
 HYDRALORA_TOP_K=1
 EVAL_STEPS=200
 SEED=42
@@ -81,8 +81,8 @@ fi
 NUM_LANGS=$(echo "${TOKENIZED_PATH}" | sed -n 's#.*/\([0-9]\+\)_langs.*#\1#p')
 NUM_LANGS=${NUM_LANGS:-all}
 
-RUN_NAME="hydralora_moe_acc_${NUM_LANGS}langs_$(date +%Y%m%d_%H%M%S)"
-WANDB_TAGS="hydralora,moe,accelerate,bf16"
+RUN_NAME="hydralora_moe_ddp_${NUM_LANGS}langs_$(date +%Y%m%d_%H%M%S)"
+WANDB_TAGS="hydralora,moe,ddp,bf16"
 WANDB_CONFIG_JSON=$(cat <<JSON
 {
   "model_name_or_path": "${MODEL_NAME_OR_PATH}",
@@ -115,47 +115,12 @@ JSON
 export WANDB_TAGS
 export WANDB_CONFIG_JSON
 
-if [[ ! -f "$DEEPSPEED_CONFIG" ]]; then
-  echo "[ERROR] DeepSpeed config $DEEPSPEED_CONFIG not found." >&2
+if [[ ! -f "$ACCEL_CONFIG" ]]; then
+  echo "[ERROR] Accelerate config $ACCEL_CONFIG not found." >&2
   exit 1
 fi
 
 mkdir -p "${OUTPUT_DIR}"
-
-LISTENER_PID=""
-# Temporarily disable checkpoint listener during debugging.
-# if [[ "${ENABLE_LM_EVAL_LISTENER}" != "0" ]]; then
-#   if [[ -x "${CHECKPOINT_LISTENER_SCRIPT}" && -x "${LM_EVAL_SCRIPT}" ]]; then
-#     bash "${CHECKPOINT_LISTENER_SCRIPT}" \
-#       --watch-dir "${OUTPUT_DIR}" \
-#       --eval-script "${LM_EVAL_SCRIPT}" \
-#       --tasks "${LM_EVAL_TASKS}" \
-#       --batch-size "${LM_EVAL_BATCH_SIZE}" \
-#       --poll-interval "${LM_EVAL_POLL_INTERVAL}" \
-#       --wandb-project "${LM_EVAL_WANDB_PROJECT}" \
-#       --wandb-prefix "${LM_EVAL_WANDB_PREFIX}" \
-#       --extra-args "${LM_EVAL_EXTRA_ARGS}" &
-#     LISTENER_PID=$!
-#     echo "[INFO] Started checkpoint listener (PID ${LISTENER_PID})"
-#   else
-#     echo "[WARN] Listener or eval script missing/executable bit not set; skipping checkpoint evaluation listener."
-#   fi
-# else
-#   echo "[INFO] LM evaluation listener disabled."
-# fi
-
-# # -------- Slurm → torchrun distributed setup --------
-
-# MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
-# MASTER_PORT=${MASTER_PORT:-6000}
-
-# NNODES=${SLURM_NNODES}
-# NODE_RANK=${SLURM_NODEID}
-# GPUS_PER_NODE=1       # 1 GPU per node (matches --gres)
-
-# export MASTER_ADDR MASTER_PORT NNODES NODE_RANK GPUS_PER_NODE
-
-# # -------- Optional tokenized path handling --------
 
 TOKENIZED_ARGS=()
 if [[ -n "$TOKENIZED_PATH" ]]; then
@@ -166,42 +131,9 @@ if [[ -n "$TOKENIZED_PATH" ]]; then
   TOKENIZED_ARGS+=(--tokenized_path "${TOKENIZED_PATH}")
 fi
 
-# which llamafactory-cli
-# python -c "import llamafactory, inspect, sys; print(llamafactory.__file__)"
-
-# echo "[INFO] Starting multi-node HydraLoRA training at $(date)"
-# echo "[INFO] MASTER_ADDR=${MASTER_ADDR}, MASTER_PORT=${MASTER_PORT}, NNODES=${NNODES}, NODE_RANK=${NODE_RANK}, GPUS_PER_NODE=${GPUS_PER_NODE}"
-
-# -------- Torch distributed setup --------
-
-if [[ -n "${SLURM_JOB_NODELIST:-}" ]]; then
-  MASTER_ADDR=${MASTER_ADDR:-$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)}
-else
-  MASTER_ADDR=${MASTER_ADDR:-"127.0.0.1"}
-fi
-MASTER_PORT=${MASTER_PORT:-6000}
-NNODES=${SLURM_JOB_NUM_NODES:-${SLURM_NNODES:-1}}
-NODE_RANK=${SLURM_NODEID:-0}
-if [[ -n "${SLURM_GPUS_ON_NODE:-}" ]]; then
-  GPUS_PER_NODE=${SLURM_GPUS_ON_NODE}
-elif [[ -n "${SLURM_JOB_GPUS:-}" ]]; then
-  IFS=',' read -ra _gpu_list <<< "${SLURM_JOB_GPUS}"
-  GPUS_PER_NODE=${#_gpu_list[@]}
-else
-  GPUS_PER_NODE=4
-fi
-
-echo "[INFO] MASTER_ADDR=${MASTER_ADDR}, MASTER_PORT=${MASTER_PORT}, NNODES=${NNODES}, NODE_RANK=${NODE_RANK}, GPUS_PER_NODE=${GPUS_PER_NODE}"
-
-# -------- Training with torchrun + DeepSpeed --------
-
-echo "[INFO] Starting DeepSpeed-backed MoE HydraLoRA training at $(date)"
-torchrun \
-  --nnodes "${NNODES}" \
-  --nproc_per_node "${GPUS_PER_NODE}" \
-  --node_rank "${NODE_RANK}" \
-  --master_addr "${MASTER_ADDR}" \
-  --master_port "${MASTER_PORT}" \
+echo "[INFO] Starting Accelerate-backed DDP HydraLoRA training at $(date)"
+accelerate launch \
+  --config_file "${ACCEL_CONFIG}" \
   ./LLaMA-Factory/src/train.py \
     --stage sft \
     --do_train \
@@ -231,10 +163,11 @@ torchrun \
     --use_hydralora_experts ${USE_HYDRALORA_EXPERTS} \
     --hydralora_num_experts ${HYDRALORA_NUM_EXPERTS} \
     --hydralora_top_k ${HYDRALORA_TOP_K} \
-    --deepspeed "${DEEPSPEED_CONFIG}" \
     --bf16 $(echo "${BF16}" | tr '[:upper:]' '[:lower:]') \
     --fp16 $(echo "${FP16}" | tr '[:upper:]' '[:lower:]') \
     --pure_bf16 $(echo "${PURE_BF16}" | tr '[:upper:]' '[:lower:]') \
+    --flash_attn auto \
+    --disable_gradient_checkpointing True \
     --disable_tqdm ${DISABLE_TQDM} \
     --logging_steps ${LOGGING_STEPS} \
     --logging_first_step ${LOGGING_FIRST_STEP} \
@@ -246,12 +179,6 @@ torchrun \
 
 echo "[INFO] Training finished at $(date)"
 
-# -------- Evaluation loop (same as before) --------
-
 echo "[INFO] Collecting checkpoints for evaluation..."
 touch "${OUTPUT_DIR}/.training_complete"
 echo "[INFO] Wrote completion marker to ${OUTPUT_DIR}/.training_complete"
-if [[ -n "$LISTENER_PID" ]]; then
-  echo "[INFO] Waiting for checkpoint listener (PID ${LISTENER_PID}) to finish scheduling evaluations..."
-  wait "$LISTENER_PID"
-fi

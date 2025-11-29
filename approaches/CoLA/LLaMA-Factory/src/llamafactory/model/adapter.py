@@ -816,7 +816,10 @@ def _setup_hydralora_tuning(
     if is_trainable and cast_trainable_params_to_fp32:
         for param in filter(lambda p: p.requires_grad, model.parameters()):
             param.data = param.data.to(torch.float32)
-
+    elif is_trainable and getattr(finetuning_args, "pure_bf16", False):
+        # Ensure trainable adapter weights (routers, LoRA matrices, etc.) match the bf16 compute dtype.
+        for param in filter(lambda p: p.requires_grad, model.parameters()):
+            param.data = param.data.to(torch.bfloat16)
     
 
     return model
