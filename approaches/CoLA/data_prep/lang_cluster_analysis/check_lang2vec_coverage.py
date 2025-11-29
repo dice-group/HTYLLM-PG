@@ -1,13 +1,14 @@
-import sys
-import numpy as np
-import pandas as pd
-
-from collections import OrderedDict
-from pathlib import Path
-
+#!/usr/bin/env python3
 """
 Quick Lang2Vec coverage report for the FLORES languages we already filtered.
 """
+import sys
+from collections import OrderedDict
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
 _np_load = np.load
 
 
@@ -18,15 +19,13 @@ def _np_load_allow_pickle(*args, **kwargs):
 
 np.load = _np_load_allow_pickle
 
-
 SCRIPT_DIR = Path(__file__).resolve().parent
-DATA_PREP_DIR = SCRIPT_DIR
+DATA_PREP_DIR = SCRIPT_DIR.parent
 LANG_LIST_PATH = DATA_PREP_DIR / "processed_artifacts" / "filtered_languages.csv"
-LANG2VEC_DIR = DATA_PREP_DIR / "lang2vec"
+LANG2VEC_DIR = SCRIPT_DIR / "lang2vec"
 
-# Make sure we import the local lang2vec package that ships with this repo.
 sys.path.insert(0, str(LANG2VEC_DIR))
-from lang2vec import lang2vec as l2v
+from lang2vec import lang2vec as l2v  # noqa: E402
 
 
 def load_languages():
@@ -37,7 +36,7 @@ def load_languages():
 def summarize_feature_set(langs, feature_key):
     try:
         feature_payload = l2v.get_features(langs, feature_key, header=True)
-    except Exception as exc:  # pragma: no cover - informational
+    except Exception as exc:
         return {
             "feature_key": feature_key,
             "feature_dim": 0,
@@ -45,6 +44,7 @@ def summarize_feature_set(langs, feature_key):
             "coverage_ratio": 0.0,
             "error": str(exc),
         }
+
     feature_names = feature_payload.pop("CODE")
     available_langs = []
     for lang, values in feature_payload.items():

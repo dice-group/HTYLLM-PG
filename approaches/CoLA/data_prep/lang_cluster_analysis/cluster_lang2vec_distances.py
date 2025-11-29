@@ -17,9 +17,9 @@ Example:
 """
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DATA_PREP_DIR = SCRIPT_DIR
+DATA_PREP_DIR = SCRIPT_DIR.parent
 LANG_LIST_PATH = DATA_PREP_DIR / "processed_artifacts" / "filtered_languages.csv"
-LANG2VEC_DIR = DATA_PREP_DIR / "lang2vec"
+LANG2VEC_DIR = SCRIPT_DIR / "lang2vec"
 
 sys.path.insert(0, str(LANG2VEC_DIR))
 from lang2vec import lang2vec as l2v
