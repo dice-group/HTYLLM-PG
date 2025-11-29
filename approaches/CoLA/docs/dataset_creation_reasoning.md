@@ -16,3 +16,11 @@ We want a dataset which is:
 2.1 The benchmarks with the most langs are (to my knowledge): flores and belebele (200 and 122 langs)
 3. available in fineweb. Fineweb is to our knowledge the largest multilingual dataset
 4. CoLA-expert optimal / optiomal for our novel approach. We need clusters of languages (e.g. 4 Romance, 4 Germanic) so shared A matrices can learn family patterns.
+
+### Decision on Language Grouping
+To satisfy requirement #4 ("CoLA-expert optimal"), we will use **Data-Driven Grouping (LLM Embeddings)**.
+- **Why**: Linguistic families (e.g., "Indo-European") are often too broad or unbalanced for parameter sharing. A data-driven approach using the model's own embeddings ensures that languages sharing parameters are actually similar in the model's representation space.
+- **Method**: Stratified Cluster Sampling on `llm_embeddings.csv` (Llama-3.2-1B).
+  1. Cluster languages into $K$ groups using K-Means.
+  2. From each cluster, select the best representative (closest to center) for **High**, **Medium**, and **Low** resource tiers.
+- **Outcome**: A diverse set of languages that covers the semantic space while ensuring representation across resource levels.
