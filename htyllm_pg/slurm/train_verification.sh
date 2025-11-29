@@ -3,10 +3,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=00:30:00
+#SBATCH --time=08:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:h100:1
-#SBATCH --mem=32GB
+#SBATCH --mem=64GB
 #SBATCH --account=hpc-prf-merlin
 #SBATCH --qos express
 #SBATCH --output=verify_%j.log
