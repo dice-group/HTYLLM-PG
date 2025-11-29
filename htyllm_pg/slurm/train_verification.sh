@@ -3,12 +3,11 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=08:00:00
+#SBATCH --time=12:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:h100:1
 #SBATCH --mem=64GB
 #SBATCH --account=hpc-prf-merlin
-#SBATCH --qos express
 #SBATCH --output=verify_%j.log
 
 set -e
@@ -68,7 +67,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
     htyllm_pg/train.py \
       --deepspeed \
       --deepspeed_config ds_config.json \
-      --epochs 1 \
+      --epochs 5 \
       --batch-size 12 \
       --lr 1e-4 \
       --dim 512 \
