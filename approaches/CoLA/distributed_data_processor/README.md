@@ -89,6 +89,10 @@ This submits the tokenization array and its merge job. Check `logs/smoke_llama32
 
 See the `language_subsets.py` lists for the exact language mixes per subset.
 
+### Lang2Vec-driven subset
+
+`language_subsets.py` now exposes `lang2vec_auto_best_languages`, a 12-language mix built from the Lang2Vec clustering pipeline (`data_prep/lang_cluster_analysis/run_lang2vec_best_clusters.sh`). The loader automatically prefers the fresh artifact at `data_prep/processed_artifacts/clusters_lang2vec_genetic_auto_best4x3.json` and falls back to the checked-in preset under `data_prep/lang_cluster_analysis/presets/`. To swap in a new cluster selection, rerun the Lang2Vec script and point the pipeline at the resulting JSON via `export LANG2VEC_CLUSTER_SELECTION=/path/to/your_best4x3.json` before invoking `tokenize_and_merge_pipeline.sh --language-subset lang2vec_auto_best_languages`.
+
 ## Resources
 
 - Tokenization ranks always use 4 CPU / 32 GB / 1 h on `normal`.

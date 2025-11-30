@@ -1,3 +1,40 @@
+import json
+import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+LANG2VEC_SELECTION_ENV = "LANG2VEC_CLUSTER_SELECTION"
+LANG2VEC_DEFAULT_SELECTION = BASE_DIR / "data_prep" / "processed_artifacts" / "clusters_lang2vec_genetic_auto_best4x3.json"
+LANG2VEC_FALLBACK_SELECTION = BASE_DIR / "data_prep" / "lang_cluster_analysis" / "presets" / "lang2vec_auto_best4x3.json"
+
+
+def _resolve_lang2vec_path():
+    env_path = os.environ.get(LANG2VEC_SELECTION_ENV)
+    candidates = []
+    if env_path:
+        candidates.append(Path(env_path))
+    candidates.append(LANG2VEC_DEFAULT_SELECTION)
+    candidates.append(LANG2VEC_FALLBACK_SELECTION)
+    for path in candidates:
+        if path and path.exists():
+            return path
+    return None
+
+
+def _load_lang2vec_languages():
+    path = _resolve_lang2vec_path()
+    if not path:
+        return {"path": None, "languages": []}
+    with path.open() as f:
+        payload = json.load(f)
+    langs = sorted({entry["code"] for entry in payload})
+    return {"path": str(path), "languages": langs}
+
+
+_lang2vec_selection = _load_lang2vec_languages()
+lang2vec_auto_best_languages = _lang2vec_selection["languages"]
+lang2vec_auto_best_source = _lang2vec_selection["path"]
+
 five_representatives_mediods = [
     "wbm_Latn",
     "tel_Telu",
@@ -756,6 +793,7 @@ LANGUAGE_SUBSET_MAP = {
     "fourty_six_representatives_mediods": fourty_six_representatives_mediods,
     "ninty_five_representatives_mediods": ninty_five_representatives_mediods,
     "hundred_ninty_nine_representatives_mediods": hundred_ninty_nine_representatives_mediods,
+    "lang2vec_auto_best_languages": lang2vec_auto_best_languages,
     "english_plus_five": english_plus_five,
     "english_plus_ten": english_plus_ten,
     "english_plus_twenty_two": english_plus_twenty_two,

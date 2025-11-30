@@ -147,6 +147,7 @@ SUBSETS=(
   "46_langs|fourty_six_representatives_mediods"
   "95_langs|ninty_five_representatives_mediods"
   "199_langs|hundred_ninty_nine_representatives_mediods"
+  "lang2vec_auto_12_langs|lang2vec_auto_best_languages"
   "eng_plus_5_langs|english_plus_five"
   "eng_plus_10_langs|english_plus_ten"
   "eng_plus_22_langs|english_plus_twenty_two"
