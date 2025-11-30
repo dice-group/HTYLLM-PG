@@ -24,6 +24,21 @@ EVAL_FRACTION=0.05
 EVAL_SEED=42
 MERGE_SPLIT_FRACTION=0.05
 MERGE_SPLIT_SEED=42
+ENABLE_RANKING=0
+RANK_ALPHA=0.5
+RANK_BETA=0.5
+RANK_WINDOW=5
+COUNT_CPUS=4
+COUNT_MEM=32G
+COUNT_TIME=02:00:00
+RANK_CPUS=8
+RANK_MEM=120G
+RANK_TIME=01:30:00
+TOPK_SIZES=""
+TOPK_MIN_LANGUAGE_SIZE=30000
+TOPK_CPUS=8
+TOPK_MEM=64G
+TOPK_TIME=02:00:00
 
 usage() {
   cat <<EOF
@@ -48,6 +63,21 @@ Options (propagated to tokenize_and_merge_pipeline.sh):
   --eval-seed INT       Seed for eval hashing (default: ${EVAL_SEED}).
   --merge-split-fraction FLOAT Validation fraction reserved during merge (default: ${MERGE_SPLIT_FRACTION}).
   --merge-split-seed INT Seed used if merge falls back to random split (default: ${MERGE_SPLIT_SEED}).
+  --enable-ranking      Run the ranking pipeline (counts + scores) before merging.
+  --rank-alpha FLOAT    Local-popularity weight α (default: ${RANK_ALPHA}).
+  --rank-beta FLOAT     Global-importance weight β (default: ${RANK_BETA}).
+  --rank-window INT     Co-occurrence window size (default: ${RANK_WINDOW}).
+  --count-cpus INT      CPUs per count job (default: ${COUNT_CPUS}).
+  --count-mem STR       Memory per count job (default: ${COUNT_MEM}).
+  --count-time HH:MM:SS Time per count job (default: ${COUNT_TIME}).
+  --rank-cpus INT       CPUs per ranking job (default: ${RANK_CPUS}).
+  --rank-mem STR        Memory per ranking job (default: ${RANK_MEM}).
+  --rank-time HH:MM:SS  Time per ranking job (default: ${RANK_TIME}).
+  --topk-sizes "10k ..." Produce per-language top-K datasets (enables ranking automatically).
+  --topk-min-language-size INT  Per-language minimum rows before selecting K (default: ${TOPK_MIN_LANGUAGE_SIZE}).
+  --topk-cpus INT       CPUs for the top-K filtering job (default: ${TOPK_CPUS}).
+  --topk-mem STR        Memory for the top-K filtering job (default: ${TOPK_MEM}).
+  --topk-time HH:MM:SS  Time for the top-K filtering job (default: ${TOPK_TIME}).
   --job-prefix STR      Prefix for SBATCH job names (default derived per combo).
   -h, --help            Show this help message.
 EOF
@@ -76,6 +106,21 @@ while [[ $# -gt 0 ]]; do
     --eval-seed) EVAL_SEED="$2"; shift 2 ;;
     --merge-split-fraction) MERGE_SPLIT_FRACTION="$2"; shift 2 ;;
     --merge-split-seed) MERGE_SPLIT_SEED="$2"; shift 2 ;;
+    --enable-ranking) ENABLE_RANKING=1; shift ;;
+    --rank-alpha) RANK_ALPHA="$2"; shift 2 ;;
+    --rank-beta) RANK_BETA="$2"; shift 2 ;;
+    --rank-window) RANK_WINDOW="$2"; shift 2 ;;
+    --count-cpus) COUNT_CPUS="$2"; shift 2 ;;
+    --count-mem) COUNT_MEM="$2"; shift 2 ;;
+    --count-time) COUNT_TIME="$2"; shift 2 ;;
+    --rank-cpus) RANK_CPUS="$2"; shift 2 ;;
+    --rank-mem) RANK_MEM="$2"; shift 2 ;;
+    --rank-time) RANK_TIME="$2"; shift 2 ;;
+    --topk-sizes) TOPK_SIZES="$2"; ENABLE_RANKING=1; shift 2 ;;
+    --topk-min-language-size) TOPK_MIN_LANGUAGE_SIZE="$2"; shift 2 ;;
+    --topk-cpus) TOPK_CPUS="$2"; shift 2 ;;
+    --topk-mem) TOPK_MEM="$2"; shift 2 ;;
+    --topk-time) TOPK_TIME="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
@@ -117,24 +162,53 @@ for tok_entry in "${TOKENIZERS[@]}"; do
     output_dir="${OUTPUT_BASE}/${tok_dir}/${subset_dir}"
     job_prefix="${JOB_PREFIX_BASE}_${tok_dir}_${subset_dir}"
     echo "Submitting ${tok_name} / ${subset_flag} -> ${output_dir}"
-    "${PIPELINE_SCRIPT}" \
-      --shard-dir "${SHARD_DIR}" \
-      --tokenizer "${tok_name}" \
-      --language-subset "${subset_flag}" \
-      --num-ranks "${NUM_RANKS}" \
-      --num-proc "${NUM_PROC}" \
-      --cpus-per-task "${CPUS_PER_TASK}" \
-      --mem "${MEM_PER_TASK}" \
-      --time "${TIME_LIMIT}" \
-      --merge-cpus "${MERGE_CPUS}" \
-      --merge-mem "${MERGE_MEM}" \
-      --merge-time "${MERGE_TIME}" \
-      --merge-workers "${MERGE_WORKERS}" \
-      --eval-fraction "${EVAL_FRACTION}" \
-      --eval-seed "${EVAL_SEED}" \
-      --merge-split-fraction "${MERGE_SPLIT_FRACTION}" \
-      --merge-split-seed "${MERGE_SPLIT_SEED}" \
-      --job-prefix "${job_prefix}" \
+    pipeline_cmd=(
+      "${PIPELINE_SCRIPT}"
+      --shard-dir "${SHARD_DIR}"
+      --tokenizer "${tok_name}"
+      --language-subset "${subset_flag}"
+      --num-ranks "${NUM_RANKS}"
+      --num-proc "${NUM_PROC}"
+      --cpus-per-task "${CPUS_PER_TASK}"
+      --mem "${MEM_PER_TASK}"
+      --time "${TIME_LIMIT}"
+      --merge-cpus "${MERGE_CPUS}"
+      --merge-mem "${MERGE_MEM}"
+      --merge-time "${MERGE_TIME}"
+      --merge-workers "${MERGE_WORKERS}"
+      --eval-fraction "${EVAL_FRACTION}"
+      --eval-seed "${EVAL_SEED}"
+      --merge-split-fraction "${MERGE_SPLIT_FRACTION}"
+      --merge-split-seed "${MERGE_SPLIT_SEED}"
+      --job-prefix "${job_prefix}"
       --output-root "${output_dir}"
+    )
+
+    if [[ "${ENABLE_RANKING}" -eq 1 ]]; then
+      pipeline_cmd+=(
+        --enable-ranking
+        --rank-alpha "${RANK_ALPHA}"
+        --rank-beta "${RANK_BETA}"
+        --rank-window "${RANK_WINDOW}"
+        --count-cpus "${COUNT_CPUS}"
+        --count-mem "${COUNT_MEM}"
+        --count-time "${COUNT_TIME}"
+        --rank-cpus "${RANK_CPUS}"
+        --rank-mem "${RANK_MEM}"
+        --rank-time "${RANK_TIME}"
+      )
+    fi
+
+    if [[ -n "${TOPK_SIZES}" ]]; then
+      pipeline_cmd+=(
+        --topk-sizes "${TOPK_SIZES}"
+        --topk-min-language-size "${TOPK_MIN_LANGUAGE_SIZE}"
+        --topk-cpus "${TOPK_CPUS}"
+        --topk-mem "${TOPK_MEM}"
+        --topk-time "${TOPK_TIME}"
+      )
+    fi
+
+    TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE}" "${pipeline_cmd[@]}"
   done
 done
