@@ -20,3 +20,5 @@ dist/
 *.log
 
 **/wandb/
+approaches/CoLA/sample_data/.venv
+approaches/CoLA/sample_data/logs
