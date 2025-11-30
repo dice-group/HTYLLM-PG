@@ -3,6 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BSS_DIR="${SCRIPT_DIR}/best_sentence_selection"
 
 NUM_RANKS=1
 NUM_PROC=1
@@ -17,6 +18,21 @@ EVAL_FRACTION=0.05
 EVAL_SEED=42
 MERGE_SPLIT_FRACTION=0.05
 MERGE_SPLIT_SEED=42
+RANKING_ENABLED=0
+RANK_ALPHA=0.5
+RANK_BETA=0.5
+RANK_WINDOW=5
+COUNT_CPUS=4
+COUNT_MEM=32G
+COUNT_TIME=02:00:00
+RANK_CPUS=8
+RANK_MEM=120G
+RANK_TIME=01:30:00
+TOPK_SIZES=""
+TOPK_MIN_LANGUAGE_SIZE=30000
+TOPK_CPUS=8
+TOPK_MEM=64G
+TOPK_TIME=02:00:00
 
 usage() {
   cat <<EOF
@@ -33,6 +49,21 @@ Key options:
   --eval-seed INT           Seed for eval hashing (default: ${EVAL_SEED}).
   --merge-split-fraction FLOAT  Fraction to reserve for validation when saving merged dataset (default: ${MERGE_SPLIT_FRACTION}).
   --merge-split-seed INT    Seed used if merge performs fallback split (default: ${MERGE_SPLIT_SEED}).
+  --enable-ranking          Run word/subword counting + joint-score computation before merge.
+  --rank-alpha FLOAT        Weight for local popularity Rl (default: ${RANK_ALPHA}).
+  --rank-beta FLOAT         Weight for global importance Rg (default: ${RANK_BETA}).
+  --rank-window INT         Co-occurrence window size (default: ${RANK_WINDOW}).
+  --count-cpus INT          CPUs per count job (default: ${COUNT_CPUS}).
+  --count-mem STR           Memory per count job (default: ${COUNT_MEM}).
+  --count-time HH:MM:SS     Time limit per count job (default: ${COUNT_TIME}).
+  --rank-cpus INT           CPUs per scoring job (default: ${RANK_CPUS}).
+  --rank-mem STR            Memory per scoring job (default: ${RANK_MEM}).
+  --rank-time HH:MM:SS      Time limit per scoring job (default: ${RANK_TIME}).
+  --topk-sizes "10k ..."    Space-separated list of top-K sizes (enables ranking automatically).
+  --topk-min-language-size INT  Minimum train examples per language to be considered for top-K datasets (default: ${TOPK_MIN_LANGUAGE_SIZE}).
+  --topk-cpus INT           CPUs for top-K filtering job (default: ${TOPK_CPUS}).
+  --topk-mem STR            Memory for top-K filtering job (default: ${TOPK_MEM}).
+  --topk-time HH:MM:SS      Time limit for top-K filtering job (default: ${TOPK_TIME}).
 EOF
 }
 
@@ -66,6 +97,21 @@ while [[ $# -gt 0 ]]; do
     --merge-split-fraction) MERGE_SPLIT_FRACTION="$2"; shift 2 ;;
     --merge-split-seed) MERGE_SPLIT_SEED="$2"; shift 2 ;;
     --log-root) LOG_ROOT="$2"; shift 2 ;;
+    --enable-ranking) RANKING_ENABLED=1; shift ;;
+    --rank-alpha) RANK_ALPHA="$2"; shift 2 ;;
+    --rank-beta) RANK_BETA="$2"; shift 2 ;;
+    --rank-window) RANK_WINDOW="$2"; shift 2 ;;
+    --count-cpus) COUNT_CPUS="$2"; shift 2 ;;
+    --count-mem) COUNT_MEM="$2"; shift 2 ;;
+    --count-time) COUNT_TIME="$2"; shift 2 ;;
+    --rank-cpus) RANK_CPUS="$2"; shift 2 ;;
+    --rank-mem) RANK_MEM="$2"; shift 2 ;;
+    --rank-time) RANK_TIME="$2"; shift 2 ;;
+    --topk-sizes) TOPK_SIZES="$2"; RANKING_ENABLED=1; shift 2 ;;
+    --topk-min-language-size) TOPK_MIN_LANGUAGE_SIZE="$2"; shift 2 ;;
+    --topk-cpus) TOPK_CPUS="$2"; shift 2 ;;
+    --topk-mem) TOPK_MEM="$2"; shift 2 ;;
+    --topk-time) TOPK_TIME="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
@@ -80,6 +126,12 @@ fi
 if [[ -n "${LANGUAGE_SUBSET}" && -n "${LANGUAGES}" ]]; then
   echo "Use either --language-subset or --languages, not both." >&2
   exit 1
+fi
+
+TOPK_SIZE_ARRAY=()
+if [[ -n "${TOPK_SIZES}" ]]; then
+  read -r -a TOPK_SIZE_ARRAY <<< "${TOPK_SIZES}"
+  RANKING_ENABLED=1
 fi
 
 if [[ -n "${LANGUAGE_SUBSET}" ]]; then
@@ -155,21 +207,94 @@ TOKEN_JOB_ID=$(
     --job-name="${JOB_PREFIX}_tok" \
     --nodes=1 \
     --ntasks=1 \
-    --cpus-per-task=4 \
-    --mem=32G \
-    --time=01:00:00 \
+    --cpus-per-task="${CPUS_PER_TASK}" \
+    --mem="${MEM_PER_TASK}" \
+    --time="${TIME_LIMIT}" \
     --partition=normal \
     --export=ALL \
     --output="${LOG_ROOT}/tokenize_%A_%a.log" \
     --wrap "${TOKEN_CMD}"
 )
 
+MERGE_DEPENDENCY="${TOKEN_JOB_ID}"
+GLOBAL_COUNTS_DIR="${RANK_OUTPUT_DIR}/global_counts"
+COUNT_JOB_ID=""
+COUNT_MERGE_JOB_ID=""
+RANK_JOB_ID=""
+
+if [[ "${RANKING_ENABLED}" -eq 1 ]]; then
+  COUNT_JOB_ID=$(
+    sbatch --parsable \
+      --dependency=afterok:${TOKEN_JOB_ID} \
+      --array=0-$((NUM_RANKS - 1)) \
+      --job-name="${JOB_PREFIX}_cnt" \
+      --nodes=1 \
+      --ntasks=1 \
+      --cpus-per-task="${COUNT_CPUS}" \
+      --mem="${COUNT_MEM}" \
+      --time="${COUNT_TIME}" \
+      --partition=normal \
+      --export=ALL \
+      --output="${LOG_ROOT}/count_%A_%a.log" \
+      --wrap "\
+        IDX=\$SLURM_ARRAY_TASK_ID; \
+        RANK_DIR=\$(printf '%s/rank_%05d' \"${RANK_OUTPUT_DIR}\" \"\$IDX\"); \
+        python -u ${BSS_DIR}/collect_counts.py \
+          --rank-dir \"\$RANK_DIR\" \
+          --tokenizer \"${TOKENIZER}\" \
+          --out-dir \"\$RANK_DIR\" \
+      "
+  )
+
+  COUNT_MERGE_JOB_ID=$(
+    sbatch --parsable \
+      --dependency=afterok:${COUNT_JOB_ID} \
+      --job-name="${JOB_PREFIX}_cntmerge" \
+      --nodes=1 \
+      --ntasks=1 \
+      --cpus-per-task=2 \
+      --mem=32G \
+      --time=01:00:00 \
+      --partition=normal \
+      --export=ALL \
+      --output="${LOG_ROOT}/count_merge_%j.log" \
+      --wrap "bash ${BSS_DIR}/merge_ranks.sh ${RANK_OUTPUT_DIR}"
+  )
+
+  RANK_JOB_ID=$(
+    sbatch --parsable \
+      --dependency=afterok:${COUNT_MERGE_JOB_ID} \
+      --array=0-$((NUM_RANKS - 1)) \
+      --job-name="${JOB_PREFIX}_score" \
+      --nodes=1 \
+      --ntasks=1 \
+      --cpus-per-task="${RANK_CPUS}" \
+      --mem="${RANK_MEM}" \
+      --time="${RANK_TIME}" \
+      --partition=normal \
+      --export=ALL \
+      --output="${LOG_ROOT}/score_%A_%a.log" \
+      --wrap "\
+        IDX=\$SLURM_ARRAY_TASK_ID; \
+        RANK_DIR=\$(printf '%s/rank_%05d' \"${RANK_OUTPUT_DIR}\" \"\$IDX\"); \
+        python -u ${BSS_DIR}/rank_sentence_scores_one_rank.py \
+          --rank-dir \"\$RANK_DIR\" \
+          --global-counts-dir \"${GLOBAL_COUNTS_DIR}\" \
+          --tokenizer \"${TOKENIZER}\" \
+          --alpha ${RANK_ALPHA} \
+          --beta ${RANK_BETA} \
+          --window ${RANK_WINDOW} \
+      "
+  )
+  MERGE_DEPENDENCY="${RANK_JOB_ID}"
+fi
+
 printf -v MERGE_CMD 'python -u %q/merge_tokenized_ranks.py --tokenized_root %q --output_path %q --overwrite --workers %q --split_fraction %q --split_seed %q' \
   "${SCRIPT_DIR}" "${RANK_OUTPUT_DIR}" "${OUTPUT_ROOT}" "${MERGE_WORKERS}" "${MERGE_SPLIT_FRACTION}" "${MERGE_SPLIT_SEED}"
 
 MERGE_JOB_ID=$(
   sbatch --parsable \
-    --dependency=afterok:${TOKEN_JOB_ID} \
+    --dependency=afterok:${MERGE_DEPENDENCY} \
     --job-name="${JOB_PREFIX}_merge" \
     --nodes=1 \
     --ntasks=1 \
@@ -182,10 +307,43 @@ MERGE_JOB_ID=$(
     --wrap "${MERGE_CMD}"
 )
 
-cat <<EOF
-Submitted tokenization array job: ${TOKEN_JOB_ID}
-Submitted merge job (after tokenization): ${MERGE_JOB_ID}
-Rank outputs: ${RANK_OUTPUT_DIR}
-Final dataset will be saved to: ${OUTPUT_ROOT}
-Logs stored in: ${LOG_ROOT}
-EOF
+TOPK_JOB_ID=""
+if [[ ${#TOPK_SIZE_ARRAY[@]} -gt 0 ]]; then
+  printf -v TOPK_CMD 'python -u %q/create_topk_ranked_datasets.py --merged-root %q --output-prefix %q --min-language-size %q --sizes' \
+    "${BSS_DIR}" "${OUTPUT_ROOT}" "${OUTPUT_ROOT}" "${TOPK_MIN_LANGUAGE_SIZE}"
+  for size in "${TOPK_SIZE_ARRAY[@]}"; do
+    TOPK_CMD+=" ${size}"
+  done
+  TOPK_JOB_ID=$(
+    sbatch --parsable \
+      --dependency=afterok:${MERGE_JOB_ID} \
+      --job-name="${JOB_PREFIX}_topk" \
+      --nodes=1 \
+      --ntasks=1 \
+      --cpus-per-task="${TOPK_CPUS}" \
+      --mem="${TOPK_MEM}" \
+      --time="${TOPK_TIME}" \
+      --partition=normal \
+      --export=ALL \
+      --output="${LOG_ROOT}/topk_%j.log" \
+      --wrap "${TOPK_CMD}"
+  )
+fi
+
+echo "Submitted tokenization array job : ${TOKEN_JOB_ID}"
+if [[ -n "${COUNT_JOB_ID}" ]]; then
+  echo "Word/subword count job     : ${COUNT_JOB_ID}"
+fi
+if [[ -n "${COUNT_MERGE_JOB_ID}" ]]; then
+  echo "Global count reduction job : ${COUNT_MERGE_JOB_ID}"
+fi
+if [[ -n "${RANK_JOB_ID}" ]]; then
+  echo "Joint-score array job      : ${RANK_JOB_ID}"
+fi
+echo "Submitted merge job (final HF)   : ${MERGE_JOB_ID}"
+if [[ -n "${TOPK_JOB_ID}" ]]; then
+  echo "Top-K dataset job          : ${TOPK_JOB_ID}"
+fi
+echo "Rank outputs directory          : ${RANK_OUTPUT_DIR}"
+echo "Final dataset will be saved to  : ${OUTPUT_ROOT}"
+echo "Logs stored in                  : ${LOG_ROOT}"
