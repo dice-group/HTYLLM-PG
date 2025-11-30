@@ -33,7 +33,7 @@ pip install -e .
 ## Script summary
 - **cluster_embeddings.py** – `python cluster_embeddings.py --input flores_embeddings_llama31_8b.csv --output clusters.json --auto-k --scale --plots-dir plots/llama31 --top-n 40`. Produces per-language cluster IDs from embedding CSVs plus silhouette/2D plots and, if desired, a filtered top-N subset (`--top-n-output` optional).
 - **check_lang2vec_coverage.py** – `python check_lang2vec_coverage.py`. Prints coverage stats and tips.
-- **cluster_lang2vec_distances.py** – `python cluster_lang2vec_distances.py --distance-type genetic --output clusters_lang2vec.json --auto-k --plots-dir plots/lang2vec --top-n 40`. Saves typology-driven cluster IDs with silhouette/MDS visualizations and optional top-N filtered subset for dense clusters.
+- **cluster_lang2vec_distances.py** – `python cluster_lang2vec_distances.py --distance-type genetic --output clusters_lang2vec.json --auto-k --plots-dir plots/lang2vec --top-n 40`. Saves typology-driven cluster IDs with silhouette/MDS visualizations and optional top-N filtered subset for dense clusters. Use `--top-per-cluster N` to grab a balanced subset of the best-scoring languages per cluster; add `--best-clusters 4` to restrict that subset to the four clusters with the strongest average silhouette scores so you naturally obtain 4×3 high-quality clusters without hand-picking `k`.
 - **plot_lang2vec_clusters.py** – `python plot_lang2vec_clusters.py --distance-type genetic --clusters 20 --output lang2vec_genetic.png`. Saves a 2D MDS scatter plot with language-family colors.
 - **run_clustering_variants.py** – `python run_clustering_variants.py` to regenerate all cluster artifacts in one go (skips embedding recompute if files already exist).
 

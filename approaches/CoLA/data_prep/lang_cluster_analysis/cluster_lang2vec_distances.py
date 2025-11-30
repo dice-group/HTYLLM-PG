@@ -148,20 +148,24 @@ def parse_args():
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--plots-dir", help="Directory to store silhouette and projection plots")
     parser.add_argument("--top-n", type=int, help="Retain only the top-N languages with highest silhouette scores")
-    parser.add_argument(
-        "--top-n-output",
-        help="Where to store the filtered mapping (defaults to <output>_top.json)",
-    )
+    parser.add_argument("--top-n-output", help="Where to store the filtered mapping (defaults to <output>_top.json)")
+    parser.add_argument("--top-per-cluster", type=int, default=0, help="Pick this many languages per cluster ranked by silhouette")
+    parser.add_argument("--top-per-cluster-output", help="Where to store the balanced subset (defaults to <output>_top_per_cluster.json)")
+    parser.add_argument("--best-clusters", type=int, default=0, help="Limit balanced selection to the best-performing clusters by average silhouette")
     return parser.parse_args()
 
 
-def select_top_languages(langs, families, labels, matrix, top_n, output_path: Path):
-    if top_n <= 0:
+def compute_silhouettes(matrix: np.ndarray, labels: Sequence[int]):
+    counts = pd.Series(labels).value_counts()
+    if (counts < 2).any():
+        print("Warning: some clusters have <2 members; skipping silhouette-based filtering")
+        return None
+    return silhouette_samples(matrix, labels, metric="precomputed")
+
+
+def select_top_languages(langs, families, labels, sil_vals, top_n, output_path: Path):
+    if top_n <= 0 or sil_vals is None:
         return []
-    if (pd.Series(labels).value_counts() < 2).any():
-        print("Warning: some clusters have <2 members; skipping top-N filtering")
-        return []
-    sil_vals = silhouette_samples(matrix, labels, metric="precomputed")
     order = np.argsort(-sil_vals)[: min(top_n, len(langs))]
     selection = [
         {
@@ -173,6 +177,44 @@ def select_top_languages(langs, families, labels, matrix, top_n, output_path: Pa
         for i in order
     ]
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(selection, indent=2) + "\n")
+    return selection
+
+
+def select_top_per_cluster(langs, families, labels, sil_vals, per_cluster: int, output_path: Path, best_clusters: int = 0):
+    if per_cluster <= 0 or sil_vals is None:
+        return []
+    counts = pd.Series(labels).value_counts()
+    low_clusters = counts[counts < per_cluster]
+    stats = (
+        pd.DataFrame({"cluster": labels, "silhouette": sil_vals})
+        .groupby("cluster")
+        .agg(count=("silhouette", "size"), avg_sil=("silhouette", "mean"))
+    )
+    valid_clusters = stats[stats["count"] >= per_cluster].sort_values("avg_sil", ascending=False)
+    if valid_clusters.empty:
+        print("Warning: no clusters have enough members for balanced selection")
+        return []
+    cluster_order = valid_clusters.index.tolist()
+    if best_clusters > 0:
+        cluster_order = cluster_order[:best_clusters]
+        if len(cluster_order) < best_clusters:
+            print(f"Warning: only {len(cluster_order)} clusters satisfy the size constraint (requested {best_clusters})")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    selection = []
+    for cluster_id in cluster_order:
+        member_indices = [i for i, lab in enumerate(labels) if lab == cluster_id]
+        member_indices.sort(key=lambda idx: sil_vals[idx], reverse=True)
+        for rank, idx in enumerate(member_indices[:per_cluster], start=1):
+            selection.append(
+                {
+                    "code": langs[idx],
+                    "family": families[idx],
+                    "cluster": int(labels[idx]),
+                    "silhouette": float(sil_vals[idx]),
+                    "cluster_rank": rank,
+                }
+            )
     output_path.write_text(json.dumps(selection, indent=2) + "\n")
     return selection
 
@@ -202,11 +244,32 @@ def main():
     output_path = Path(args.output)
     save_clusters(langs, labels, output_path)
     print(f"Saved clusters to {args.output} (k={k})")
+    sil_vals = None
+    if args.top_n or args.top_per_cluster:
+        sil_vals = compute_silhouettes(matrix, labels)
     if args.top_n:
         top_path = Path(args.top_n_output) if args.top_n_output else output_path.with_name(output_path.stem + "_top.json")
-        subset = select_top_languages(langs, families, labels, matrix, args.top_n, top_path)
+        subset = select_top_languages(langs, families, labels, sil_vals, args.top_n, top_path)
         if subset:
             print(f"Top {len(subset)} languages saved to {top_path}")
+    if args.top_per_cluster:
+        balanced_path = (
+            Path(args.top_per_cluster_output)
+            if args.top_per_cluster_output
+            else output_path.with_name(output_path.stem + "_top_per_cluster.json")
+        )
+        subset = select_top_per_cluster(
+            langs,
+            families,
+            labels,
+            sil_vals,
+            args.top_per_cluster,
+            balanced_path,
+            best_clusters=args.best_clusters,
+        )
+        if subset:
+            total = len(subset)
+            print(f"Balanced top-per-cluster selection ({total} langs) saved to {balanced_path}")
     if plots_dir:
         base = Path(args.output).stem
         plot_distance_projection(matrix, langs, families, labels, plots_dir / f"{base}_by_cluster.png", "cluster")
