@@ -260,7 +260,7 @@ def main():
             if attention_mask is not None:
                 attention_mask = attention_mask.to(device)
 
-            output, l_aux = model(input_ids, attention_mask=attention_mask)
+            output, l_aux, expert_counts = model(input_ids, attention_mask=attention_mask)
             
             ce_loss = chunked_cross_entropy(output, target) 
 
@@ -270,7 +270,38 @@ def main():
             model.step()
             
             if RANK == 0:
-                wandb.log({"train_loss": loss.item(), "epoch": epoch, "step": global_step})
+                log_dict = {"train_loss": loss.item(), "epoch": epoch, "step": global_step}
+                
+                # Log expert usage per MoE layer
+                for layer_name, exp_counts in expert_counts.items():
+                    if exp_counts is not None:
+                        exp_counts_cpu = exp_counts.detach().cpu().float()
+                        num_experts = exp_counts_cpu.numel()
+                        total_tokens = exp_counts_cpu.sum().item()
+                        
+                        # Log individual expert counts
+                        for expert_idx in range(num_experts):
+                            count = exp_counts_cpu[expert_idx].item()
+                            log_dict[f"expert_usage/{layer_name}/expert_{expert_idx}"] = count
+                            # Also log as percentage
+                            if total_tokens > 0:
+                                log_dict[f"expert_usage_pct/{layer_name}/expert_{expert_idx}"] = (count / total_tokens) * 100
+                        
+                        # Log expert load balance metrics
+                        if total_tokens > 0:
+                            # Ideal uniform distribution
+                            ideal_per_expert = total_tokens / num_experts
+                            # Load imbalance: max/mean ratio (1.0 = perfect balance)
+                            mean_count = exp_counts_cpu.mean().item()
+                            max_count = exp_counts_cpu.max().item()
+                            if mean_count > 0:
+                                log_dict[f"expert_balance/{layer_name}/load_imbalance"] = max_count / mean_count
+                            # Coefficient of variation (lower = more balanced)
+                            std_count = exp_counts_cpu.std().item()
+                            if mean_count > 0:
+                                log_dict[f"expert_balance/{layer_name}/cv"] = std_count / mean_count
+                
+                wandb.log(log_dict)
             
             # Save checkpoint periodically
             global_step += 1
@@ -297,7 +328,7 @@ def main():
             if attention_mask is not None:
                 attention_mask = attention_mask.to(device)
 
-            output, l_aux = model(input_ids, attention_mask=attention_mask)
+            output, l_aux, _ = model(input_ids, attention_mask=attention_mask)
             test_loss = criterion(output.float().transpose(1,2), target) + 0.01 * l_aux
             test_loss_sum += test_loss.item()
             num_test_batches += 1
@@ -310,7 +341,7 @@ def main():
             print(f"{'='*50}\n")
             wandb.log({"test_loss": avg_test_loss})
             # Test prediction 
-            test_pred, _ = model(torch.arange(10).unsqueeze(0).to(device))
+            test_pred, _, _ = model(torch.arange(10).unsqueeze(0).to(device))
             print(f"Test prediction shape: {test_pred.shape}")
             print(f"Prediction for [0,...,9]: {torch.argmax(test_pred.squeeze()[9])}")
             print(f"{'='*50}\n")

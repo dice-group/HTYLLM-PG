@@ -40,6 +40,10 @@ class HTYLLMConfig(PretrainedConfig):
         self.use_gradient_checkpointing = kwargs.get("use_gradient_checkpointing", True)
         super().__init__(**kwargs)
 
+    @property
+    def num_hidden_layers(self):
+        return self.depth
+
 class HTYLLMForCausalLM(PreTrainedModel):
     config_class = HTYLLMConfig
     
@@ -51,7 +55,7 @@ class HTYLLMForCausalLM(PreTrainedModel):
         self.model = MoE_Transformer(**model_kwargs)
         
     def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
-        logits, aux_loss = self.model(input_ids, attention_mask)
+        logits, aux_loss, _ = self.model(input_ids, attention_mask)
         loss = None
         if labels is not None:
             loss_fct = torch.nn.CrossEntropyLoss()
@@ -147,9 +151,15 @@ if not deepspeed.comm.is_initialized():
 
     deepspeed.init_distributed(dist_backend="nccl", auto_mpi_discovery=False)
 
-{inspect.getsource(HTYLLMConfig)}
+{inspect.getsource(HTYLLMConfig).replace(
+    'super().__init__(**kwargs)',
+    'super().__init__(**kwargs)\\n\\n    @property\\n    def num_hidden_layers(self):\\n        return self.depth'
+)}
 
-{inspect.getsource(HTYLLMForCausalLM)}
+{inspect.getsource(HTYLLMForCausalLM).replace(
+    'return CausalLMOutputWithPast(loss=loss, logits=logits)', 
+    'return CausalLMOutputWithPast(loss=loss, logits=logits)\\n\\n    def prepare_inputs_for_generation(self, input_ids, **kwargs):\\n        return {"input_ids": input_ids}'
+)}
 """
     
     with open(os.path.join(args.output_dir, "modeling_htyllm.py"), "w") as f:
@@ -166,7 +176,7 @@ if not deepspeed.comm.is_initialized():
     
     input_ids = torch.tensor([[0, 1, 2]]).to(device)
     with torch.no_grad():
-        logits_ds, _ = model_engine.module(input_ids)
+        logits_ds, _, _ = model_engine.module(input_ids)
         logits_hf = hf_model(input_ids).logits
 
     diff = (logits_ds - logits_hf).abs().max().item()
