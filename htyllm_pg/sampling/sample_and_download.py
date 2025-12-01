@@ -1,5 +1,6 @@
 import os
 import json
+import gc
 import pandas as pd
 import pyarrow.parquet as pq
 import gzip
@@ -7,10 +8,15 @@ import random
 from huggingface_hub import hf_hub_download
 from concurrent.futures import ThreadPoolExecutor
 
+# Batch size for reading parquet row groups to avoid OOM
+BATCH_SIZE = 10000
+
 def process_language(lang_row, output_dir, inventory, tokenizer_subset_file=None):
     """
     Downloads parquet files for a language, samples rows to meet quota,
     writes to jsonl.gz, and saves a subset for tokenizer training.
+    
+    Uses streaming/batched reading to avoid loading entire files into memory.
     """
     lang = lang_row["lang"]
     source = lang_row["source"]
@@ -30,6 +36,7 @@ def process_language(lang_row, output_dir, inventory, tokenizer_subset_file=None
         repo_id = "HuggingFaceFW/fineweb"
         
     # Shuffle files to avoid bias if we stop early
+    files = files.copy()  # Don't mutate the original
     random.shuffle(files)
     
     collected_bytes = 0
@@ -56,32 +63,45 @@ def process_language(lang_row, output_dir, inventory, tokenizer_subset_file=None
                     force_download=False # Use cache
                 )
                 
-                # Read parquet
-                table = pq.read_table(local_path)
-                df = table.to_pandas()
+                # Stream through parquet file in batches instead of loading all at once
+                parquet_file = pq.ParquetFile(local_path)
                 
-                # Shuffle rows
-                df = df.sample(frac=1.0)
-                
-                for _, row in df.iterrows():
-                    text = row["text"]
-                    text_bytes = len(text.encode('utf-8'))
-                    
-                    if collected_bytes + text_bytes > target_bytes:
-                        # Take one last one maybe? strict cap
+                # Process row groups one at a time to minimize memory
+                for batch in parquet_file.iter_batches(batch_size=BATCH_SIZE, columns=["text"]):
+                    if collected_bytes >= target_bytes:
                         break
+                    
+                    # Convert batch to list of texts (much lighter than pandas)
+                    texts = batch.column("text").to_pylist()
+                    
+                    # Shuffle within batch for randomness
+                    random.shuffle(texts)
+                    
+                    for text in texts:
+                        if text is None:
+                            continue
+                        text_bytes = len(text.encode('utf-8'))
                         
-                    # Write to main output
-                    json_line = json.dumps({"text": text}, ensure_ascii=False)
-                    f_out.write(json_line + "\n")
+                        if collected_bytes + text_bytes > target_bytes:
+                            break
+                            
+                        # Write to main output
+                        json_line = json.dumps({"text": text}, ensure_ascii=False)
+                        f_out.write(json_line + "\n")
+                        
+                        # Save for tokenizer (e.g., 1% probability or fixed count)
+                        if len(tokenizer_samples) < 1000 and random.random() < 0.1:
+                             tokenizer_samples.append(text)
+                        
+                        collected_bytes += text_bytes
                     
-                    # Save for tokenizer (e.g., 1% probability or fixed count)
-                    # We want a representative subset across all languages
-                    # A simple heuristic: keep first N chars or random sample
-                    if len(tokenizer_samples) < 1000 and random.random() < 0.1:
-                         tokenizer_samples.append(text)
-                    
-                    collected_bytes += text_bytes
+                    # Free memory after each batch
+                    del texts
+                    del batch
+                
+                # Explicitly close and clean up
+                del parquet_file
+                gc.collect()
                     
             except Exception as e:
                 print(f"Error processing {file_info['path']}: {e}")

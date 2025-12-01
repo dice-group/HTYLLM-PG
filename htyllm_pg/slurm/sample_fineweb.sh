@@ -59,11 +59,12 @@ python ${SAMPLING_SCRIPTS}/calculate_quotas.py \
 echo "Starting download and sampling..."
 mkdir -p ${OUTPUT_ROOT}
 
+# Use fewer workers to avoid OOM - each worker loads parquet batches into memory
 python ${SAMPLING_SCRIPTS}/sample_and_download.py \
     --quotas ${QUOTAS_FILE} \
     --inventory ${INVENTORY_FILE} \
     --output ${SAMPLED_DATA_DIR} \
     --tokenizer_data ${TOKENIZER_DATA} \
-    --workers 16
+    --workers 8
 
 echo "Job finished at $(date)"
