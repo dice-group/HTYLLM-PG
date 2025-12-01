@@ -22,6 +22,12 @@ echo "Python version: $(python --version)"
 
 export PYTHONUNBUFFERED=1
 
+# Use scratch for HF cache to avoid quota issues in home
+export HF_HOME="/scratch/hpc-prf-merlin/luke/.cache/huggingface"
+export HF_DATASETS_CACHE="/scratch/hpc-prf-merlin/luke/.cache/huggingface/datasets"
+mkdir -p $HF_HOME
+mkdir -p $HF_DATASETS_CACHE
+
 # Set paths
 REPO_ROOT=$(pwd)
 SAMPLING_SCRIPTS="${REPO_ROOT}/htyllm_pg/sampling"
