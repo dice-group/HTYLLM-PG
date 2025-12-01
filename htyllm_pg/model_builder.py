@@ -192,6 +192,7 @@ class Transformer(nn.Module):
 
     def forward(self, x, attention_mask=None):
         l_aux = 0.0
+        expert_counts = {}
         
         for i, (attn, ff) in enumerate(self.layers):
             # Use gradient checkpointing for attention during training
@@ -202,9 +203,10 @@ class Transformer(nn.Module):
 
             if i in self.moe_layers:
                 # MoE layers: Can't use checkpoint due to multiple return values
-                output, moe_loss, _ = ff(x)
+                output, moe_loss, exp_counts = ff(x)
                 l_aux += moe_loss
                 x = x + output
+                expert_counts[f"layer_{i}"] = exp_counts
             else:
                 # Regular FF layers: Use gradient checkpointing during training
                 if self.use_gradient_checkpointing and self.training:
@@ -212,7 +214,7 @@ class Transformer(nn.Module):
                 else:
                     x = ff(x) + x
 
-        return self.norm(x), l_aux 
+        return self.norm(x), l_aux, expert_counts
 
 class MoE_Transformer(nn.Module):
     def __init__(self, vocab_size, max_seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0., moe_layers: List[int] = [],
@@ -244,10 +246,10 @@ class MoE_Transformer(nn.Module):
         x += self.pos_embedding[:, :n]
         x = self.dropout(x)
 
-        x, l_aux = self.transformer(x, attention_mask=attention_mask)
+        x, l_aux, expert_counts = self.transformer(x, attention_mask=attention_mask)
         # for [B, T, dim]  output_projection treats B, T as batch dimensions and dim as feature dimension
         # maps each token to its vocab distribution (what comes after this token)
-        return self.output_projection(x), l_aux
+        return self.output_projection(x), l_aux, expert_counts
 
 
 def moe_builder(vocab_size: int, max_seq_len: int, dim=768, depth=4, heads=4, mlp_dim=512, 

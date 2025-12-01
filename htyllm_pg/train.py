@@ -8,9 +8,11 @@ import deepspeed
 from deepspeed import comm
 import argparse
 import wandb
+import wandb
 import json
 from htyllm_pg.model_builder import moe_builder
 from htyllm_pg.dataset import create_dataloaders
+from htyllm_pg.util.visualization import create_expert_heatmap
 from tqdm.auto import tqdm
 
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
@@ -214,6 +216,14 @@ def main():
             }
         )
         
+        # Define metrics to use 'step' as x-axis
+        wandb.define_metric("step")
+        wandb.define_metric("train_loss", step_metric="step")
+        wandb.define_metric("expert_counts/*", step_metric="step")
+        wandb.define_metric("expert_percentage/*", step_metric="step")
+        wandb.define_metric("expert_metrics/*", step_metric="step")
+        wandb.define_metric("test_loss", step_metric="step")
+        
         # Save config.json for conversion scripts
         save_config(args, args.checkpoint_dir)
     
@@ -282,10 +292,10 @@ def main():
                         # Log individual expert counts
                         for expert_idx in range(num_experts):
                             count = exp_counts_cpu[expert_idx].item()
-                            log_dict[f"expert_usage/{layer_name}/expert_{expert_idx}"] = count
+                            log_dict[f"expert_counts/{layer_name}/expert_{expert_idx}"] = count
                             # Also log as percentage
                             if total_tokens > 0:
-                                log_dict[f"expert_usage_pct/{layer_name}/expert_{expert_idx}"] = (count / total_tokens) * 100
+                                log_dict[f"expert_percentage/{layer_name}/expert_{expert_idx}"] = (count / total_tokens) * 100
                         
                         # Log expert load balance metrics
                         if total_tokens > 0:
@@ -295,12 +305,27 @@ def main():
                             mean_count = exp_counts_cpu.mean().item()
                             max_count = exp_counts_cpu.max().item()
                             if mean_count > 0:
-                                log_dict[f"expert_balance/{layer_name}/load_imbalance"] = max_count / mean_count
+                                log_dict[f"expert_metrics/{layer_name}/load_imbalance"] = max_count / mean_count
                             # Coefficient of variation (lower = more balanced)
                             std_count = exp_counts_cpu.std().item()
                             if mean_count > 0:
-                                log_dict[f"expert_balance/{layer_name}/cv"] = std_count / mean_count
+                                log_dict[f"expert_metrics/{layer_name}/cv"] = std_count / mean_count
+                            
+                            # Average experts per token
+                            # We use input_ids and attention_mask from the outer loop scope
+                            num_valid_tokens = input_ids.numel()
+                            if attention_mask is not None:
+                                num_valid_tokens = attention_mask.sum().item()
+                                
+                            if num_valid_tokens > 0:
+                                log_dict[f"expert_metrics/{layer_name}/avg_experts_per_token"] = total_tokens / num_valid_tokens
                 
+                # Log heatmap every 100 steps
+                if global_step % 100 == 0:
+                    heatmap_buf = create_expert_heatmap(expert_counts)
+                    if heatmap_buf:
+                        log_dict["expert_heatmap"] = wandb.Image(heatmap_buf, caption=f"Expert Usage Step {global_step}")
+
                 wandb.log(log_dict)
             
             # Save checkpoint periodically
