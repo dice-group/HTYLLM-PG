@@ -21,6 +21,7 @@ echo "Conda environment activated"
 echo "Python version: $(python --version)"
 
 export PYTHONUNBUFFERED=1
+export HF_HUB_ENABLE_HF_TRANSFER=1
 
 # Use scratch for HF cache to avoid quota issues in home
 export HF_HOME="/scratch/hpc-prf-merlin/luke/.cache/huggingface"
@@ -65,6 +66,6 @@ python ${SAMPLING_SCRIPTS}/sample_and_download.py \
     --inventory ${INVENTORY_FILE} \
     --output ${SAMPLED_DATA_DIR} \
     --tokenizer_data ${TOKENIZER_DATA} \
-    --workers 8
+    --workers 2
 
 echo "Job finished at $(date)"
