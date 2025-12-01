@@ -38,7 +38,7 @@ TOKENIZER_DATA="${OUTPUT_ROOT}/tokenizer_training_data.jsonl"
 SAMPLED_DATA_DIR="${OUTPUT_ROOT}/sharded_samples"
 
 # Parameters
-TOTAL_CAP_GB=500
+TOTAL_CAP_GB=1000
 NUM_LANGS=128
 
 # 1. Inventory (only if needed, usually fast)
