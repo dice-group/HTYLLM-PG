@@ -55,12 +55,16 @@ class HTYLLMForCausalLM(PreTrainedModel):
         self.model = MoE_Transformer(**model_kwargs)
         
     def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
-        logits, aux_loss, _ = self.model(input_ids, attention_mask)
+        logits, aux_loss, expert_counts = self.model(input_ids, attention_mask)
         loss = None
         if labels is not None:
             loss_fct = torch.nn.CrossEntropyLoss()
             loss = loss_fct(logits.view(-1, self.config.vocab_size), labels.view(-1)) + 0.01 * aux_loss
-        return CausalLMOutputWithPast(loss=loss, logits=logits)
+        
+        # We can't easily pass custom fields in CausalLMOutputWithPast, so we just attach it
+        output = CausalLMOutputWithPast(loss=loss, logits=logits)
+        output.expert_counts = expert_counts
+        return output
 
 def convert(args):
     # 1. Load Config
@@ -157,8 +161,8 @@ if not deepspeed.comm.is_initialized():
 )}
 
 {inspect.getsource(HTYLLMForCausalLM).replace(
-    'return CausalLMOutputWithPast(loss=loss, logits=logits)', 
-    'return CausalLMOutputWithPast(loss=loss, logits=logits)\\n\\n    def prepare_inputs_for_generation(self, input_ids, **kwargs):\\n        return {"input_ids": input_ids}'
+    'return output', 
+    'return output\\n\\n    def prepare_inputs_for_generation(self, input_ids, **kwargs):\\n        return {"input_ids": input_ids}'
 )}
 """
     
