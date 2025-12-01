@@ -4,8 +4,8 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --time=48:00:00
-#SBATCH --partition=normal
-#SBATCH --mem=64GB
+#SBATCH --partition=largemem
+#SBATCH --mem=1024GB
 #SBATCH --account=hpc-prf-merlin
 
 set -e
