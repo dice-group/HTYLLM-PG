@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Evaluates the hard-coded Llama-3.1-8B model on every Belebele subset, logs to W&B, and saves JSON/CSV summaries.
 set -euo pipefail
-
+export CUDA_VISIBLE_DEVICES=1
 CKPT="meta-llama/Llama-3.1-8B"
 TOKENIZER="meta-llama/Llama-3.1-8B"
 OUTDIR="data_prep/processed_artifacts/lm_eval/llama31_8b"
@@ -31,54 +31,6 @@ lm_eval \
   --model_args "pretrained=${CKPT},tokenizer=${TOKENIZER}" \
   --tasks "${TASKS}" \
   --batch_size "${BS}" \
+  --limit 250 \
   --output_path "${JSON_PATH}" \
   --wandb_args "project=${WANDB_PROJECT},name=${WANDB_NAME}"
-
-
-python - <<'PY'
-import json
-import csv
-import sys
-from pathlib import Path
-
-json_path = Path(sys.argv[1])
-csv_path = Path(sys.argv[2])
-
-with json_path.open() as f:
-    payload = json.load(f)
-
-results = payload.get("results", {})
-rows = []
-for task, metrics in results.items():
-    if not isinstance(metrics, dict):
-        continue
-    flat_items = metrics.items()
-    for subset, values in flat_items:
-        if isinstance(values, dict):
-            for metric, value in values.items():
-                rows.append(
-                    {
-                        "task": task,
-                        "subset": subset,
-                        "metric": metric,
-                        "value": value,
-                    }
-                )
-        else:
-            rows.append(
-                {
-                    "task": task,
-                    "subset": "overall",
-                    "metric": subset,
-                    "value": values,
-                }
-            )
-
-with csv_path.open("w", newline="") as f:
-    writer = csv.DictWriter(f, fieldnames=["task", "subset", "metric", "value"])
-    writer.writeheader()
-    writer.writerows(rows)
-PY "${JSON_PATH}" "${CSV_PATH}"
-
-echo "lm-eval JSON saved to ${JSON_PATH}"
-echo "Flattened CSV saved to ${CSV_PATH}"
