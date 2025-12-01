@@ -4,7 +4,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 LANG2VEC_SELECTION_ENV = "LANG2VEC_CLUSTER_SELECTION"
-LANG2VEC_DEFAULT_SELECTION = BASE_DIR / "data_prep" / "processed_artifacts" / "clusters_lang2vec_genetic_auto_best4x3.json"
+LANG2VEC_DEFAULT_SELECTION = BASE_DIR / "data_prep" / "processed_artifacts" / "clusters_lang2vec_genetic_auto_best4x3_lowacc.json"
 LANG2VEC_FALLBACK_SELECTION = BASE_DIR / "data_prep" / "lang_cluster_analysis" / "presets" / "lang2vec_auto_best4x3.json"
 
 
@@ -24,16 +24,25 @@ def _resolve_lang2vec_path():
 def _load_lang2vec_languages():
     path = _resolve_lang2vec_path()
     if not path:
-        return {"path": None, "languages": []}
+        return {"path": None, "languages": [], "metadata": {}}
     with path.open() as f:
         payload = json.load(f)
-    langs = sorted({entry["code"] for entry in payload})
-    return {"path": str(path), "languages": langs}
+    languages = []
+    metadata = {}
+    for entry in payload:
+        subset = entry.get("subset") or entry.get("code")
+        if not subset:
+            continue
+        languages.append(subset)
+        metadata[subset] = entry
+    languages = sorted(set(languages))
+    return {"path": str(path), "languages": languages, "metadata": metadata}
 
 
 _lang2vec_selection = _load_lang2vec_languages()
 lang2vec_auto_best_languages = _lang2vec_selection["languages"]
 lang2vec_auto_best_source = _lang2vec_selection["path"]
+lang2vec_auto_best_metadata = _lang2vec_selection.get("metadata", {})
 
 five_representatives_mediods = [
     "wbm_Latn",

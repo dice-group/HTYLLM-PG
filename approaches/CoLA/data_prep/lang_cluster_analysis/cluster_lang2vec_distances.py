@@ -96,14 +96,7 @@ def plot_silhouette(scores: List[Tuple[int, float]], output_path: Path):
     plt.close()
 
 
-def plot_distance_projection(
-    matrix: np.ndarray,
-    langs: Sequence[str],
-    families: Sequence[str],
-    labels: Sequence[int],
-    output_path: Path,
-    color_by: str,
-):
+def plot_distance_projection(matrix: np.ndarray, langs: Sequence[str], families: Sequence[str], labels: Sequence[int], output_path: Path, color_by: str):
     coords = MDS(
         n_components=2,
         dissimilarity="precomputed",
@@ -152,6 +145,12 @@ def parse_args():
     parser.add_argument("--top-per-cluster", type=int, default=0, help="Pick this many languages per cluster ranked by silhouette")
     parser.add_argument("--top-per-cluster-output", help="Where to store the balanced subset (defaults to <output>_top_per_cluster.json)")
     parser.add_argument("--best-clusters", type=int, default=0, help="Limit balanced selection to the best-performing clusters by average silhouette")
+    parser.add_argument("--low-perf-csv", help="CSV with per-language accuracies (e.g., Belebele) to prioritize lower-performing languages.")
+    parser.add_argument("--low-perf-threshold", type=float, default=0.0, help="Accuracy threshold used when --low-perf-csv is provided (<= threshold preferred).")
+    parser.add_argument("--low-perf-per-cluster", type=int, default=0, help="Number of languages per cluster to emit after low-performance filtering.")
+    parser.add_argument("--low-perf-output", help="Where to store the filtered mapping (defaults to <output>_lowperf.json).")
+    parser.add_argument("--low-perf-report", help="Optional JSON report describing candidate accuracies per cluster.")
+    parser.add_argument("--low-perf-plot", help="Optional highlight plot path to visualize selected languages.")
     return parser.parse_args()
 
 
@@ -219,6 +218,148 @@ def select_top_per_cluster(langs, families, labels, sil_vals, per_cluster: int, 
     return selection
 
 
+def load_performance_table(csv_path: Path):
+    if not csv_path or not csv_path.exists():
+        print(f"Warning: accuracy CSV {csv_path} not found; skipping low-performance filtering")
+        return {}
+    df = pd.read_csv(csv_path)
+    if "language" not in df.columns or "acc" not in df.columns:
+        print(f"Warning: accuracy CSV {csv_path} missing required columns 'language' and 'acc'")
+        return {}
+    df = df.dropna(subset=["language", "acc"])
+    return dict(zip(df["language"], df["acc"]))
+
+
+def build_code_subset_lookup():
+    df = pd.read_csv(LANG_LIST_PATH)[["code", "subset"]].dropna()
+    mapping = {}
+    for _, row in df.iterrows():
+        mapping.setdefault(row["code"], set()).add(row["subset"])
+    return mapping
+
+
+def pick_accuracy_for_code(code, acc_map, code2subset):
+    subsets = code2subset.get(code, [])
+    scores = [(subset, acc_map[subset]) for subset in subsets if subset in acc_map]
+    if not scores:
+        return None
+    scores.sort(key=lambda item: item[1])
+    return scores[0]
+
+
+def filter_low_performance_selection(candidates, per_cluster: int, threshold: float, acc_csv: Path, output_path: Path, report_path: Optional[Path]):
+    if per_cluster <= 0:
+        return []
+    acc_map = load_performance_table(acc_csv)
+    code2subset = build_code_subset_lookup()
+    clusters = {}
+    for entry in candidates:
+        clusters.setdefault(entry["cluster"], []).append(dict(entry))
+    for entries in clusters.values():
+        entries.sort(key=lambda item: item.get("cluster_rank", 0))
+
+    filtered = []
+    report = {"threshold": threshold, "clusters": {}}
+    for cluster_id in sorted(clusters):
+        entries = clusters[cluster_id]
+        low_perf = []
+        fallback = []
+        report["clusters"][cluster_id] = {"candidates": []}
+        for entry in entries:
+            code = entry["code"]
+            acc_pair = pick_accuracy_for_code(code, acc_map, code2subset) if acc_map else None
+            acc = acc_pair[1] if acc_pair else None
+            subset = acc_pair[0] if acc_pair else None
+            if subset is None:
+                subset_candidates = sorted(code2subset.get(code, []))
+                subset = subset_candidates[0] if subset_candidates else None
+            entry["accuracy"] = acc
+            entry["subset"] = subset
+            if acc is not None and threshold > 0 and acc <= threshold:
+                low_perf.append(entry)
+            elif acc is None and threshold > 0:
+                fallback.append(entry)
+            elif threshold <= 0:
+                low_perf.append(entry)
+            else:
+                fallback.append(entry)
+            report["clusters"][cluster_id]["candidates"].append(entry)
+
+        chosen = []
+        while low_perf and len(chosen) < per_cluster:
+            chosen.append(low_perf.pop(0))
+        while fallback and len(chosen) < per_cluster:
+            chosen.append(fallback.pop(0))
+        if len(chosen) < per_cluster:
+            print(f"Warning: only {len(chosen)} candidates found for cluster {cluster_id} (requested {per_cluster})")
+        report["clusters"][cluster_id]["selected"] = chosen
+        filtered.extend(chosen)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(filtered, indent=2) + "\n")
+    if report_path:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report, indent=2) + "\n")
+    return filtered
+
+
+def plot_selection_highlight(matrix, langs, labels, selection, output_path: Path):
+    if not selection or not output_path:
+        return
+    selection_map = {entry["code"]: entry for entry in selection}
+    coords = MDS(
+        n_components=2,
+        dissimilarity="precomputed",
+        random_state=0,
+        normalized_stress="auto",
+    ).fit_transform(matrix)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.figure(figsize=(11, 8))
+    plt.scatter(coords[:, 0], coords[:, 1], c=labels, cmap="tab20", s=30, alpha=0.2, linewidth=0)
+
+    sel_indices = [i for i, lang in enumerate(langs) if lang in selection_map]
+    if not sel_indices:
+        print("Warning: no selected languages to highlight")
+        plt.close()
+        return
+    sel_x = coords[sel_indices, 0]
+    sel_y = coords[sel_indices, 1]
+    plt.scatter(
+        sel_x,
+        sel_y,
+        facecolors="none",
+        edgecolors="red",
+        s=220,
+        linewidth=1.6,
+        label="Selected languages",
+    )
+    for idx in sel_indices:
+        lang = langs[idx]
+        payload = selection_map[lang]
+        label = payload.get("subset") or lang
+        acc = payload.get("accuracy")
+        if acc is not None:
+            label += f" ({acc:.2f})"
+        plt.text(
+            coords[idx, 0],
+            coords[idx, 1],
+            label,
+            fontsize=7,
+            ha="center",
+            va="center",
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.75, linewidth=0),
+        )
+    plt.title("Lang2Vec projection with highlighted selections")
+    plt.xlabel("MDS dim 1")
+    plt.ylabel("MDS dim 2")
+    plt.legend(loc="upper right")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=250)
+    plt.close()
+    print(f"Highlight plot saved to {output_path}")
+
+
 def main():
     args = parse_args()
     plots_dir = Path(args.plots_dir) if args.plots_dir else None
@@ -247,6 +388,7 @@ def main():
     sil_vals = None
     if args.top_n or args.top_per_cluster:
         sil_vals = compute_silhouettes(matrix, labels)
+    top_per_cluster_selection = []
     if args.top_n:
         top_path = Path(args.top_n_output) if args.top_n_output else output_path.with_name(output_path.stem + "_top.json")
         subset = select_top_languages(langs, families, labels, sil_vals, args.top_n, top_path)
@@ -258,7 +400,7 @@ def main():
             if args.top_per_cluster_output
             else output_path.with_name(output_path.stem + "_top_per_cluster.json")
         )
-        subset = select_top_per_cluster(
+        top_per_cluster_selection = select_top_per_cluster(
             langs,
             families,
             labels,
@@ -267,13 +409,38 @@ def main():
             balanced_path,
             best_clusters=args.best_clusters,
         )
-        if subset:
-            total = len(subset)
+        if top_per_cluster_selection:
+            total = len(top_per_cluster_selection)
             print(f"Balanced top-per-cluster selection ({total} langs) saved to {balanced_path}")
     if plots_dir:
         base = Path(args.output).stem
         plot_distance_projection(matrix, langs, families, labels, plots_dir / f"{base}_by_cluster.png", "cluster")
         plot_distance_projection(matrix, langs, families, labels, plots_dir / f"{base}_by_family.png", "family")
+
+    low_perf_selection = []
+    if args.low_perf_csv and args.low_perf_per_cluster:
+        perf_output = Path(args.low_perf_output) if args.low_perf_output else output_path.with_name(output_path.stem + "_lowperf.json")
+        perf_report = Path(args.low_perf_report) if args.low_perf_report else None
+        if not top_per_cluster_selection:
+            print("Warning: --low-perf-* flags require --top-per-cluster to be set; skipping low-performance filtering")
+        else:
+            low_perf_selection = filter_low_performance_selection(
+                top_per_cluster_selection,
+                args.low_perf_per_cluster,
+                args.low_perf_threshold,
+                Path(args.low_perf_csv),
+                perf_output,
+                perf_report,
+            )
+            if low_perf_selection:
+                print(f"Low-performance filtered selection saved to {perf_output}")
+    plot_path = None
+    if args.low_perf_plot:
+        plot_path = Path(args.low_perf_plot)
+    elif plots_dir and low_perf_selection:
+        plot_path = plots_dir / f"{output_path.stem}_selection.png"
+    if plot_path and low_perf_selection:
+        plot_selection_highlight(matrix, langs, labels, low_perf_selection, plot_path)
 
 
 if __name__ == "__main__":

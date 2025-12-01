@@ -1,14 +1,110 @@
 [
-  { "code": "azb", "family": "Turkic", "cluster": 5, "silhouette": 0.65003, "cluster_rank": 1 },
-  { "code": "tat", "family": "Turkic", "cluster": 5, "silhouette": 0.63869, "cluster_rank": 2 },
-  { "code": "bak", "family": "Turkic", "cluster": 5, "silhouette": 0.63809, "cluster_rank": 3 },
-  { "code": "sun", "family": "Austronesian", "cluster": 6, "silhouette": 0.528775, "cluster_rank": 1 },
-  { "code": "ilo", "family": "Austronesian", "cluster": 6, "silhouette": 0.52638125, "cluster_rank": 2 },
-  { "code": "min", "family": "Austronesian", "cluster": 6, "silhouette": 0.51120625, "cluster_rank": 3 },
-  { "code": "kam", "family": "Niger-Congo", "cluster": 3, "silhouette": 0.5030533333333331, "cluster_rank": 1 },
-  { "code": "ssw", "family": "Niger-Congo", "cluster": 3, "silhouette": 0.49179666666666655, "cluster_rank": 2 },
-  { "code": "tsn", "family": "Niger-Congo", "cluster": 3, "silhouette": 0.4873299999999998, "cluster_rank": 3 },
-  { "code": "aeb", "family": "Afro-Asiatic", "cluster": 2, "silhouette": 0.5158466666666668, "cluster_rank": 1 },
-  { "code": "arb", "family": "Afro-Asiatic", "cluster": 2, "silhouette": 0.49416000000000004, "cluster_rank": 2 },
-  { "code": "acm", "family": "Afro-Asiatic", "cluster": 2, "silhouette": 0.48463333333333336, "cluster_rank": 3 }
+  {
+    "code": "arb",
+    "family": "Afro-Asiatic",
+    "cluster": 2,
+    "silhouette": 0.49416000000000004,
+    "cluster_rank": 2,
+    "accuracy": 0.336,
+    "subset": "arb_Latn"
+  },
+  {
+    "code": "aeb",
+    "family": "Afro-Asiatic",
+    "cluster": 2,
+    "silhouette": 0.5158466666666668,
+    "cluster_rank": 1,
+    "accuracy": null,
+    "subset": "aeb_Arab"
+  },
+  {
+    "code": "acm",
+    "family": "Afro-Asiatic",
+    "cluster": 2,
+    "silhouette": 0.48463333333333336,
+    "cluster_rank": 3,
+    "accuracy": 0.452,
+    "subset": "acm_Arab"
+  },
+  {
+    "code": "ssw",
+    "family": "Niger-Congo",
+    "cluster": 3,
+    "silhouette": 0.49179666666666655,
+    "cluster_rank": 2,
+    "accuracy": 0.316,
+    "subset": "ssw_Latn"
+  },
+  {
+    "code": "tsn",
+    "family": "Niger-Congo",
+    "cluster": 3,
+    "silhouette": 0.4873299999999998,
+    "cluster_rank": 3,
+    "accuracy": 0.32,
+    "subset": "tsn_Latn"
+  },
+  {
+    "code": "nya",
+    "family": "Niger-Congo",
+    "cluster": 3,
+    "silhouette": 0.4861266666666665,
+    "cluster_rank": 4,
+    "accuracy": 0.268,
+    "subset": "nya_Latn"
+  },
+  {
+    "code": "azb",
+    "family": "Turkic",
+    "cluster": 5,
+    "silhouette": 0.65003,
+    "cluster_rank": 1,
+    "accuracy": null,
+    "subset": "azb_Arab"
+  },
+  {
+    "code": "tat",
+    "family": "Turkic",
+    "cluster": 5,
+    "silhouette": 0.63869,
+    "cluster_rank": 2,
+    "accuracy": null,
+    "subset": "tat_Cyrl"
+  },
+  {
+    "code": "bak",
+    "family": "Turkic",
+    "cluster": 5,
+    "silhouette": 0.63809,
+    "cluster_rank": 3,
+    "accuracy": null,
+    "subset": "bak_Cyrl"
+  },
+  {
+    "code": "ilo",
+    "family": "Austronesian",
+    "cluster": 6,
+    "silhouette": 0.52638125,
+    "cluster_rank": 2,
+    "accuracy": 0.32,
+    "subset": "ilo_Latn"
+  },
+  {
+    "code": "sun",
+    "family": "Austronesian",
+    "cluster": 6,
+    "silhouette": 0.528775,
+    "cluster_rank": 1,
+    "accuracy": 0.384,
+    "subset": "sun_Latn"
+  },
+  {
+    "code": "min",
+    "family": "Austronesian",
+    "cluster": 6,
+    "silhouette": 0.5112062500000001,
+    "cluster_rank": 3,
+    "accuracy": null,
+    "subset": "min_Latn"
+  }
 ]
