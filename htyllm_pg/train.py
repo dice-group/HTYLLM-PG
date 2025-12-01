@@ -106,7 +106,7 @@ def get_args() -> argparse.Namespace :
     parser.add_argument("--load-checkpoint", type=int, dest="load_checkpoint", default=None, help="Checkpoint step to load, e.g. 1000")
     
     # Model architecture parameters
-    parser.add_argument("--vocab-size", type=int, dest="vocab_size", default=262144, help="Vocabulary size")
+    parser.add_argument("--vocab-size", type=int, dest="vocab_size", default=131072, help="Vocabulary size")
     parser.add_argument("--max-seq-len", type=int, dest="max_seq_len", default=2048, help="Maximum sequence length")
     parser.add_argument("--dim", type=int, default=512, help="Model dimension")
     parser.add_argument("--depth", type=int, default=12, help="Number of transformer layers")

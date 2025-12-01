@@ -237,7 +237,9 @@ class MoE_Transformer(nn.Module):
                                       topany_gating_impl=topany_gating_impl, use_flash_attention=use_flash_attention,
                                       use_gradient_checkpointing=use_gradient_checkpointing)
 
-        self.output_projection = nn.Linear(dim, vocab_size)
+        self.output_projection = nn.Linear(dim, vocab_size, bias=False)
+        # weight tying
+        self.output_projection.weight = self.token_embedding.weight
 
     def forward(self, tokens, attention_mask=None):
         x = self.token_embedding(tokens)
@@ -252,7 +254,7 @@ class MoE_Transformer(nn.Module):
         return self.output_projection(x), l_aux, expert_counts
 
 
-def moe_builder(vocab_size: int, max_seq_len: int, dim=768, depth=4, heads=4, mlp_dim=512, 
+def moe_builder(vocab_size: int = 131072, max_seq_len: int = 2048, dim=768, depth=4, heads=4, mlp_dim=512, 
                 dim_head=64, dropout=0., emb_dropout=0., moe_layers=[0, 3],
                 num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0,
                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1,
