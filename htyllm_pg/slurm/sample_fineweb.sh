@@ -67,6 +67,6 @@ python ${SAMPLING_SCRIPTS}/sample_and_download.py \
     --inventory ${INVENTORY_FILE} \
     --output ${SAMPLED_DATA_DIR} \
     --tokenizer_data ${TOKENIZER_DATA} \
-    --workers 12
+    --workers 16
 
 echo "Job finished at $(date)"
