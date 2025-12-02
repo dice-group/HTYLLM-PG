@@ -11,13 +11,9 @@ from concurrent.futures import ThreadPoolExecutor
 # Batch size for reading parquet row groups to avoid OOM
 BATCH_SIZE = 10000
 
+from datasets import load_dataset
+
 def process_language(lang_row, output_dir, inventory, tokenizer_subset_file=None):
-    """
-    Downloads parquet files for a language, samples rows to meet quota,
-    writes to jsonl.gz, and saves a subset for tokenizer training.
-    
-    Uses streaming/batched reading to avoid loading entire files into memory.
-    """
     lang = lang_row["lang"]
     source = lang_row["source"]
     target_bytes = lang_row["final_bytes"]
@@ -27,86 +23,61 @@ def process_language(lang_row, output_dir, inventory, tokenizer_subset_file=None
     
     print(f"Processing {lang} (Target: {target_bytes/1e6:.2f} MB)...")
     
-    # Get file list for this language
+    # Determine dataset parameters based on source
     if source == "fw2":
-        files = inventory["fineweb-2"][lang]["files"]
         repo_id = "HuggingFaceFW/fineweb-2"
+        # FineWeb-2 usually requires a subset name, assuming 'lang' maps to config
+        data_name = lang 
     else:
-        files = inventory["fineweb-1"]["files"]
         repo_id = "HuggingFaceFW/fineweb"
-        
-    # Shuffle files to avoid bias if we stop early
-    files = files.copy()  # Don't mutate the original
-    random.shuffle(files)
-    
-    collected_bytes = 0
-    
+        data_name = lang
+
     lang_dir = os.path.join(output_dir, lang)
     os.makedirs(lang_dir, exist_ok=True)
-    
     output_file = os.path.join(lang_dir, "data.jsonl.gz")
     
-    # Buffer for tokenizer training data (raw text)
+    collected_bytes = 0
     tokenizer_samples = []
     
-    with gzip.open(output_file, "wt", encoding="utf-8") as f_out:
-        for file_info in files:
-            if collected_bytes >= target_bytes:
-                break
+    # STREAMING: Starts instantly, no waiting for full file downloads
+    # buffer_size ensures we get some randomness without downloading everything
+    try:
+        ds = load_dataset(
+            repo_id, 
+            name=data_name, 
+            split="train", 
+            streaming=True
+        ).shuffle(seed=42, buffer_size=10_000) 
+        
+        with gzip.open(output_file, "wt", encoding="utf-8") as f_out:
+            for sample in ds:
+                if collected_bytes >= target_bytes:
+                    break
                 
-            try:
-                # Download file
-                local_path = hf_hub_download(
-                    repo_id=repo_id,
-                    filename=file_info["path"],
-                    repo_type="dataset",
-                    force_download=False # Use cache
-                )
+                text = sample.get("text", "")
+                if not text:
+                    continue
+                    
+                text_bytes = len(text.encode('utf-8'))
                 
-                # Stream through parquet file in batches instead of loading all at once
-                parquet_file = pq.ParquetFile(local_path)
+                # Check if this single row pushes us over significantly
+                if collected_bytes + text_bytes > target_bytes:
+                    break
+                    
+                # Write to main output
+                json_line = json.dumps({"text": text}, ensure_ascii=False)
+                f_out.write(json_line + "\n")
                 
-                # Process row groups one at a time to minimize memory
-                for batch in parquet_file.iter_batches(batch_size=BATCH_SIZE, columns=["text"]):
-                    if collected_bytes >= target_bytes:
-                        break
-                    
-                    # Convert batch to list of texts (much lighter than pandas)
-                    texts = batch.column("text").to_pylist()
-                    
-                    # Shuffle within batch for randomness
-                    random.shuffle(texts)
-                    
-                    for text in texts:
-                        if text is None:
-                            continue
-                        text_bytes = len(text.encode('utf-8'))
-                        
-                        if collected_bytes + text_bytes > target_bytes:
-                            break
-                            
-                        # Write to main output
-                        json_line = json.dumps({"text": text}, ensure_ascii=False)
-                        f_out.write(json_line + "\n")
-                        
-                        # Save for tokenizer (e.g., 1% probability or fixed count)
-                        if len(tokenizer_samples) < 1000 and random.random() < 0.1:
-                             tokenizer_samples.append(text)
-                        
-                        collected_bytes += text_bytes
-                    
-                    # Free memory after each batch
-                    del texts
-                    del batch
+                # Tokenizer sampling
+                if len(tokenizer_samples) < 1000 and random.random() < 0.1:
+                    tokenizer_samples.append(text)
                 
-                # Explicitly close and clean up
-                del parquet_file
-                gc.collect()
-                    
-            except Exception as e:
-                print(f"Error processing {file_info['path']}: {e}")
-                
-    # Append tokenizer samples to a common file (thread-safe handling needed if parallel)
+                collected_bytes += text_bytes
+
+    except Exception as e:
+        print(f"Error streaming {lang}: {e}")
+
+    # Save tokenizer subset
     if tokenizer_subset_file and tokenizer_samples:
          tok_file = os.path.join(lang_dir, f"tokenizer_subset_{lang}.jsonl")
          with open(tok_file, "w", encoding="utf-8") as f_tok:
