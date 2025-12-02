@@ -60,11 +60,8 @@ python ${SAMPLING_SCRIPTS}/calculate_quotas.py \
 echo "Starting download and sampling..."
 mkdir -p ${OUTPUT_ROOT}
 
-# Streaming mode uses minimal memory - can use more workers
-# 8-16 workers should saturate network bandwidth
 python ${SAMPLING_SCRIPTS}/sample_and_download.py \
     --quotas ${QUOTAS_FILE} \
-    --inventory ${INVENTORY_FILE} \
     --output ${SAMPLED_DATA_DIR} \
     --tokenizer_data ${TOKENIZER_DATA} \
     --workers 16
