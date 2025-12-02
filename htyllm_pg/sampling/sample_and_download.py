@@ -5,10 +5,10 @@ import json
 import glob
 import random
 import time
-import pandas as pd
+import pyarrow.parquet as pq
 import numpy as np
 from huggingface_hub import HfFileSystem, hf_hub_download, login
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 BYTES_PER_CHAR_ESTIMATE = 1.5
 
@@ -35,7 +35,7 @@ def get_repo_files(repo_id, lang, token):
                 # FineWeb 1 (English only)
                 if lang != "eng_Latn":
                     return []
-                pattern = f"{fs_prefix}/sample/*.parquet"
+                pattern = f"{fs_prefix}/sample/**/*.parquet"
                 files = fs.glob(pattern)
             break
         except Exception as e:
@@ -91,41 +91,57 @@ def process_language(lang_row, output_dir, token, tokenizer_subset_file=None):
                     force_download=False
                 )
 
-                df = pd.read_parquet(local_parquet, columns=["text"])
-                df['bytes'] = df['text'].str.len() * BYTES_PER_CHAR_ESTIMATE
-                df['cumsum'] = df['bytes'].cumsum()
-
-                remaining = target_bytes - collected_bytes
-                df_batch = df[df['cumsum'] <= remaining + (df['bytes'].mean() * 5)]
-                if df_batch.empty and not df.empty and remaining > 0:
-                    df_batch = df.iloc[:1]
-
-                if tokenizer_subset_file and not df_batch.empty:
-                    sample_size = min(len(df_batch), 100)
-                    tokenizer_samples.extend(df_batch.sample(sample_size)['text'].tolist())
-
-                if not df_batch.empty:
-                    json_block = df_batch[['text']].to_json(orient='records', lines=True, force_ascii=False)
+                # Stream parquet in row groups to avoid loading entire file into memory
+                parquet_file = pq.ParquetFile(local_parquet)
+                
+                for batch in parquet_file.iter_batches(batch_size=10000, columns=["text"]):
+                    if collected_bytes >= target_bytes:
+                        break
+                    
+                    texts = batch.column("text").to_pylist()
+                    
+                    # Calculate bytes and filter
+                    remaining = target_bytes - collected_bytes
+                    output_texts = []
+                    batch_bytes = 0
+                    
+                    for text in texts:
+                        text_bytes = len(text) * BYTES_PER_CHAR_ESTIMATE
+                        if batch_bytes + text_bytes > remaining + 50000:  # small buffer
+                            break
+                        output_texts.append(text)
+                        batch_bytes += text_bytes
+                    
+                    if not output_texts:
+                        continue
+                    
+                    # Collect tokenizer samples
+                    if tokenizer_subset_file:
+                        sample_size = min(len(output_texts), 50)
+                        tokenizer_samples.extend(random.sample(output_texts, sample_size))
+                    
+                    # Write as JSONL
                     with gzip.open(output_file, 'at', encoding='utf-8') as f_out:
-                        f_out.write(json_block + '\n')
-                    collected_bytes += df_batch['bytes'].sum()
+                        for text in output_texts:
+                            f_out.write(json.dumps({"text": text}, ensure_ascii=False) + '\n')
+                    
+                    collected_bytes += batch_bytes
 
                 os.remove(local_parquet)
-                del df, df_batch
 
             except Exception as e:
-                print(f"[WARN] Failed to process file {file_path} for {lang}: {e}")
+                print(f"[WARN] Failed to process {file_path} for {lang}: {e}")
                 continue
 
+        # Save tokenizer subset
         if tokenizer_subset_file and tokenizer_samples:
             if len(tokenizer_samples) > 2000:
                 tokenizer_samples = random.sample(tokenizer_samples, 2000)
 
             tok_file = os.path.join(lang_dir, f"tokenizer_subset_{lang}.jsonl")
             with open(tok_file, "w", encoding="utf-8") as f_tok:
-                f_tok.write("\n".join(
-                    json.dumps({"text": t}, ensure_ascii=False) for t in tokenizer_samples
-                ) + "\n")
+                for t in tokenizer_samples:
+                    f_tok.write(json.dumps({"text": t}, ensure_ascii=False) + '\n')
 
         return lang, collected_bytes
 
@@ -139,7 +155,7 @@ def main():
     parser.add_argument("--quotas", type=str, default="sampling_quotas.csv")
     parser.add_argument("--output", type=str, default="sampled_data")
     parser.add_argument("--tokenizer_data", type=str, default="tokenizer_training_data.jsonl")
-    parser.add_argument("--workers", type=int, default=16)
+    parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
 
     hf_token = os.getenv("HF_TOKEN")
@@ -148,6 +164,7 @@ def main():
     else:
         print(f"[INFO] HF_TOKEN found ({hf_token[:5]}...)")
 
+    import pandas as pd
     df_quotas = pd.read_csv(args.quotas)
     rows = [row for _, row in df_quotas.iterrows() if row["final_bytes"] > 0]
     rows.sort(key=lambda r: r["final_bytes"], reverse=True)
@@ -158,7 +175,8 @@ def main():
     completed_bytes = 0
     completed_count = 0
 
-    with ProcessPoolExecutor(max_workers=args.workers) as executor:
+    # ThreadPoolExecutor shares memory between threads (better for I/O-bound work)
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {
             executor.submit(process_language, row, args.output, hf_token, args.tokenizer_data): row["lang"]
             for row in rows
