@@ -198,6 +198,7 @@ def main():
         for fname in glob.glob(os.path.join(args.output, "**", "tokenizer_subset_*.jsonl"), recursive=True):
             with open(fname, 'r', encoding='utf-8') as infile:
                 outfile.write(infile.read())
+            os.remove(fname)
 
     print(f"DONE: {completed_bytes/1e9:.2f} GB")
 
