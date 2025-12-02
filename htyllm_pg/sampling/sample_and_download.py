@@ -15,43 +15,45 @@ BYTES_PER_CHAR_ESTIMATE = 1.5
 
 def get_repo_files(repo_id, lang, source):
     """
-    Fetch list of parquet files with specific logic for FineWeb structure.
+    Fetch list of parquet files using recursive search to handle 'train', 'test',
+    or 'sample' folder variations automatically.
     """
-    fs = HfFileSystem()
+    # Explicitly pass token if available to ensure worker processes have access
+    token = os.getenv("HF_TOKEN")
+    fs = HfFileSystem(token=token)
     files = []
     
     # --- CASE 1: FineWeb 1 (English Only) ---
     if "fineweb" in repo_id and "fineweb-2" not in repo_id:
         if lang == "eng_Latn":
-            # STRATEGY: Use the "sample-10BT" folder. 
-            # It is a high-quality subset sitting at the root, perfect for sampling.
-            pattern = f"{repo_id}/sample-10BT/*.parquet"
+            # 1. Try the 'sample' folder (Confirmed to exist in your logs)
+            pattern = f"{repo_id}/sample/*.parquet"
             files = fs.glob(pattern)
             
-            # Fallback: If sample-10BT is missing, grab from a random dump
+            # 2. Fallback to main data if sample is empty
             if not files:
-                print(f"[INFO] sample-10BT not found for {repo_id}")
+                print(f"[INFO] 'sample' folder empty for {repo_id}, switching to CC-MAIN")
+                # Use recursive glob to catch any CC-MAIN folder
+                pattern = f"{repo_id}/data/**/*.parquet"
+                files = fs.glob(pattern)
         else:
-            # FW1 is English only
             return []
 
     # --- CASE 2: FineWeb 2 (Multilingual) ---
     elif "fineweb-2" in repo_id:
-        # 1. Try finding 'train' split specifically (preferred)
-        train_pattern = f"{repo_id}/data/{lang}/train/*.parquet"
-        files = fs.glob(train_pattern)
+        # Your logs showed: data/aai_Latn/test/000.parquet
+        # We use a recursive glob (**) to find files regardless of being in 'train' or 'test'
         
-        # 2. If no train folder, try recursive search inside the lang folder
-        if not files:
-            deep_pattern = f"{repo_id}/data/{lang}/**/*.parquet"
-            files = fs.glob(deep_pattern)
+        # Pattern: repo/data/lang/**/*.parquet
+        pattern = f"{repo_id}/data/{lang}/**/*.parquet"
+        files = fs.glob(pattern)
             
-        # 3. Filter out "removed" folders if recursive grabbed them
+        # Filter out "removed" folders if they exist
         files = [f for f in files if "_removed" not in f]
 
     # --- CASE 3: Generic Fallback ---
     else:
-        pattern = f"{repo_id}/{lang}/*.parquet"
+        pattern = f"{repo_id}/{lang}/**/*.parquet"
         files = fs.glob(pattern)
 
     # --- CLEANUP ---
@@ -61,8 +63,10 @@ def get_repo_files(repo_id, lang, source):
     
     for f in files:
         if repo_id in f:
-            # Split by repo_id and take the second part to get relative path
-            # e.g. "datasets/HuggingFaceFW/fw/data/x.parquet" -> "data/x.parquet"
+            # We split by the repo_id. 
+            # Example f: "datasets/HuggingFaceFW/fineweb/sample/00.parquet"
+            # Split: ["datasets/", "sample/00.parquet"]
+            # We take the last part.
             clean_path = f.split(repo_id + "/")[-1]
             clean_files.append(clean_path)
     
@@ -82,22 +86,23 @@ def process_language_vectorized(lang_row, output_dir, tokenizer_subset_file=None
     else:
         repo_id = "HuggingFaceFW/fineweb"
 
-    # Get file list and shuffle
-    files = get_repo_files(repo_id, lang, source)
-    if not files:
-        print(f"[SKIP] No files found for {lang} in {repo_id}")
-        return lang, 0
-        
-    np.random.shuffle(files)
-
-    lang_dir = os.path.join(output_dir, lang)
-    os.makedirs(lang_dir, exist_ok=True)
-    output_file = os.path.join(lang_dir, "data.jsonl.gz")
-
-    collected_bytes = 0
-    tokenizer_samples = []
-    
     try:
+        # Get file list
+        files = get_repo_files(repo_id, lang, source)
+        
+        if not files:
+            print(f"[SKIP] No files found for {lang} in {repo_id}")
+            return lang, 0
+            
+        np.random.shuffle(files)
+
+        lang_dir = os.path.join(output_dir, lang)
+        os.makedirs(lang_dir, exist_ok=True)
+        output_file = os.path.join(lang_dir, "data.jsonl.gz")
+
+        collected_bytes = 0
+        tokenizer_samples = []
+        
         # Create/Clear file
         with open(output_file, 'wb') as f:
             pass
@@ -106,7 +111,7 @@ def process_language_vectorized(lang_row, output_dir, tokenizer_subset_file=None
             if collected_bytes >= target_bytes:
                 break
 
-            # 1. Download File (Fastest way using hf_transfer)
+            # 1. Download File
             local_parquet = hf_hub_download(
                 repo_id=repo_id,
                 filename=file_path,
@@ -119,68 +124,61 @@ def process_language_vectorized(lang_row, output_dir, tokenizer_subset_file=None
             
             # 3. Calculate sizes
             df['bytes'] = df['text'].str.len() * BYTES_PER_CHAR_ESTIMATE
-            
-            # 4. Cumulative sum to find cutoff
             df['cumsum'] = df['bytes'].cumsum()
+            
             remaining = target_bytes - collected_bytes
             
-            # Filter df to what we need
-            df_batch = df[df['cumsum'] <= remaining + (df['bytes'].mean() * 5)] # buffer
-            
-            # If batch is empty but we need data, take at least one if it fits roughly
+            # 4. Filter
+            df_batch = df[df['cumsum'] <= remaining + (df['bytes'].mean() * 5)]
             if df_batch.empty and not df.empty and remaining > 0:
                 df_batch = df.iloc[:1]
 
-            # 5. Reservoir Sampling for Tokenizer
+            # 5. Tokenizer Sampling
             if tokenizer_subset_file and not df_batch.empty:
-                # Sample up to 100 lines per file
                 sample_size = min(len(df_batch), 100)
                 tok_sample = df_batch.sample(sample_size)
                 tokenizer_samples.extend(tok_sample['text'].tolist())
 
             # 6. Write to Disk
             if not df_batch.empty:
-                # Convert to JSON string in one go (fast C backend)
-                # force_ascii=False prevents escaping unicode characters
+                # Use force_ascii=False to keep characters readable if possible
                 json_block = df_batch[['text']].to_json(
                     orient='records', 
                     lines=True, 
                     force_ascii=False
                 )
                 
-                # Append to compressed file
                 with gzip.open(output_file, 'at', encoding='utf-8') as f_out:
                     f_out.write(json_block)
-                    f_out.write('\n') # Ensure newline after the block
+                    f_out.write('\n')
 
                 batch_bytes = df_batch['bytes'].sum()
                 collected_bytes += batch_bytes
                 
-                print(f"[{lang}] +{batch_bytes/1e6:.1f} MB | Total: {collected_bytes/1e9:.2f} GB")
-
             # 7. Cleanup
             os.remove(local_parquet)
             del df
             del df_batch
-            del json_block
+            
+        # Save tokenizer subset
+        if tokenizer_subset_file and tokenizer_samples:
+            if len(tokenizer_samples) > 2000:
+                tokenizer_samples = random.sample(tokenizer_samples, 2000)
+            
+            tok_file = os.path.join(lang_dir, f"tokenizer_subset_{lang}.jsonl")
+            with open(tok_file, "w", encoding="utf-8") as f_tok:
+                f_tok.write("\n".join(
+                    json.dumps({"text": t}, ensure_ascii=False) for t in tokenizer_samples
+                ) + "\n")
+        
+        return lang, collected_bytes
 
     except Exception as e:
-        print(f"[ERROR] {lang}: {e}")
-        import traceback
-        traceback.print_exc()
-
-    # Save tokenizer subset
-    if tokenizer_subset_file and tokenizer_samples:
-        if len(tokenizer_samples) > 2000:
-            tokenizer_samples = random.sample(tokenizer_samples, 2000)
-            
-        tok_file = os.path.join(lang_dir, f"tokenizer_subset_{lang}.jsonl")
-        with open(tok_file, "w", encoding="utf-8") as f_tok:
-            f_tok.write("\n".join(
-                json.dumps({"text": t}, ensure_ascii=False) for t in tokenizer_samples
-            ) + "\n")
-
-    return lang, collected_bytes
+        # Print detailed error but allow other languages to continue
+        print(f"[FAILED] {lang}: {e}")
+        # import traceback
+        # traceback.print_exc()
+        return lang, 0
 
 def main():
     import argparse
@@ -202,7 +200,6 @@ def main():
     print(f"Starting processing of {len(rows)} languages...")
     print(f"Total target: {total_target/1e9:.2f} GB")
     
-    # Use ProcessPoolExecutor to bypass GIL
     with ProcessPoolExecutor(max_workers=args.workers) as executor:
         futures = {
             executor.submit(process_language_vectorized, row, args.output, args.tokenizer_data): row["lang"]
@@ -224,7 +221,6 @@ def main():
             except Exception as e:
                 print(f"[FAILED] {lang}: {e}")
 
-    # Merge tokenizer subsets
     print("Merging tokenizer subsets...")
     with open(args.tokenizer_data, 'w', encoding='utf-8') as outfile:
         for fname in glob.glob(os.path.join(args.output, "**", "tokenizer_subset_*.jsonl"), recursive=True):
