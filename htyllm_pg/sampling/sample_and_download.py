@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 import pyarrow.parquet as pq
 from huggingface_hub import HfFileSystem, hf_hub_download
-from concurrent.futures import ProcessPoolExecutor, as_completed # Changed to Process
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
 
 # Approximate bytes per char for UTF-8
@@ -15,26 +15,58 @@ BYTES_PER_CHAR_ESTIMATE = 1.5
 
 def get_repo_files(repo_id, lang, source):
     """
-    Fetch list of parquet files for a specific language.
+    Fetch list of parquet files with specific logic for FineWeb structure.
     """
     fs = HfFileSystem()
-    try:
-        if source == "fw2":
-            # Fineweb-2 structure: data/{lang}/...
-            pattern = f"{repo_id}/data/{lang}/*.parquet"
+    files = []
+    
+    # --- CASE 1: FineWeb 1 (English Only) ---
+    if "fineweb" in repo_id and "fineweb-2" not in repo_id:
+        if lang == "eng_Latn":
+            # STRATEGY: Use the "sample-10BT" folder. 
+            # It is a high-quality subset sitting at the root, perfect for sampling.
+            pattern = f"{repo_id}/sample-10BT/*.parquet"
+            files = fs.glob(pattern)
+            
+            # Fallback: If sample-10BT is missing, grab from a random dump
+            if not files:
+                print(f"[INFO] sample-10BT not found for {repo_id}")
         else:
-            pattern = f"{repo_id}/{lang}/*.parquet"
-            # Fallback if the pattern is just root
-            if not fs.glob(pattern):
-                pattern = f"{repo_id}/data/*.parquet"
+            # FW1 is English only
+            return []
 
+    # --- CASE 2: FineWeb 2 (Multilingual) ---
+    elif "fineweb-2" in repo_id:
+        # 1. Try finding 'train' split specifically (preferred)
+        train_pattern = f"{repo_id}/data/{lang}/train/*.parquet"
+        files = fs.glob(train_pattern)
+        
+        # 2. If no train folder, try recursive search inside the lang folder
+        if not files:
+            deep_pattern = f"{repo_id}/data/{lang}/**/*.parquet"
+            files = fs.glob(deep_pattern)
+            
+        # 3. Filter out "removed" folders if recursive grabbed them
+        files = [f for f in files if "_removed" not in f]
+
+    # --- CASE 3: Generic Fallback ---
+    else:
+        pattern = f"{repo_id}/{lang}/*.parquet"
         files = fs.glob(pattern)
-        # Clean paths to be relative to repo
-        files = [f.replace(f"{repo_id}/", "") for f in files]
-        return files
-    except Exception as e:
-        print(f"[WARN] Could not list files for {lang}: {e}")
-        return []
+
+    # --- CLEANUP ---
+    # fs.glob returns full paths (e.g., "datasets/HuggingFaceFW/fineweb/...").
+    # hf_hub_download expects paths relative to the repo root.
+    clean_files = []
+    
+    for f in files:
+        if repo_id in f:
+            # Split by repo_id and take the second part to get relative path
+            # e.g. "datasets/HuggingFaceFW/fw/data/x.parquet" -> "data/x.parquet"
+            clean_path = f.split(repo_id + "/")[-1]
+            clean_files.append(clean_path)
+    
+    return clean_files
 
 def process_language_vectorized(lang_row, output_dir, tokenizer_subset_file=None):
     lang = lang_row["lang"]
@@ -53,10 +85,7 @@ def process_language_vectorized(lang_row, output_dir, tokenizer_subset_file=None
     # Get file list and shuffle
     files = get_repo_files(repo_id, lang, source)
     if not files:
-        # Fallback for subsets that might be defined differently in FW1
-        # If FW1 uses config names rather than folders, this needs specific mapping
-        # But assuming file path structure here:
-        print(f"[SKIP] No files found for {lang}")
+        print(f"[SKIP] No files found for {lang} in {repo_id}")
         return lang, 0
         
     np.random.shuffle(files)
@@ -67,7 +96,6 @@ def process_language_vectorized(lang_row, output_dir, tokenizer_subset_file=None
 
     collected_bytes = 0
     tokenizer_samples = []
-    
     
     try:
         # Create/Clear file
@@ -83,62 +111,58 @@ def process_language_vectorized(lang_row, output_dir, tokenizer_subset_file=None
                 repo_id=repo_id,
                 filename=file_path,
                 repo_type="dataset",
-                force_download=False # Use cache if exists, but we usually delete
+                force_download=False 
             )
 
-            # 2. Load into Pandas (Vectorized - Super Fast)
+            # 2. Load into Pandas
             df = pd.read_parquet(local_parquet, columns=["text"])
             
             # 3. Calculate sizes
-            # Vectorized length calculation
             df['bytes'] = df['text'].str.len() * BYTES_PER_CHAR_ESTIMATE
             
             # 4. Cumulative sum to find cutoff
             df['cumsum'] = df['bytes'].cumsum()
-            
-            # Check how much we need
             remaining = target_bytes - collected_bytes
             
             # Filter df to what we need
-            df_batch = df[df['cumsum'] <= remaining + (df['bytes'].mean() * 2)] # slight buffer
+            df_batch = df[df['cumsum'] <= remaining + (df['bytes'].mean() * 5)] # buffer
             
             # If batch is empty but we need data, take at least one if it fits roughly
             if df_batch.empty and not df.empty and remaining > 0:
                 df_batch = df.iloc[:1]
 
-            # 5. Reservoir Sampling for Tokenizer (Vectorized-ish)
-            # Take a random 0.1% sample or up to 100 rows per file for tokenizer
-            if tokenizer_subset_file:
-                tok_sample = df_batch.sample(min(len(df_batch), 100))
+            # 5. Reservoir Sampling for Tokenizer
+            if tokenizer_subset_file and not df_batch.empty:
+                # Sample up to 100 lines per file
+                sample_size = min(len(df_batch), 100)
+                tok_sample = df_batch.sample(sample_size)
                 tokenizer_samples.extend(tok_sample['text'].tolist())
 
-            # 6. Write to Disk (Vectorized)
-            # appending to jsonl.gz
+            # 6. Write to Disk
             if not df_batch.empty:
-                df_batch[['text']].to_json(
-                    output_file, 
+                # Convert to JSON string in one go (fast C backend)
+                # force_ascii=False prevents escaping unicode characters
+                json_block = df_batch[['text']].to_json(
                     orient='records', 
                     lines=True, 
-                    compression={'method': 'gzip', 'compresslevel': 1},
-                    mode='a' # Append mode requires pandas >= 1.4ish logic or manual handling
-                    # Pandas to_json append with compression is sometimes flaky.
-                    # safer: write to string, then append to gzip file
+                    force_ascii=False
                 )
                 
-                # Manual append to ensure safety with GZIP
+                # Append to compressed file
                 with gzip.open(output_file, 'at', encoding='utf-8') as f_out:
-                    for txt in df_batch['text']:
-                        f_out.write(json.dumps({"text": txt}, ensure_ascii=False) + "\n")
+                    f_out.write(json_block)
+                    f_out.write('\n') # Ensure newline after the block
 
                 batch_bytes = df_batch['bytes'].sum()
                 collected_bytes += batch_bytes
+                
+                print(f"[{lang}] +{batch_bytes/1e6:.1f} MB | Total: {collected_bytes/1e9:.2f} GB")
 
-            # 7. Cleanup to save scratch space
+            # 7. Cleanup
             os.remove(local_parquet)
             del df
             del df_batch
-            
-            print(f"[{lang}] Downloaded {file_path}, extracted {batch_bytes/1e6:.1f} MB. Total: {collected_bytes/1e9:.2f} GB")
+            del json_block
 
     except Exception as e:
         print(f"[ERROR] {lang}: {e}")
@@ -147,7 +171,6 @@ def process_language_vectorized(lang_row, output_dir, tokenizer_subset_file=None
 
     # Save tokenizer subset
     if tokenizer_subset_file and tokenizer_samples:
-        # Limit tokenizer samples to avoid memory explosion
         if len(tokenizer_samples) > 2000:
             tokenizer_samples = random.sample(tokenizer_samples, 2000)
             
@@ -161,29 +184,25 @@ def process_language_vectorized(lang_row, output_dir, tokenizer_subset_file=None
 
 def main():
     import argparse
-    import gzip # Ensure gzip is imported
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--quotas", type=str, default="sampling_quotas.csv")
     parser.add_argument("--inventory", type=str, default="dataset_inventory.json")
     parser.add_argument("--output", type=str, default="sampled_data")
     parser.add_argument("--tokenizer_data", type=str, default="tokenizer_training_data.jsonl")
-    parser.add_argument("--workers", type=int, default=16) # Match CPU count
+    parser.add_argument("--workers", type=int, default=16) 
     args = parser.parse_args()
     
     df_quotas = pd.read_csv(args.quotas)
     
     rows = [row for _, row in df_quotas.iterrows() if row["final_bytes"] > 0]
-    # Sort largest to smallest
     rows.sort(key=lambda r: r["final_bytes"], reverse=True)
     
     total_target = sum(r["final_bytes"] for r in rows)
     print(f"Starting processing of {len(rows)} languages...")
     print(f"Total target: {total_target/1e9:.2f} GB")
     
-    # CRITICAL CHANGE: ProcessPoolExecutor
-    # This creates separate Python processes, bypassing the GIL.
-    # Each process runs on a separate core.
+    # Use ProcessPoolExecutor to bypass GIL
     with ProcessPoolExecutor(max_workers=args.workers) as executor:
         futures = {
             executor.submit(process_language_vectorized, row, args.output, args.tokenizer_data): row["lang"]
