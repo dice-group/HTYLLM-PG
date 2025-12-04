@@ -103,9 +103,11 @@ def _extract_text(line: str) -> Optional[str]:
     return stripped
 
 
-def tokenize_fn(batch, tokenizer):
+def tokenize_fn(batch, tokenizer, keep_text: bool):
     tokenized = tokenizer(batch["text"], truncation=True, padding=True, max_length=1024)
     tokenized["labels"] = tokenized["input_ids"].copy()
+    if keep_text:
+        tokenized["text"] = batch["text"]
     return tokenized
 
 
@@ -148,9 +150,9 @@ def main(args):
 
         print(f"Rank {rank}: start tokenizing {len(assigned)} part(s)")
         tokenized_dataset = raw_dataset.map(
-            lambda batch: tokenize_fn(batch, tokenizer),
+            lambda batch: tokenize_fn(batch, tokenizer, getattr(args, "keep_text", False)),
             batched=True,
-            remove_columns=["text"],
+            remove_columns=None if getattr(args, "keep_text", False) else ["text"],
             num_proc=args.num_proc,
         )
 
@@ -174,5 +176,6 @@ if __name__ == "__main__":
     parser.add_argument("--world_size", type=int, default=None, help="World size override (defaults to SLURM env vars).")
     parser.add_argument("--eval_fraction", type=float, default=0.05, help="Fraction per language to tag as validation data (set 0 to disable).")
     parser.add_argument("--eval_seed", type=int, default=42, help="Seed for the eval split hash.")
+    parser.add_argument("--keep_text", action="store_true", help="Keep the raw text column in the tokenized dataset.")
     args = parser.parse_args()
     main(args)

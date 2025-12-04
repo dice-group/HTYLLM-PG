@@ -201,6 +201,10 @@ elif [[ -n "${LANGUAGES}" ]]; then
   TOKEN_CMD+=" --languages ${LANGUAGES}"
 fi
 
+if [[ "${RANKING_ENABLED}" -eq 1 ]]; then
+  TOKEN_CMD+=" --keep_text"
+fi
+
 TOKEN_JOB_ID=$(
   sbatch --parsable \
     --array=0-$((NUM_RANKS - 1)) \
