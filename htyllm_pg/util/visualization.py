@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import io
 import numpy as np
+from PIL import Image
 
 def create_expert_heatmap(expert_counts):
     """
@@ -58,9 +59,9 @@ def create_expert_heatmap(expert_counts):
     
     plt.tight_layout()
     
-    # Save to buffer
+    # Save to buffer and convert to PIL Image for wandb compatibility
     buf = io.BytesIO()
     plt.savefig(buf, format='png')
     buf.seek(0)
     plt.close(fig)
-    return buf
+    return Image.open(buf)
