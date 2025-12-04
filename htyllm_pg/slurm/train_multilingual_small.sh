@@ -31,7 +31,7 @@ export TRITON_CACHE_DIR="/scratch/hpc-prf-merlin/luke/.triton/autotune"
 export XDG_CACHE_HOME="/scratch/hpc-prf-merlin/luke/.cache"
 
 
-GPUS_PER_NODE=4   
+GPUS_PER_NODE=1   
 
 HOSTFILE="${SLURM_SUBMIT_DIR}/hostfile_${SLURM_JOB_ID}"
 scontrol show hostnames "${SLURM_JOB_NODELIST}" | while read -r host; do
