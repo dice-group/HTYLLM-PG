@@ -279,8 +279,22 @@ def main():
 
             loss = ce_loss + 0.01 * l_aux
 
-            model.backward(loss)
-            model.step()
+            # After line 276: output, l_aux, expert_counts = model(input_ids, attention_mask=attention_mask)
+
+            if RANK == 0 and global_step == 0:
+                print(f"=== FIRST BATCH DIAGNOSTICS ===")
+                print(f"ce_loss: {ce_loss.item():.4f}")
+                print(f"l_aux: {l_aux.item() if hasattr(l_aux, 'item') else l_aux:.4f}")
+                print(f"total loss: {(ce_loss + 0.01 * l_aux).item():.4f}")
+                print(f"logits range: [{output.min().item():.2f}, {output.max().item():.2f}]")
+                print(f"logits std: {output.std().item():.2f}")
+                print(f"any NaN in logits: {torch.isnan(output).any().item()}")
+                print(f"any Inf in logits: {torch.isinf(output).any().item()}")
+                print(f"input_ids range: [{input_ids.min().item()}, {input_ids.max().item()}]")
+                print(f"num tokens with label=-100: {(target == -100).sum().item()} / {target.numel()}")
+                print(f"================================")
+                model.backward(loss)
+                model.step()
             
             if RANK == 0:
                 log_dict = {"train_loss": loss.item(), "epoch": epoch, "step": global_step}
