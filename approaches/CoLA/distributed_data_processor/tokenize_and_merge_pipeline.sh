@@ -144,7 +144,7 @@ if [[ -n "${LANGUAGE_SUBSET}" ]]; then
       preset_merge_mem=64G
       preset_merge_time=02:00:00
       ;;
-    ten_representatives_mediods|english_plus_ten)
+    ten_representatives_mediods|english_plus_ten|lang2vec_auto_12_langs)
       preset_ranks=10
       preset_merge_mem=80G
       preset_merge_time=03:00:00

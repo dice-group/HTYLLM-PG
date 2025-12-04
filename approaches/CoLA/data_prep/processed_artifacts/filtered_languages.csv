@@ -190,3 +190,4 @@ taq_Tfng,train,taq,Tfng,Tamasheq,Afro-Asiatic,63652,116,807915,788.98KB,209519,2
 kas_Deva,train,kas,Deva,Kashmiri,Indo-European,317407,99,1863447,1.78MB,614859,600.45KB,0.010,0.121,low
 bug_Latn,train,bug,Latn,Buginese,Austronesian,33054,32,233287,227.82KB,103969,101.53KB,0.000,0.156,low
 cjk_Latn,train,cjk,Latn,Chokwe,Niger-Congo,14075,24,78103,76.27KB,39064,38.15KB,0.542,0.000,low
+english,train,eng,Latn,English,Indo-European,17028226270,130879964,230161529203,21.44TB,73396452648,68.32GB,0.000,0.000,high

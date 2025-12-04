@@ -6,8 +6,7 @@
 #SBATCH --cpus-per-task=172
 #SBATCH --mem=430G
 #SBATCH --time=01:00:00
-#SBATCH --output=logs/python_split-%j.out
-#SBATCH --error=logs/python_split-%j.err
+#SBATCH --output=logs/python_split-%j.log
 
 # This takes all large files (>512 MB)
 # and separates them for efficient tokenization.
@@ -15,8 +14,8 @@
 
 echo "Running Python-based parallel split with timing..."
 
-INPUT_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/samples"
-OUTPUT_DIR="/scratch/hpc-prf-merlin/joel/joels_test_result_output_dir_for_everything/test_sharding"
+INPUT_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/initial_samples_datatrove"
+OUTPUT_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/shareded_initial_samples_datatrove"
 
 time python -u shard_python.py \
   --input "$INPUT_DIR" \
