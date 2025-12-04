@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
-# --------------------------------------------------------------
-# count_ranks.sh – launch one job per rank_* folder
-# --------------------------------------------------------------
+# Count tokens for every rank_* directory.
 set -euo pipefail
 
-# ---- USER SETTINGS -------------------------------------------------
-RANK_ROOT=$1
-TOKENIZER="meta-llama/Llama-3.1-8B"
-# OUT_ROOT="/scratch/hpc-prf-merlin/yven/tokenized/llama-3.1-8B_tokenizer/eng_plus_5_langs_counts"
+usage() {
+  echo "Usage: $0 RANK_ROOT [TOKENIZER]" >&2
+  echo "Example: $0 /scratch/.../5_langs_ranks meta-llama/Llama-3.1-8B" >&2
+  exit 1
+}
+
+[[ $# -lt 1 || $# -gt 2 ]] && usage
+
+RANK_ROOT="$1"
+TOKENIZER="${2:-meta-llama/Llama-3.1-8B}"
 LOG_ROOT="${RANK_ROOT}/logs"
 mkdir -p "${LOG_ROOT}" "${RANK_ROOT}"
 
-# ---- discover how many rank_* dirs exist ----------------------------
 NUM_RANKS=$(find "${RANK_ROOT}" -maxdepth 1 -type d -name "rank_*" | wc -l)
-echo "Found ${NUM_RANKS} rank directories → will launch ${NUM_RANKS} array tasks"
+echo "[INFO] Found ${NUM_RANKS} rank directories under ${RANK_ROOT}"
 
-# ---- sbatch array -------------------------------------------------
 sbatch --parsable \
     --array=0-$((NUM_RANKS-1)) \
     --job-name=cnt_rank \
@@ -29,7 +31,7 @@ sbatch --parsable \
         RANK_IDX=\$SLURM_ARRAY_TASK_ID; \
         RANK_DIR=\$(printf '%s/rank_%05d' \"${RANK_ROOT}\" \"\$RANK_IDX\"); \
         OUT_DIR=\$(printf '%s/rank_%05d' \"${RANK_ROOT}\" \"\$RANK_IDX\"); \
-        echo \"🟢  Rank \$RANK_IDX → \${RANK_DIR}\"; \
+        echo '[INFO] Counting' \"\$RANK_DIR\"; \
         python -u collect_counts.py \
             --rank-dir \"\$RANK_DIR\" \
             --tokenizer \"${TOKENIZER}\" \

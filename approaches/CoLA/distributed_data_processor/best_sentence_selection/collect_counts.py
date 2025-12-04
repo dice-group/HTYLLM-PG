@@ -31,7 +31,7 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "word_counts.json").write_text(json.dumps(word_counts, indent=2))
     (args.out_dir / "subword_counts.json").write_text(json.dumps(subword_counts, indent=2))
-    print(f"DONE {args.rank_dir.name} counts → {args.out_dir}")
+    print(f"[INFO] {args.rank_dir.name}: counts written to {args.out_dir}")
 
 
 if __name__ == "__main__":
