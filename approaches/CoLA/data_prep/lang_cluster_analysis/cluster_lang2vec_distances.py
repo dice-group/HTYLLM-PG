@@ -52,16 +52,21 @@ def cluster_with_k(matrix, k: int, linkage: str):
     return model.fit_predict(matrix)
 
 
-def auto_k(matrix, min_k: int, max_k: int, method: str) -> Tuple[int, List[Tuple[int, float]]]:
+def auto_k(matrix, min_k: int, max_k: int, method: str, min_cluster_size: int = 2) -> Tuple[int, List[Tuple[int, float]]]:
     best_k = min_k
     best_score = -1.0
     scores = []
     for k in range(min_k, min(max_k, matrix.shape[0] - 1) + 1):
         labels = cluster_with_k(matrix, k, method)
         counts = pd.Series(labels).value_counts()
-        if len(set(labels)) < 2 or (counts < 2).any():
+        if len(set(labels)) < 2:
             continue
-        score = silhouette_score(matrix, labels, metric="precomputed")
+        if min_cluster_size > 1 and (counts < min_cluster_size).any():
+            continue
+        try:
+            score = silhouette_score(matrix, labels, metric="precomputed")
+        except ValueError:
+            continue
         scores.append((k, score))
         if score > best_score:
             best_score = score
@@ -156,10 +161,20 @@ def parse_args():
 
 def compute_silhouettes(matrix: np.ndarray, labels: Sequence[int]):
     counts = pd.Series(labels).value_counts()
-    if (counts < 2).any():
-        print("Warning: some clusters have <2 members; skipping silhouette-based filtering")
+    labels = np.asarray(labels)
+    valid_mask = np.array([counts.get(label, 0) >= 2 for label in labels], dtype=bool)
+    if not valid_mask.any():
+        print("Warning: no clusters with >=2 members; silhouette metrics unavailable")
         return None
-    return silhouette_samples(matrix, labels, metric="precomputed")
+    if valid_mask.all():
+        return silhouette_samples(matrix, labels, metric="precomputed")
+    print("Warning: some clusters have <2 members; assigning zero silhouette scores to those languages")
+    sub_matrix = matrix[np.ix_(valid_mask, valid_mask)]
+    sub_labels = labels[valid_mask]
+    sub_scores = silhouette_samples(sub_matrix, sub_labels, metric="precomputed")
+    sil_vals = np.zeros(len(labels), dtype=float)
+    sil_vals[valid_mask] = sub_scores
+    return sil_vals
 
 
 def select_top_languages(langs, families, labels, sil_vals, top_n, output_path: Path):
