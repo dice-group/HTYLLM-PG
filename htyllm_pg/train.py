@@ -293,8 +293,8 @@ def main():
                 print(f"input_ids range: [{input_ids.min().item()}, {input_ids.max().item()}]")
                 print(f"num tokens with label=-100: {(target == -100).sum().item()} / {target.numel()}")
                 print(f"================================")
-                model.backward(loss)
-                model.step()
+            model.backward(loss)
+            model.step()
             
             if RANK == 0:
                 log_dict = {"train_loss": loss.item(), "epoch": epoch, "step": global_step}
