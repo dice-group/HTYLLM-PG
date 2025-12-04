@@ -22,18 +22,17 @@ flowchart LR
     E["run_rank_scores.sh<br>add joint_score to each rank"]
     F["merge_tokenized_ranks.py<br>DatasetDict train/validation<br>Final HF dataset @ &lt;output&gt;/"]
     G1["create_topk_ranked_datasets.py<br>Top-K per language HF datasets"]
-    G2["select_top_ranked.py<br>CPT JSONL corpus"]
-    H["accelerate_cpt_train.sh<br>(optional CPT training)"]
+    G2["select_top_ranked.py<br>JSONL corpus for CPT"]
 
     A --> B --> C --> D --> E --> F
     F --> G1
-    F --> G2 --> H
+    F --> G2
 
     classDef optional fill:#fff9e6,stroke-dasharray:5 5,color:#6b4e00
-    class C,D,E,G1,G2,H optional
+    class C,D,E,G1,G2 optional
 ```
 
-Required stages (A → B → F) mirror the original tokenization/merge pipeline. Optional stages (dashed nodes) enrich the rank datasets with `joint_score`, spawn filtered datasets, and produce CPT corpora/checkpoints.
+Required stages (A → B → F) mirror the original tokenization/merge pipeline. Optional stages (dashed nodes) enrich the rank datasets with `joint_score`, spawn filtered datasets, and produce ready-to-train JSONL corpora (training happens outside this pipeline).
 
 ## What you need
 
