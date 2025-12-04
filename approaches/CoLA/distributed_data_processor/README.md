@@ -11,19 +11,29 @@ Tools for two simple steps: (1) load each sharded language file and tokenize it,
 
 Each tokenized example keeps a `language` column (derived from the source shard) and a deterministic `split` label. During merging we build a `DatasetDict(train, validation)` where the validation slice contains roughly 5 % of every language (configurable via `merge_tokenized_ranks.py --split_fraction`). Point any training job at the merged path and both splits are already present.
 
+## Pipeline overview
+
+```mermaid
+flowchart LR
+    A["Sharded JSONL (.gz) per language"]
+    B["tokenize_and_merge_pipeline.sh<br>writes rank_* datasets"]
+    C["count_ranks.sh<br>per-rank word/subword counts"]
+    D["merge_ranks.sh<br>global word/subword counts"]
+    E["run_rank_scores.sh<br>add joint_score to each rank"]
+    F["merge_tokenized_ranks.py<br>DatasetDict train/validation<br>Final HF dataset @ &lt;output&gt;/"]
+    G1["create_topk_ranked_datasets.py<br>Top-K per language HF datasets"]
+    G2["select_top_ranked.py<br>CPT JSONL corpus"]
+    H["accelerate_cpt_train.sh<br>(optional CPT training)"]
+
+    A --> B --> C --> D --> E --> F
+    F --> G1
+    F --> G2 --> H
+
+    classDef optional fill:#fff9e6,stroke-dasharray:5 5,color:#6b4e00
+    class C,D,E,G1,G2,H optional
 ```
-Sharded JSONL(.gz) per language
-          │
-          ▼
-tokenize_and_merge_pipeline.sh
-          │
-          ├── Tokenization array → <output>_ranks/rank_*
-          ▼
-  merge_tokenized_ranks.py
-          │
-          ▼
- Final HF dataset @ <output>/ (DatasetDict with train + validation)
-```
+
+Required stages (A → B → F) mirror the original tokenization/merge pipeline. Optional stages (dashed nodes) enrich the rank datasets with `joint_score`, spawn filtered datasets, and produce CPT corpora/checkpoints.
 
 ## What you need
 
