@@ -73,6 +73,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --topany-gating-impl "sparse" \
       --use-gradient-checkpointing \
       --use-flash-attention \
+      --train-split 1.0 \
       --checkpoint-dir /scratch/hpc-prf-merlin/luke/checkpoints_multilingual_small \
       --checkpoint-steps 2000 \
       --data-dir /scratch/hpc-prf-merlin/luke/tokenized_multilingual
