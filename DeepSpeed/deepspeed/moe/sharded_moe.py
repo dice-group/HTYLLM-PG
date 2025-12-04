@@ -543,6 +543,12 @@ def topanygating_sparse(
             load_balance_loss = gates.new_zeros(())
         efficiency_loss = gates.float().mean()
         l_aux = diverse_and_simple_gate_loss(gate_tensor, expert_mask) + load_balance_loss + efficiency_loss
+    
+    # Add activation penalty to encourage using more experts per token
+    # Penalize if average experts per token drops below target (1.5)
+    if gate_tensor is not None and hasattr(gate_tensor, '_activation_rate'):
+        activation_penalty = F.relu(1.5 - gate_tensor._activation_rate)
+        l_aux = l_aux + 0.1 * activation_penalty
 
     # Calculate slots using cumsum on the bool mask
     cumsum = torch.cumsum(mask.to(torch.int32), dim=0) 
@@ -675,26 +681,38 @@ class GAMoEGateT(torch.nn.Module):
             gates = self.gates
 
         logit_scale = torch.clamp(self.temperature, max=self.clamp_max).exp()  # for init_t = 1 this is also logit_scale = 1
-        logits = torch.sigmoid(torch.matmul(F.normalize(x, dim=1), F.normalize(sim_matrix, dim=0)) * logit_scale )  # similarity - threshold but negativ becomes zero (deactivated)
+        raw_logits = torch.sigmoid(torch.matmul(F.normalize(x, dim=1), F.normalize(sim_matrix, dim=0)) * logit_scale)  # similarity scores in [0, 1]
         # logits = logits * self.experts_mask # zero-out expert -> TODO: Currently this is not need as we do not implement dynamic epxert adding and removal
-        gates = torch.sigmoid(self.gates * logit_scale) # put gates into [0 - 1]
-        gates = torch.clamp(gates, max=0.4) # prevents threshold from being too high
-        # LF: ghost layer issue
+        gates_scaled = torch.sigmoid(self.gates * logit_scale) # put gates into [0 - 1]
+        gates_scaled = torch.clamp(gates_scaled, max=0.25)  # LOWERED from 0.4 to prevent expert collapse
+        
         if self.training:
             # training: thresholded + binarised
-            logits = logits - gates 
+            logits = raw_logits - gates_scaled 
             logits = self._apply_gate_backward(logits)  
+            
+            # Force minimum 1 expert per token to prevent complete collapse
+            no_expert_mask = (logits.sum(dim=1) == 0)
+            if no_expert_mask.any():
+                max_idx = torch.argmax(raw_logits[no_expert_mask], dim=1)
+                forced = F.one_hot(max_idx, num_classes=logits.shape[1]).float()
+                logits = logits.clone()
+                logits[no_expert_mask] = forced
+            
             top_k = torch.sum(logits > 0, dim=1).to(torch.int)
+            
+            # Store activation rate for loss computation (used in topanygating_sparse)
+            self._activation_rate = logits.sum(dim=1).mean()
         else:
-            new_logits = logits - gates
+            new_logits = raw_logits - gates_scaled
             # make it binary according to chosen backward rule
             new_logits = self._apply_gate_backward(new_logits)
 
             top_k = torch.sum(new_logits > 0, dim=1).to(torch.int)
 
-            mask = (torch.sum(new_logits, dim=1) == 0).to(torch.int).repeat(logits.shape[1]).reshape(logits.shape[1], -1).T
-            max_index = torch.argmax(logits, dim=1)
-            one_hot = F.one_hot(max_index, num_classes=logits.shape[1])
+            mask = (torch.sum(new_logits, dim=1) == 0).to(torch.int).repeat(raw_logits.shape[1]).reshape(raw_logits.shape[1], -1).T
+            max_index = torch.argmax(raw_logits, dim=1)
+            one_hot = F.one_hot(max_index, num_classes=raw_logits.shape[1])
             logits = mask * one_hot + new_logits
 
             top_k = torch.max(top_k, torch.ones(top_k.shape).to(top_k.device)).to(torch.int)
