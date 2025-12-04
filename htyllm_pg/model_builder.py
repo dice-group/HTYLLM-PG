@@ -241,6 +241,27 @@ class MoE_Transformer(nn.Module):
         # weight tying
         self.output_projection.weight = self.token_embedding.weight
 
+        # Proper initialization (GPT-2 style)
+        self._init_weights()
+
+    def _init_weights(self):
+        """Initialize weights following GPT-2 style (std=0.02)"""
+        init_std = 0.02
+        
+        # Initialize embeddings
+        nn.init.normal_(self.token_embedding.weight, mean=0.0, std=init_std)
+        nn.init.normal_(self.pos_embedding, mean=0.0, std=init_std)
+        
+        # Initialize all Linear and LayerNorm layers in transformer
+        for module in self.transformer.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.normal_(module.weight, mean=0.0, std=init_std)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.LayerNorm):
+                nn.init.ones_(module.weight)
+                nn.init.zeros_(module.bias)
+
     def forward(self, tokens, attention_mask=None):
         x = self.token_embedding(tokens)
         b, n, _ = x.shape
