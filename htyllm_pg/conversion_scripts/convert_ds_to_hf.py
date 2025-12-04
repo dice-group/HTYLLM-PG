@@ -58,7 +58,7 @@ class HTYLLMForCausalLM(PreTrainedModel):
         logits, aux_loss, expert_counts = self.model(input_ids, attention_mask)
         loss = None
         if labels is not None:
-            loss_fct = torch.nn.CrossEntropyLoss()
+            loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100)
             loss = loss_fct(logits.view(-1, self.config.vocab_size), labels.view(-1)) + 0.01 * aux_loss
         
         # We can't easily pass custom fields in CausalLMOutputWithPast, so we just attach it

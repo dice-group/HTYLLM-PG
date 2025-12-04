@@ -128,6 +128,8 @@ def get_args() -> argparse.Namespace :
     parser.add_argument("--use-flash-attention", action="store_true", dest="use_flash_attention", help="Use Flash Attention (optimized) instead of standard attention")
     parser.add_argument("--use-gradient-checkpointing", action="store_true", dest="use_gradient_checkpointing", default=True, help="Use gradient checkpointing to save memory")
     
+    parser.add_argument("--train-split", type=float, dest="train_split", default=0.95, help="Fraction of data for training (1.0 = no test split)")
+    
     parser.add_argument("--local_rank", type=int, default=-1)
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
@@ -248,7 +250,8 @@ def main():
             args.data_dir, 
             seq_length=args.max_seq_len, 
             batch_size=args.batch_size, 
-            num_workers=args.workers
+            num_workers=args.workers,
+            train_split=args.train_split
         )
     else:
         train_dataset = DummyTextDataset(vocab_size=args.vocab_size, seq_len=args.max_seq_len, num_samples=8_000)
@@ -335,37 +338,48 @@ def main():
                     print(f"Saving checkpoint at step {global_step}...")
                 model.save_checkpoint(args.checkpoint_dir, tag=f"step_{global_step}")
 
-    # Evaluation after training is complete
-    if RANK == 0:
-        print(f"\n{'='*50}")
-        print("Training complete! Starting evaluation...")
-        print(f"{'='*50}\n")
-    
-    model.eval()
-    with torch.inference_mode():
-        test_loss_sum = 0
-        num_test_batches = 0
-        
-        for batch in tqdm(test_dataloader, desc="Evaluating"):
-            input_ids = batch['input_ids'].to(device)
-            target = batch['labels'].to(device)
-            attention_mask = batch.get('attention_mask', None)
-            if attention_mask is not None:
-                attention_mask = attention_mask.to(device)
-
-            output, l_aux, _ = model(input_ids, attention_mask=attention_mask)
-            test_loss = criterion(output.float().transpose(1,2), target) + 0.01 * l_aux
-            test_loss_sum += test_loss.item()
-            num_test_batches += 1
-            
-        avg_test_loss = test_loss_sum / num_test_batches
-        
+    # Evaluation after training is complete (only if test data exists)
+    if test_dataloader is not None and len(test_dataloader) > 0:
         if RANK == 0:
             print(f"\n{'='*50}")
-            print(f"Final Test Loss: {avg_test_loss:.4f}")
+            print("Training complete! Starting evaluation...")
             print(f"{'='*50}\n")
-            wandb.log({"test_loss": avg_test_loss})
-            # Test prediction 
+        
+        model.eval()
+        with torch.inference_mode():
+            test_loss_sum = 0
+            num_test_batches = 0
+            
+            for batch in tqdm(test_dataloader, desc="Evaluating"):
+                input_ids = batch['input_ids'].to(device)
+                target = batch['labels'].to(device)
+                attention_mask = batch.get('attention_mask', None)
+                if attention_mask is not None:
+                    attention_mask = attention_mask.to(device)
+
+                output, l_aux, _ = model(input_ids, attention_mask=attention_mask)
+                test_loss = criterion(output.float().transpose(1,2), target) + 0.01 * l_aux
+                test_loss_sum += test_loss.item()
+                num_test_batches += 1
+            
+            if num_test_batches > 0:
+                avg_test_loss = test_loss_sum / num_test_batches
+                
+                if RANK == 0:
+                    print(f"\n{'='*50}")
+                    print(f"Final Test Loss: {avg_test_loss:.4f}")
+                    print(f"{'='*50}\n")
+                    wandb.log({"test_loss": avg_test_loss})
+    else:
+        if RANK == 0:
+            print(f"\n{'='*50}")
+            print("Training complete! (No test split configured)")
+            print(f"{'='*50}\n")
+    
+    # Test prediction
+    if RANK == 0:
+        model.eval()
+        with torch.inference_mode():
             test_pred, _, _ = model(torch.arange(10).unsqueeze(0).to(device))
             print(f"Test prediction shape: {test_pred.shape}")
             print(f"Prediction for [0,...,9]: {torch.argmax(test_pred.squeeze()[9])}")

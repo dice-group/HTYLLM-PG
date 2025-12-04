@@ -208,7 +208,7 @@ class TestTrainingSetup(unittest.TestCase):
         input_ids[0, -5:] = 0
         
         # Forward
-        logits, aux_loss = model(input_ids)
+        logits, aux_loss, expert_counts = model(input_ids)
         
         self.assertEqual(logits.shape, (2, seq_len, vocab_size))
         print("[OK] Model forward pass successful.")
