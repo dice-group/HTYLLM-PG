@@ -19,7 +19,7 @@ LANG_LIST_PATH = DATA_PREP_DIR / "processed_artifacts" / "filtered_languages.csv
 LANG2VEC_DIR = SCRIPT_DIR / "lang2vec"
 
 sys.path.insert(0, str(LANG2VEC_DIR))
-from lang2vec import lang2vec as l2v  # noqa: E402
+from lang2vec import lang2vec as l2v
 
 
 def parse_language_spec(spec: Optional[str]) -> Optional[List[str]]:
