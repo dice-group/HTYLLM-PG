@@ -684,7 +684,6 @@ class GAMoEGateT(torch.nn.Module):
         raw_logits = torch.sigmoid(torch.matmul(F.normalize(x, dim=1), F.normalize(sim_matrix, dim=0)) * logit_scale)  # similarity scores in [0, 1]
         # logits = logits * self.experts_mask # zero-out expert -> TODO: Currently this is not need as we do not implement dynamic epxert adding and removal
         gates_scaled = torch.sigmoid(self.gates * logit_scale) # put gates into [0 - 1]
-        gates_scaled = torch.clamp(gates_scaled, max=0.25)  # LOWERED from 0.4 to prevent expert collapse
         
         if self.training:
             # training: thresholded + binarised
