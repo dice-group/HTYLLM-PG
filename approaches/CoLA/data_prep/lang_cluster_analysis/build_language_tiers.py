@@ -29,7 +29,10 @@ def parse_args():
     parser.add_argument("--tier", action="append", help="Override tier as name:min:max.")
     parser.add_argument("--alpha", type=float, default=1.0, help="Inter-family distance weight.")
     parser.add_argument("--beta", type=float, default=1.0, help="Intra-family distance weight.")
-    parser.add_argument("--block-size", type=int, default=2, help="Languages emitted per family per cycle.")
+    parser.add_argument("--block-size", type=int, default=2, help="Languages emitted per family per cycle (after the base chunk).")
+    parser.add_argument("--min-families", type=int, default=4, help="Minimum number of families to retain in each tier (default 4).")
+    parser.add_argument("--max-families", type=int, default=16, help="Maximum number of families considered (default 16).")
+    parser.add_argument("--min-per-family", type=int, default=3, help="Minimum languages per family (default 3).")
     parser.add_argument("--output", default=ROOT / "docs" / "language_tiers.json", help="Output file path.")
     return parser.parse_args()
 
@@ -71,9 +74,11 @@ def compute_medoid(matrix: np.ndarray, indices: List[int]) -> int:
     return indices[local]
 
 
-def order_families(matrix: np.ndarray, families: pd.Series) -> Tuple[List[str], Dict[str, List[int]]]:
+def order_families(matrix: np.ndarray, families: pd.Series, min_per_family: int) -> Tuple[List[str], Dict[str, List[int]]]:
     fam_names = sorted(families.unique())
     family_indices = {fam: np.where(families == fam)[0].tolist() for fam in fam_names}
+    fam_names = [fam for fam in fam_names if len(family_indices[fam]) >= min_per_family]
+    family_indices = {fam: family_indices[fam] for fam in fam_names}
     medoid_idx = [compute_medoid(matrix, family_indices[fam]) for fam in fam_names]
     medoid_dist = matrix[np.ix_(medoid_idx, medoid_idx)]
     order = []
@@ -164,22 +169,49 @@ def compute_inter_intra(matrix: np.ndarray, selected_idx: List[int], families: L
     return inter, intra
 
 
-def build_language_sequence(family_order: List[str], family_lang_order: Dict[str, List[int]], block_size: int) -> List[Tuple[str, int]]:
-    sequence: List[Tuple[str, int]] = []
+def build_language_sequence(
+    family_order: List[str],
+    family_lang_order: Dict[str, List[int]],
+    min_per_family: int,
+    block_size: int,
+) -> List[Tuple[str, int]]:
     if block_size <= 0:
         block_size = 1
-    max_len = max(len(vals) for vals in family_lang_order.values())
+    sequence: List[Tuple[str, int]] = []
+    remaining: Dict[str, List[int]] = {}
+    for fam in family_order:
+        langs = family_lang_order[fam]
+        if len(langs) < min_per_family:
+            continue
+        base_chunk = langs[:min_per_family]
+        for idx in base_chunk:
+            sequence.append((fam, idx))
+        remaining[fam] = langs[min_per_family:]
+    if not sequence:
+        return []
+    max_len = max((len(vals) for vals in remaining.values()), default=0)
     for depth in range(0, max_len, block_size):
         for fam in family_order:
-            langs = family_lang_order[fam]
+            rem = remaining.get(fam, [])
             for offset in range(block_size):
                 idx = depth + offset
-                if idx < len(langs):
-                    sequence.append((fam, langs[idx]))
+                if idx < len(rem):
+                    sequence.append((fam, rem[idx]))
     return sequence
 
 
-def search_tier_by_prefix(tier_cfg: Dict[str, int], sequence: List[Tuple[str, int]], df: pd.DataFrame, matrix: np.ndarray, alpha: float, beta: float, prev_total: int) -> Dict:
+def search_tier_by_prefix(
+    tier_cfg: Dict[str, int],
+    sequence: List[Tuple[str, int]],
+    df: pd.DataFrame,
+    matrix: np.ndarray,
+    alpha: float,
+    beta: float,
+    prev_total: int,
+    min_families: int,
+    max_families: int,
+    min_per_family: int,
+) -> Dict:
     start_total = max(prev_total, tier_cfg["min_total"])
     end_total = min(len(sequence), tier_cfg["max_total"])
     if start_total > end_total:
@@ -189,6 +221,14 @@ def search_tier_by_prefix(tier_cfg: Dict[str, int], sequence: List[Tuple[str, in
         subset = sequence[:total]
         idxs = [item[1] for item in subset]
         families = [item[0] for item in subset]
+        per_family_counts: Dict[str, int] = {}
+        for fam in families:
+            per_family_counts[fam] = per_family_counts.get(fam, 0) + 1
+        unique_fams = len(per_family_counts)
+        if unique_fams < min_families or unique_fams > max_families:
+            continue
+        if any(count < min_per_family for count in per_family_counts.values()):
+            continue
         inter, intra = compute_inter_intra(matrix, idxs, families)
         score = alpha * inter - beta * intra
         if best is None or score > best["score"]:
@@ -201,6 +241,7 @@ def search_tier_by_prefix(tier_cfg: Dict[str, int], sequence: List[Tuple[str, in
                 "inter": inter,
                 "intra": intra,
                 "codes": [df.iloc[idx]["code"] for idx in idxs],
+                "families": unique_fams,
                 "per_family": per_family,
             }
     if not best:
@@ -234,10 +275,27 @@ def main():
     df = load_data()
     codes = df["code"].tolist()
     matrix = build_distance_matrix(codes, distances, weights)
-    family_order, family_indices = order_families(matrix, df["family"])
-    family_lang_order = build_family_language_orders(matrix, df, family_order, family_indices)
-    sequence = build_language_sequence(family_order, family_lang_order, args.block_size)
+    family_order_full, family_indices_full = order_families(matrix, df["family"], args.min_per_family)
+    if len(family_order_full) < args.min_families:
+        raise RuntimeError("Not enough families meet the minimum size requirement.")
+    family_lang_order_all = build_family_language_orders(matrix, df, family_order_full, family_indices_full)
 
+    def make_sequence(order: List[str]) -> List[Tuple[str, int]]:
+        subset = {fam: family_lang_order_all[fam] for fam in order}
+        return build_language_sequence(order, subset, args.min_per_family, args.block_size)
+
+    max_needed = max(tier["max_total"] for tier in tiers)
+    family_order = family_order_full[: max(args.min_families, min(args.max_families, len(family_order_full)))]
+    sequence = make_sequence(family_order)
+    idx = len(family_order)
+    while len(sequence) < max_needed and idx < len(family_order_full):
+        family_order.append(family_order_full[idx])
+        sequence = make_sequence(family_order)
+        idx += 1
+    if len(sequence) < max_needed:
+        raise RuntimeError("Unable to build a sequence long enough for the requested tiers; please lower min requirements.")
+
+    effective_max_families = max(args.max_families, len(family_order))
     prev_total = 0
     results = []
     for tier in tiers:
@@ -249,11 +307,14 @@ def main():
             alpha=args.alpha,
             beta=args.beta,
             prev_total=prev_total,
+            min_families=args.min_families,
+            max_families=effective_max_families,
+            min_per_family=args.min_per_family,
         )
         prev_total = best["total"]
         results.append({"tier": tier["name"], **best})
         print(
-            f"{tier['name']}: total={best['total']} score={best['score']:.3f} inter={best['inter']:.3f} intra={best['intra']:.3f}"
+            f"{tier['name']}: total={best['total']} families={best['families']} score={best['score']:.3f} inter={best['inter']:.3f} intra={best['intra']:.3f}"
         )
 
     output_path = Path(args.output)
