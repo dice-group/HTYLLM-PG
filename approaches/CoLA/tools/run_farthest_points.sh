@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # inputs
-DISTANCE_NPZ="data_prep/processed_artifacts/lang2vec_all_distances.npz"
 METADATA_CSV="data_prep/base_data/fineweb2-language-distribution.csv"
 MIN_DOCUMENTS=500
+LANG2VEC_DISTANCE="genetic"
 
 RESULT_DIR="tools/farthest_runs"
 mkdir -p "${RESULT_DIR}"
@@ -20,9 +20,9 @@ run_fp() {
   local out_json="${RESULT_DIR}/${label}.json"
   echo ">>> Running ${label}..."
   python tools/farthest_points.py \
-    --distance-npz "${DISTANCE_NPZ}" \
     --metadata-csv "${METADATA_CSV}" \
     --min-documents "${MIN_DOCUMENTS}" \
+    --lang2vec-distance "${LANG2VEC_DISTANCE}" \
     --output-image "${out_png}" \
     --output-umap-image "${out_umap}" \
     --json-output "${out_json}" \
@@ -56,15 +56,19 @@ if [[ -f "${DEMO_DIST}" ]]; then
   out_umap="${RESULT_DIR}/${label}_umap.png"
   out_json="${RESULT_DIR}/${label}.json"
   echo ">>> Running ${label} (demo)..."
-  python tools/farthest_points.py \
-    --distance-npz "${DEMO_DIST}" \
-    --coordinate-csv "${DEMO_COORDS}" \
-    --k 4 \
-    --target-total 72 \
-    --output-image "${out_png}" \
-    --output-umap-image "${out_umap}" \
-    --json-output "${out_json}" \
+  DEMO_ARGS=(
+    --distance-npz "${DEMO_DIST}"
+    --k 4
+    --target-total 72
+    --output-image "${out_png}"
+    --output-umap-image "${out_umap}"
+    --json-output "${out_json}"
     --show-all
+  )
+  if [[ -f "${DEMO_COORDS}" ]]; then
+    DEMO_ARGS+=(--coordinate-csv "${DEMO_COORDS}")
+  fi
+  python tools/farthest_points.py "${DEMO_ARGS[@]}"
 fi
 
 echo "All runs completed. Results stored in ${RESULT_DIR}/"
