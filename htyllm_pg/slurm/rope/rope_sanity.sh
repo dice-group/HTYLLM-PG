@@ -43,6 +43,7 @@ srun --ntasks=1 --ntasks-per-node=1 bash -c '
       --epochs 1 \
       --batch-size 4 \
       --max-seq-len 2048 \
+      --vocab-size 270000 \
       --dim 256 \
       --depth 4 \
       --heads 8 \
