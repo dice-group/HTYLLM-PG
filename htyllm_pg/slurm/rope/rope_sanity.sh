@@ -42,7 +42,7 @@ srun --ntasks=1 --ntasks-per-node=1 bash -c '
       --deepspeed_config ds_config.json \
       --epochs 1 \
       --batch-size 4 \
-      --max-seq-len 512 \
+      --max-seq-len 2048 \
       --dim 256 \
       --depth 4 \
       --heads 8 \
