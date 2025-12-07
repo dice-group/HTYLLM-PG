@@ -90,41 +90,68 @@ def select_farthest_points(dist_matrix: np.ndarray, k: int, start: int | None = 
     return selected
 
 
-def _neighbors_for_count(dist_matrix: np.ndarray, idx: int, count: int) -> List[int]:
-    if count <= 0:
-        return []
-    row = dist_matrix[idx].astype(float).copy()
-    row[idx] = np.inf
-    order = np.argsort(row)
-    chosen = []
-    for candidate in order:
-        if not np.isfinite(row[candidate]):
+def assign_neighbors(
+    dist_matrix: np.ndarray,
+    selected: Sequence[int],
+    required: Sequence[int],
+    total_neighbors: int,
+) -> Dict[int, List[int]]:
+    """Assign neighbors strictly closer to their seed than to any other seed."""
+    selected = list(selected)
+    neighbor_map: Dict[int, List[int]] = {int(idx): [] for idx in selected}
+    if not selected or total_neighbors <= 0:
+        return neighbor_map
+
+    required = [max(0, int(r)) for r in required]
+    extra = max(0, total_neighbors - sum(required))
+    needed = sum(required) + extra
+
+    candidates = [idx for idx in range(dist_matrix.shape[0]) if idx not in selected]
+    scored: List[tuple[float, int, int]] = []
+
+    tol = 1e-6
+    for idx in candidates:
+        dists = dist_matrix[idx, selected]
+        best_pos = int(np.argmin(dists))
+        best_dist = float(dists[best_pos])
+        others = np.delete(dists, best_pos)
+        if others.size and best_dist + tol >= float(others.min()):
             continue
-        chosen.append(int(candidate))
-        if len(chosen) == count:
+        margin = float(others.min()) - best_dist if others.size else float("inf")
+        scored.append((-margin, idx, best_pos))
+
+    scored.sort()
+    for _, idx, pos in scored:
+        if needed <= 0:
             break
-    return chosen
+        if required[pos] > 0:
+            required[pos] -= 1
+        elif extra > 0:
+            extra -= 1
+        else:
+            continue
+        seed = selected[pos]
+        neighbor_map[seed].append(int(idx))
+        needed -= 1
+
+    if needed > 0:
+        raise ValueError(
+            "Not enough languages satisfy the strict separation; "
+            "reduce target_total or adjust filters."
+        )
+    return neighbor_map
 
 
-def compute_neighbors(dist_matrix: np.ndarray, selected: Sequence[int], counts: Sequence[int]) -> Dict[int, List[int]]:
-    """Return the closest neighbors for each selected index."""
-    if len(selected) != len(counts):
-        raise ValueError("Counts must match the selected indices.")
-    neighbors = {}
-    for idx, count in zip(selected, counts):
-        neighbors[int(idx)] = _neighbors_for_count(dist_matrix, int(idx), int(count))
-    return neighbors
-
-
-def allocate_neighbor_counts(k: int, target_total: int | None, neighbors_per_language: int | None) -> List[int]:
+def neighbor_quota(
+    k: int, target_total: int | None, neighbors_per_language: int | None
+) -> tuple[List[int], int]:
     if neighbors_per_language is not None:
-        return [max(0, neighbors_per_language)] * k
-    remaining = max(0, (target_total or k) - k)
-    if k == 0:
-        return []
-    base = remaining // k
-    extras = remaining % k
-    return [base + (1 if idx < extras else 0) for idx in range(k)]
+        required = [max(0, neighbors_per_language)] * k
+        total = sum(required)
+    else:
+        total = max(0, (target_total or k) - k)
+        required = [0] * k
+    return required, total
 
 
 def _pairwise_stats(submatrix: np.ndarray) -> Dict[str, float | None]:
@@ -373,12 +400,20 @@ def main() -> None:
         if k <= 0 or k > matrix.shape[0]:
             return None
         indices = select_farthest_points(matrix, k)
-        counts = allocate_neighbor_counts(
+        required, total_neighbors = neighbor_quota(
             len(indices),
             None if use_neighbors_per_lang else args.target_total,
             neighbors_per_target if use_neighbors_per_lang else None,
         )
-        neighbor_map = compute_neighbors(matrix, indices, counts)
+        try:
+            neighbor_map = assign_neighbors(
+                matrix,
+                indices,
+                required,
+                total_neighbors,
+            )
+        except ValueError:
+            return None
         metrics = compute_quality_metrics(matrix, indices, neighbor_map)
         return SelectionOutcome(
             k=k,

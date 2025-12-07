@@ -1,0 +1,78 @@
+{
+  "best_k": 4,
+  "best_score": 0.4378333333333333,
+  "best_codes": [
+    "agr",
+    "mbd",
+    "ell",
+    "npi"
+  ],
+  "best_neighbors": {
+    "agr": [],
+    "mbd": [
+      "mbt",
+      "mbb",
+      "mbs",
+      "ifk",
+      "cgc"
+    ],
+    "ell": [
+      "ron",
+      "als",
+      "spa"
+    ],
+    "npi": []
+  },
+  "quality_metrics": {
+    "farthest_pairwise": {
+      "min": 0.8046333333333333,
+      "mean": 0.8358111111111111,
+      "median": 0.814875
+    },
+    "neighbor_coherence": {
+      "summary": {
+        "mean": 0.3668,
+        "median": 0.36583333333333334,
+        "max": 0.4115333333333333
+      },
+      "per_language": {
+        "agr": null,
+        "mbd": 0.34278,
+        "ell": 0.4068333333333333,
+        "npi": null
+      }
+    }
+  },
+  "per_k": [
+    {
+      "k": 4,
+      "score": 0.4378333333333333,
+      "codes": [
+        "agr",
+        "mbd",
+        "ell",
+        "npi"
+      ],
+      "quality_metrics": {
+        "farthest_pairwise": {
+          "min": 0.8046333333333333,
+          "mean": 0.8358111111111111,
+          "median": 0.814875
+        },
+        "neighbor_coherence": {
+          "summary": {
+            "mean": 0.3668,
+            "median": 0.36583333333333334,
+            "max": 0.4115333333333333
+          },
+          "per_language": {
+            "32": null,
+            "531": 0.34278,
+            "246": 0.4068333333333333,
+            "645": null
+          }
+        }
+      }
+    }
+  ]
+}
