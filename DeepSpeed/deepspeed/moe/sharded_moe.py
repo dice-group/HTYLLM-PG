@@ -546,9 +546,30 @@ def topanygating_sparse(
     
     # Add activation penalty to encourage using more experts per token
     # Penalize if average experts per token drops below target (1.5)
-    if gate_tensor is not None and hasattr(gate_tensor, '_activation_rate'):
-        activation_penalty = F.relu(1.5 - gate_tensor._activation_rate)
+    if gate_tensor is not None:
+        # 1. Calculate experts used per token directly from the gates (binary mask)
+        # gates is shape [Batch, Num_Experts] with 0.0 or 1.0
+        experts_per_token = gates.sum(dim=1)
+
+        # 2. Define dynamic targets based on total available experts
+        # Example: Encourage usage between ~10% and ~40% of experts.
+        # - min_target:  10% of pool 
+        # - max_target: Cap 'free' usage at 40% (encourages efficiency)
+        target_min = max(1.0, num_experts * 0.1)
+        target_max = max(target_min + 1.0, num_experts * 0.4)
+
+        # 3. Calculate deviation penalty
+        # Penalize if usage < min (Too Little)
+        penalty_too_few = F.relu(target_min - experts_per_token)
+        # Penalize if usage > max (Too Many)
+        penalty_too_many = F.relu(experts_per_token - target_max)
+
+        # 4. Average the penalty across the batch
+        activation_penalty = (penalty_too_few + penalty_too_many).mean()
+
+        # Add to auxiliary loss 
         l_aux = l_aux + 0.1 * activation_penalty
+
 
     # Calculate slots using cumsum on the bool mask
     cumsum = torch.cumsum(mask.to(torch.int32), dim=0) 
