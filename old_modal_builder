@@ -1,0 +1,349 @@
+from typing import List
+import torch
+from torch import nn
+
+from einops import rearrange
+
+
+
+class FeedForward(nn.Module):
+    def __init__(self, dim, hidden_dim, dropout = 0.):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+class Attention(nn.Module):
+    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
+        super().__init__()
+        inner_dim = dim_head *  heads
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads # number of attention heads (how many attentions are stacked per layer)
+        self.scale = dim_head ** -0.5 
+
+        self.norm = nn.LayerNorm(dim) 
+
+        self.attend = nn.Softmax(dim = -1)
+        self.dropout = nn.Dropout(dropout)
+
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False) 
+                                                                  
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        ) if project_out else nn.Identity()
+
+    def forward(self, x, attention_mask=None):
+        x = self.norm(x)# nomralize each tokens along dimension (mean 0, variance 1) shape stays 
+
+        qkv = self.to_qkv(x).chunk(3, dim = -1)# linear layer that maps each 8-dim vector to a big vector (inner_dim * 3)
+                                               # 3 because after chunk the is one for q, k, v (shape each: (batch, tokens, inner_dim) )
+                                                # Q = x @ W_Q
+                                                # K = x @ W_K
+                                                # V = x @ W_V
+
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv) # split into multiple heads 
+                                                                                                # query, key, and values for each token for each header
+                                                                                                # Heads might focus on different things in a sentence (syntax, semantic, ...who knows:v)
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # compute dot product for each head and for each token pair (e.g. i, j)
+                                                                 # i,e: score(i,j) = dot( q_i, k_j ) * scale <-> scale is for stability 
+                                                                 # E.g. Head 0:
+                                                                #           Luke   likes   cats   (as keys)
+                                                                # Luke    [ 1.2    0.1    0.5 ]
+                                                                # likes   [ 0.9    1.5    1.1 ]
+                                                                # cats    [ 0.2    0.3    1.8 ]
+                                                                #  ^ as queries
+        # make attention causal
+        seq_len = dots.shape[-1]
+        mask = torch.triu(torch.ones(seq_len, seq_len, device=dots.device), diagonal=1).bool() # build triangular mask to prevent tokens from attending to future tokens 
+        
+        # Add padding mask if provided
+        if attention_mask is not None:
+            # attention_mask shape: (batch, seq_len) with 1 for real tokens, 0 for padding
+            padding_mask = attention_mask.unsqueeze(1).unsqueeze(2) == 0
+            # Expand causal mask to (1, 1, seq_len, seq_len)
+            mask = mask.unsqueeze(0).unsqueeze(0)
+            # Combine: mask out future tokens AND padding tokens
+            mask = mask | padding_mask
+        
+        dots = dots.masked_fill(mask, float('-inf')) # fill the upper triangle with -inf 
+        attn = self.attend(dots) # This is than turned into probabilites:
+                                    # Luke-row after softmax:  [0.60, 0.15, 0.25]
+                                    # likes-row after softmax: [0.30, 0.40, 0.30]
+                                    # cats-row after softmax:  [0.10, 0.10, 0.80]
+
+        attn = self.dropout(attn) # Regularization (drops some random weights)
+
+        out = torch.matmul(attn, v) # dot product with learned values using probablities for weighting (ie likes row here)
+                                    # Values are like they information a token holds and the attention (q * k) is the amount the other token takes from that value 
+                                    # out_head0["likes"] = 0.30 * v_head0["Luke"]
+                                    #                       + 0.40 * v_head0["likes"]
+                                    #                       + 0.30 * v_head0["cats"]
+
+        out = rearrange(out, 'b h n d -> b n (h d)') # concatnated the heads 
+                                                     # final_head_concat["Luke"]  = [out_head0["Luke"],  out_head1["Luke"]]  # length inner dim
+                                                     # final_head_concat["likes"] = [out_head0["likes"], out_head1["likes"]] # length inner dim 
+                                                     # final_head_concat["cats"]  = [out_head0["cats"],  out_head1["cats"]]  # length inner dim
+
+        return self.to_out(out) # project from inner_dim back to dim (get embeddings back)
+
+class FlashAttention(nn.Module):
+    """Flash Attention using PyTorch's scaled_dot_product_attention"""
+    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
+        super().__init__()
+        inner_dim = dim_head * heads
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads
+        self.dim_head = dim_head
+
+        self.norm = nn.LayerNorm(dim)
+        self.dropout_p = dropout
+
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+        
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        ) if project_out else nn.Identity()
+
+    def forward(self, x, attention_mask=None):
+        x = self.norm(x)
+        
+        qkv = self.to_qkv(x).chunk(3, dim = -1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
+        
+        # Create attention mask for Flash Attention if padding mask is provided
+        attn_mask = None
+        if attention_mask is not None:
+            # Flash attention expects attn_mask in shape (batch, num_heads, seq_len, seq_len) 
+            seq_len = q.shape[2]
+            causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=q.device, dtype=q.dtype), diagonal=1).bool()
+            # attention_mask shape: (batch, seq_len) with 1 for real tokens, 0 for padding
+            padding_mask = attention_mask.unsqueeze(1).unsqueeze(2) == 0  # (batch, 1, 1, seq_len)
+            # Combine masks
+            attn_mask = causal_mask.unsqueeze(0).unsqueeze(0) | padding_mask
+            # Convert bool mask to float (-inf for masked positions) with correct dtype
+            attn_mask = torch.where(attn_mask, float('-inf'), 0.0).to(q.dtype)
+        
+        # Use PyTorch's Flash Attention implementation
+        out = torch.nn.functional.scaled_dot_product_attention(
+            q, k, v, 
+            attn_mask=attn_mask,
+            dropout_p=self.dropout_p if self.training else 0.0,
+            is_causal=(attention_mask is None)  
+        )
+        
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)
+
+from deepspeed.moe.layer import MoE
+from torch.utils.checkpoint import checkpoint
+
+class Transformer(nn.Module):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., moe_layers:List[int]=[], 
+                 num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
+                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1, 
+                 topany_gating_impl='sparse', use_flash_attention=False, use_gradient_checkpointing=True):
+        for moe in moe_layers:
+            assert moe >= 0, "MOE layers must be greater than or equal to 0"
+            assert moe < depth, "MOE layers must be less than the depth of the transformer"
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.layers = nn.ModuleList([])
+        self.moe_losses = []
+        self.use_gradient_checkpointing = use_gradient_checkpointing
+
+        # Choose attention implementation
+        AttentionClass = FlashAttention if use_flash_attention else Attention
+
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                AttentionClass(dim, heads = heads, dim_head = dim_head, dropout = dropout),
+                FeedForward(dim, mlp_dim, dropout = dropout)
+            ]))
+
+        self.moe_layers = moe_layers
+
+        for layer in self.moe_layers:
+            self.layers[layer][1] = MoE(
+                dim,
+                expert=self.layers[layer][1], # feed forward network used per expert 
+                num_experts=num_experts, # number of experts in the layer
+                ep_size=ep_size, # number of ranks in the expert parallel world
+                k=k, # top-k gating value
+                capacity_factor=capacity_factor, # capacity factor for the expert at training time
+                eval_capacity_factor=eval_capacity_factor, # capacity factor for the expert at evaluation time
+                min_capacity=min_capacity, # minimum capacity for the expert
+                use_residual=use_residual, # whether to use residual connection in the MoE layer
+                gate_backward=gate_backward,
+                topany_gating_impl=topany_gating_impl, # implementation choice for top-any gating
+                #max_expert_num=4
+            )
+
+    def forward(self, x, attention_mask=None):
+        l_aux = 0.0
+        expert_counts = {}
+        
+        for i, (attn, ff) in enumerate(self.layers):
+            # Use gradient checkpointing for attention during training
+            if self.use_gradient_checkpointing and self.training:
+                x = checkpoint(attn, x, attention_mask, use_reentrant=False) + x
+            else:
+                x = attn(x, attention_mask=attention_mask) + x
+
+            if i in self.moe_layers:
+                # MoE layers: Can't use checkpoint due to multiple return values
+                output, moe_loss, exp_counts = ff(x)
+                l_aux += moe_loss
+                x = x + output
+                expert_counts[f"layer_{i}"] = exp_counts
+            else:
+                # Regular FF layers: Use gradient checkpointing during training
+                if self.use_gradient_checkpointing and self.training:
+                    x = checkpoint(ff, x, use_reentrant=False) + x
+                else:
+                    x = ff(x) + x
+
+        return self.norm(x), l_aux, expert_counts
+
+class MoE_Transformer(nn.Module):
+    def __init__(self, vocab_size, max_seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0., moe_layers: List[int] = [],
+                 num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
+                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1, 
+                 topany_gating_impl='sparse', use_flash_attention=False, use_gradient_checkpointing=True):
+        super().__init__()
+
+        self.token_embedding = nn.Embedding(vocab_size, dim) # lookup table for token_id -> embedding (shape: [vocab_size, dim], 
+                                                            # ie table with vocab_size rows and dim columns, each row is a embedding vector of length dim
+                                                            # under the hood (I think?) this turns the ids into one-hot encoded vectors which it feeds into a linear layer to get the embedding (shape: [batch, seq_len, dim])
+
+        self.pos_embedding = nn.Parameter(torch.randn(1, max_seq_len, dim)) # embeddings for each postion (ie token at postion 0 gets first postion embedding added independent of the token)
+        self.dropout = nn.Dropout(emb_dropout)
+
+        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout, moe_layers,
+                                      num_experts=num_experts, k=k, capacity_factor=capacity_factor,
+                                      eval_capacity_factor=eval_capacity_factor, min_capacity=min_capacity,
+                                      use_residual=use_residual, gate_backward=gate_backward, ep_size=ep_size,
+                                      topany_gating_impl=topany_gating_impl, use_flash_attention=use_flash_attention,
+                                      use_gradient_checkpointing=use_gradient_checkpointing)
+
+        self.output_projection = nn.Linear(dim, vocab_size, bias=False)
+        # weight tying
+        self.output_projection.weight = self.token_embedding.weight
+
+        # Proper initialization (GPT-2 style)
+        self._init_weights()
+
+    def _init_weights(self):
+        """Initialize weights following GPT-2 style (std=0.02)"""
+        init_std = 0.02
+        
+        # Initialize embeddings
+        nn.init.normal_(self.token_embedding.weight, mean=0.0, std=init_std)
+        nn.init.normal_(self.pos_embedding, mean=0.0, std=init_std)
+        
+        # Initialize all Linear and LayerNorm layers in transformer
+        for module in self.transformer.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.normal_(module.weight, mean=0.0, std=init_std)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.LayerNorm):
+                nn.init.ones_(module.weight)
+                nn.init.zeros_(module.bias)
+
+    def forward(self, tokens, attention_mask=None):
+        x = self.token_embedding(tokens)
+        b, n, _ = x.shape
+
+        x += self.pos_embedding[:, :n]
+        x = self.dropout(x)
+
+        x, l_aux, expert_counts = self.transformer(x, attention_mask=attention_mask)
+        # for [B, T, dim]  output_projection treats B, T as batch dimensions and dim as feature dimension
+        # maps each token to its vocab distribution (what comes after this token)
+        return self.output_projection(x), l_aux, expert_counts
+
+
+def moe_builder(vocab_size: int = 131072, max_seq_len: int = 2048, dim=768, depth=4, heads=4, mlp_dim=512, 
+                dim_head=64, dropout=0., emb_dropout=0., moe_layers=[0, 3],
+                num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0,
+                min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1,
+                topany_gating_impl='sparse', use_flash_attention=False, use_gradient_checkpointing=True):
+    model = MoE_Transformer(
+        vocab_size=vocab_size,
+        max_seq_len=max_seq_len,
+        dim=dim,
+        depth=depth,
+        heads=heads,
+        mlp_dim=mlp_dim,
+        dim_head=dim_head,
+        dropout=dropout,
+        emb_dropout=emb_dropout,
+        moe_layers=moe_layers,
+        num_experts=num_experts,
+        k=k,
+        capacity_factor=capacity_factor,
+        eval_capacity_factor=eval_capacity_factor,
+        min_capacity=min_capacity,
+        use_residual=use_residual,
+        gate_backward=gate_backward,
+        ep_size=ep_size,
+        topany_gating_impl=topany_gating_impl,
+        use_flash_attention=use_flash_attention,
+        use_gradient_checkpointing=use_gradient_checkpointing
+    )
+
+    return model
+
+
+if __name__ == "__main__":
+    import deepspeed
+    
+    vocab_size = 32_000
+    seq_len = 128
+    
+    model = moe_builder(vocab_size=vocab_size, max_seq_len=seq_len)
+
+    ds_config = {
+        "train_batch_size": 32,
+        "gradient_accumulation_steps": 1,
+    }
+
+    model_engine, optimizer, _, _ = deepspeed.initialize(
+        model=model,
+        model_parameters=model.parameters(),
+        config=ds_config
+    )
+
+    device = model_engine.local_rank if torch.cuda.is_available() else "cpu"
+    
+    batch_size = 2
+    # Start with prompt
+    tokens = torch.tensor([[10, 25, 78]]).to(device)  # "The cat sat" - (not really as we have no tokenizer yet :v )
+
+
+    for i in range(5):
+    # Forward pass
+        output, l_aux = model_engine(tokens)  # shape [1, 3, 32000]
+
+        # Get prediction for NEXT token (after "sat")
+        next_token_logits = output[0, -1, :]  # shape [32000]
+                                # ↑ last position
+
+         # Sample or argmax to get next token (most likely token in this case)
+        next_token = torch.argmax(next_token_logits)  
+
+        # Append and repeat
+        tokens = torch.cat([tokens, next_token.unsqueeze(0).unsqueeze(0)], dim=1)
+        print(tokens)

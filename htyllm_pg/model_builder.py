@@ -435,11 +435,14 @@ class Transformer(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., moe_layers:List[int]=[], 
                  num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
                  min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1,
+                 topany_gating_impl='sparse',
                  max_seq_len=512,        # NEW: Pass to Attention
                  use_rope=True,          # NEW: Enable RoPE
                  rope_theta=10000.0,     # NEW: RoPE base frequency
                  rope_dim=None,          # NEW: Partial RoPE (None = full head_dim)
-                 rope_scaling=None       # NEW: RoPE scaling config
+                 rope_scaling=None,      # NEW: RoPE scaling config
+                 use_flash_attention=False,
+                 use_gradient_checkpointing=True
     ):
         for moe in moe_layers:
             assert moe >= 0, "MOE layers must be greater than or equal to 0"
@@ -448,6 +451,7 @@ class Transformer(nn.Module):
         self.norm = nn.LayerNorm(dim)
         self.layers = nn.ModuleList([])
         self.moe_losses = []
+        self.use_gradient_checkpointing = use_gradient_checkpointing
 
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
@@ -460,7 +464,8 @@ class Transformer(nn.Module):
                     use_rope=use_rope,           # NEW
                     rope_theta=rope_theta,       # NEW
                     rope_dim=rope_dim,           # NEW
-                    rope_scaling=rope_scaling    # NEW
+                    rope_scaling=rope_scaling,   # NEW
+                    use_flash_attention=use_flash_attention
                 ),
                 FeedForward(dim, mlp_dim, dropout=dropout)
             ]))
@@ -479,6 +484,7 @@ class Transformer(nn.Module):
                 min_capacity=min_capacity, # minimum capacity for the expert
                 use_residual=use_residual, # whether to use residual connection in the MoE layer
                 gate_backward=gate_backward,
+                topany_gating_impl=topany_gating_impl,
                 #max_expert_num=4
             )
 
@@ -493,6 +499,7 @@ class Transformer(nn.Module):
     ):
         l_aux = 0.0
         present_key_values = [] if use_cache else None
+        expert_counts = {}
         
         for i, (attn, ff) in enumerate(self.layers):
             # Get past KV for this layer
@@ -540,8 +547,8 @@ class Transformer(nn.Module):
         output = self.norm(x) # normalization
         
         if use_cache:
-            return output, l_aux, present_key_values
-        return output, l_aux 
+            return output, l_aux, present_key_values, expert_counts
+        return output, l_aux, expert_counts 
 
 class MoE_Transformer(nn.Module):
     def __init__(self, vocab_size, max_seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0., moe_layers: List[int] = [],
@@ -550,7 +557,10 @@ class MoE_Transformer(nn.Module):
                  use_rope=True,          # NEW: Enable RoPE
                  rope_theta=10000.0,     # NEW: RoPE base frequency
                  rope_dim=None,          # NEW: Partial RoPE (None = full head_dim)
-                 rope_scaling=None       # NEW: RoPE scaling config
+                 rope_scaling=None,      # NEW: RoPE scaling config
+                 use_flash_attention=False,
+                 use_gradient_checkpointing=True,
+                 topany_gating_impl='sparse'
     ):
         super().__init__()
 
@@ -575,10 +585,31 @@ class MoE_Transformer(nn.Module):
                                       use_rope=use_rope,           # NEW
                                       rope_theta=rope_theta,       # NEW
                                       rope_dim=rope_dim,           # NEW
-                                      rope_scaling=rope_scaling    # NEW
+                                      rope_scaling=rope_scaling,   # NEW
+                                      use_flash_attention=use_flash_attention,
+                                      use_gradient_checkpointing=use_gradient_checkpointing,
+                                      topany_gating_impl=topany_gating_impl
         )
 
-        self.mlp_head = nn.Linear(dim, vocab_size)
+        self.output_projection = nn.Linear(dim, vocab_size, bias=False)
+        self.output_projection.weight = self.token_embedding.weight
+        self._init_weights()
+
+    def _init_weights(self):
+        """GPT-2 style init with weight tying already set."""
+        init_std = 0.02
+        nn.init.normal_(self.token_embedding.weight, mean=0.0, std=init_std)
+        if self.pos_embedding is not None:
+            nn.init.normal_(self.pos_embedding, mean=0.0, std=init_std)
+
+        for module in self.transformer.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.normal_(module.weight, mean=0.0, std=init_std)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.LayerNorm):
+                nn.init.ones_(module.weight)
+                nn.init.zeros_(module.bias)
 
     def forward(
         self, 
@@ -600,7 +631,7 @@ class MoE_Transformer(nn.Module):
 
         # Transformer with KV-cache support
         if use_cache:
-            x, l_aux, present_kv = self.transformer(
+            x, l_aux, present_kv, expert_counts = self.transformer(
                 x,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
@@ -608,10 +639,10 @@ class MoE_Transformer(nn.Module):
                 past_key_values=past_key_values,
                 is_causal=is_causal
             )
-            logits = self.mlp_head(x)
-            return logits, l_aux, present_kv
+            logits = self.output_projection(x)
+            return logits, l_aux, present_kv, expert_counts
         else:
-            x, l_aux = self.transformer(
+            x, l_aux, expert_counts = self.transformer(
                 x,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
@@ -619,8 +650,8 @@ class MoE_Transformer(nn.Module):
                 past_key_values=past_key_values,
                 is_causal=is_causal
             )
-            logits = self.mlp_head(x)
-            return logits, l_aux
+            logits = self.output_projection(x)
+            return logits, l_aux, expert_counts
 
 
 def moe_builder(vocab_size: int = 131072, max_seq_len: int = 2048, dim=768, depth=4, heads=4, mlp_dim=512, 
@@ -630,7 +661,10 @@ def moe_builder(vocab_size: int = 131072, max_seq_len: int = 2048, dim=768, dept
                 use_rope=True,          # NEW: Enable RoPE by default
                 rope_theta=10000.0,     # NEW: RoPE base frequency
                 rope_dim=None,          # NEW: Partial RoPE (None = full head_dim)
-                rope_scaling=None       # NEW: RoPE scaling config
+                rope_scaling=None,      # NEW: RoPE scaling config
+                use_flash_attention=False,
+                use_gradient_checkpointing=True,
+                topany_gating_impl='sparse'
 ):
     """
     Build a Mixture of Experts Transformer model with optional RoPE.
@@ -687,7 +721,10 @@ def moe_builder(vocab_size: int = 131072, max_seq_len: int = 2048, dim=768, dept
         use_rope=use_rope,           # NEW
         rope_theta=rope_theta,       # NEW
         rope_dim=rope_dim,           # NEW
-        rope_scaling=rope_scaling     # NEW
+        rope_scaling=rope_scaling,    # NEW
+        use_flash_attention=use_flash_attention,
+        use_gradient_checkpointing=use_gradient_checkpointing,
+        topany_gating_impl=topany_gating_impl
     )
 
     return model
