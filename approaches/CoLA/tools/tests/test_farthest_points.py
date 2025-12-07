@@ -2,9 +2,31 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from tools.farthest_points import assign_neighbors, select_farthest_points
+
+_SUBSET_LOOKUP: dict[str, str] | None = None
+
+
+def _load_subset_lookup() -> dict[str, str]:
+    global _SUBSET_LOOKUP
+    if _SUBSET_LOOKUP is not None:
+        return _SUBSET_LOOKUP
+    from tools.farthest_points import load_subset_map
+
+    inverted: dict[str, str] = {}
+    for code, subset in load_subset_map().items():
+        if subset and subset not in inverted:
+            inverted[subset] = code
+    _SUBSET_LOOKUP = inverted
+    return inverted
+
+
+def _subset_to_code(label: str) -> str:
+    lookup = _load_subset_lookup()
+    return lookup.get(label, label)
 
 
 def line_distance(positions: list[float]) -> np.ndarray:
@@ -290,6 +312,41 @@ def test_coordinate_csv_mode(tmp_path: Path):
     assert set(data["best_codes"]) == expected_corners
 
 
+def test_cli_lang2vec_distance(tmp_path: Path):
+    meta_path = tmp_path / "meta.csv"
+    meta_path.write_text("code,documents\neng,100\nspa,80\nfra,40\n", encoding="utf-8")
+    out_png = tmp_path / "lang2vec.png"
+    out_json = tmp_path / "lang2vec.json"
+
+    import subprocess
+    import sys
+
+    subprocess.check_call(
+        [
+            sys.executable,
+            "tools/farthest_points.py",
+            "--lang2vec-distance",
+            "genetic",
+            "--metadata-csv",
+            str(meta_path),
+            "--min-documents",
+            "50",
+            "--k",
+            "2",
+            "--target-total",
+            "2",
+            "--output-image",
+            str(out_png),
+            "--json-output",
+            str(out_json),
+        ]
+    )
+
+    data = json.loads(out_json.read_text())
+    assert data["best_k"] == 2
+    assert set(data["best_codes"]).issubset({"english", "spa_Latn"})
+
+
 def test_neighbors_are_closest_to_their_seed(tmp_path: Path):
     # small synthetic matrix where each language has a unique closest seed
     codes = np.array(["s1", "s2", "n11", "n12", "n21", "n22"])
@@ -347,14 +404,21 @@ def _verify_neighbors(output_json: Path, matrix: np.ndarray, codes: list[str]) -
     code_to_idx = {code: idx for idx, code in enumerate(codes)}
     seeds = data["best_codes"]
     for seed in seeds:
-        seed_idx = code_to_idx[seed]
+        seed_code = _subset_to_code(seed)
+        if seed_code not in code_to_idx:
+            continue
+        seed_idx = code_to_idx[seed_code]
         for neighbor in data["best_neighbors"][seed]:
-            neighbor_idx = code_to_idx[neighbor]
+            neighbor_code = _subset_to_code(neighbor)
+            if neighbor_code not in code_to_idx:
+                continue
+            neighbor_idx = code_to_idx[neighbor_code]
             assigned = matrix[neighbor_idx, seed_idx]
             diffs = [
-                matrix[neighbor_idx, code_to_idx[other]] - assigned
+                matrix[neighbor_idx, code_to_idx[_subset_to_code(other)]] - assigned
                 for other in seeds
                 if other != seed
+                and _subset_to_code(other) in code_to_idx
             ]
             assert min(diffs) >= -0.12
 

@@ -4,6 +4,7 @@ import csv
 import json
 import matplotlib.pyplot as plt
 import numpy as np
+import sys
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,103 @@ from umap import UMAP
 
 DEFAULT_OUTPUT = Path("data_prep/processed_artifacts/farthest_points.png")
 DEFAULT_METADATA_CSV = Path("data_prep/base_data/fineweb2-language-distribution.csv")
+LANG2VEC_DIR = Path("data_prep/lang_cluster_analysis/lang2vec")
+FILTERED_LANG_PATH = Path("data_prep/processed_artifacts/filtered_languages.csv")
+
+_LANG2VEC = None
+_SUBSET_MAP: Dict[str, str] | None = None
+
+
+def _ensure_lang2vec():
+    """Import lang2vec lazily so the dependency is only required when needed."""
+    global _LANG2VEC
+    if _LANG2VEC is not None:
+        return _LANG2VEC
+    if LANG2VEC_DIR.exists():
+        lang2vec_path = str(LANG2VEC_DIR.resolve())
+        if lang2vec_path not in sys.path:
+            sys.path.insert(0, lang2vec_path)
+    try:
+        from lang2vec import lang2vec as l2v  # type: ignore
+    except ImportError as exc:  # pragma: no cover - helpful error for users
+        raise RuntimeError(
+            "Lang2Vec is not available. Please install it or build "
+            "data_prep/lang_cluster_analysis/lang2vec."
+        ) from exc
+    _LANG2VEC = l2v
+    return _LANG2VEC
+
+
+def _ingest_subset_source(mapping: Dict[str, str], csv_path: Path) -> None:
+    if not csv_path.exists():
+        return
+    df = pd.read_csv(csv_path)
+    cols = {col.lower(): col for col in df.columns}
+    code_col = cols.get("code")
+    subset_col = cols.get("subset")
+    script_col = cols.get("script")
+    if code_col is None:
+        return
+    for _, row in df.iterrows():
+        code = str(row[code_col]).strip()
+        if not code:
+            continue
+        subset = str(row[subset_col]).strip() if subset_col else ""
+        script = str(row[script_col]).strip() if script_col else ""
+        label = subset or (f"{code}_{script}" if script else code)
+        if code not in mapping and label:
+            mapping[code] = label
+
+
+def load_subset_map() -> Dict[str, str]:
+    """Map ISO codes to their preferred subset labels (including script when available)."""
+    global _SUBSET_MAP
+    if _SUBSET_MAP is not None:
+        return _SUBSET_MAP
+    mapping: Dict[str, str] = {}
+    _ingest_subset_source(mapping, FILTERED_LANG_PATH)
+    # Fall back to the broader metadata CSV to cover codes missing from the filtered file.
+    _ingest_subset_source(mapping, DEFAULT_METADATA_CSV)
+    _SUBSET_MAP = mapping
+    return mapping
+
+
+def filter_lang2vec_codes(codes: List[str]) -> List[str]:
+    l2v = _ensure_lang2vec()
+    available = set(getattr(l2v, "DISTANCE_LANGUAGES", []))
+    supported = [code for code in codes if code in available]
+    missing = [code for code in codes if code not in available]
+    if not supported:
+        raise ValueError("Lang2Vec does not support any of the provided codes.")
+    if missing:
+        preview = ", ".join(missing[:5])
+        print(
+            f"Warning: dropping {len(missing)} unsupported languages (e.g., {preview}).",
+            file=sys.stderr,
+        )
+    return supported
+
+
+def build_distance_matrix(codes: List[str], distances: List[str], weights: Dict[str, float]) -> np.ndarray:
+    """Construct a weighted Lang2Vec distance matrix for the provided codes."""
+    if not codes:
+        raise ValueError("No language codes provided for Lang2Vec distance computation.")
+    if not distances or not weights:
+        raise ValueError("At least one distance type/weight is required.")
+    norm = sum(weights.values())
+    if norm <= 0:
+        raise ValueError("Distance weights must sum to a positive value.")
+
+    l2v = _ensure_lang2vec()
+    matrix = np.zeros((len(codes), len(codes)), dtype=float)
+    for dist in distances:
+        if dist not in weights:
+            raise ValueError(f"Missing weight for distance '{dist}'.")
+        weight = weights[dist] / norm
+        chunk = np.asarray(l2v.distance(dist, codes), dtype=float)
+        matrix += weight * chunk
+    np.fill_diagonal(matrix, 0.0)
+    return matrix
 
 
 @dataclass
@@ -343,7 +441,7 @@ def main() -> None:
         description="Extract and visualize farthest languages."
     )
     add = parser.add_argument
-    add("--distance-npz", type=Path, required=True)
+    add("--distance-npz", type=Path, help="Optional NPZ containing a precomputed matrix and codes.")
     add("--k", type=int, help="Override K sweep.")
     add("--k-min", type=int, default=4)
     add("--k-max", type=int, default=16)
@@ -357,9 +455,33 @@ def main() -> None:
     add("--metadata-csv", type=Path, default=DEFAULT_METADATA_CSV)
     add("--min-documents", type=int)
     add("--show-all", action="store_true")
+    add(
+        "--lang2vec-distance",
+        choices=["genetic"],
+        help="Compute distances on-the-fly via Lang2Vec (codes pulled from either the NPZ or metadata CSV).",
+    )
     args = parser.parse_args()
 
-    matrix, codes = load_distance_data(args.distance_npz)
+    matrix = None
+    codes: List[str] | None = None
+    if args.distance_npz is not None:
+        matrix, codes = load_distance_data(args.distance_npz)
+
+    if args.lang2vec_distance is not None:
+        if codes is None:
+            codes = derive_codes_from_metadata(args.metadata_csv)
+        codes = filter_lang2vec_codes(codes)
+        matrix = build_distance_matrix(
+            codes,
+            [args.lang2vec_distance],
+            {args.lang2vec_distance: 1.0},
+        )
+    elif matrix is None:
+        raise ValueError("Specify --distance-npz unless --lang2vec-distance is provided.")
+
+    if codes is None:
+        raise ValueError("Failed to determine language codes for clustering.")
+
     matrix, codes = filter_languages(
         matrix,
         codes,
@@ -370,6 +492,9 @@ def main() -> None:
         limit = max(1, min(args.limit_languages, matrix.shape[0]))
         matrix = matrix[:limit, :limit]
         codes = codes[:limit]
+
+    subset_map = load_subset_map()
+    display_labels = [subset_map.get(code, code) for code in codes]
 
     if args.target_total is None and args.neighbors_per_language is None:
         raise ValueError("Specify either --target-total or --neighbors-per-language.")
@@ -436,7 +561,7 @@ def main() -> None:
     indices = best.indices
     neighbor_map = best.neighbor_map
     quality_metrics = best.metrics
-    selected_codes = [codes[i] for i in indices]
+    selected_codes = [display_labels[i] for i in indices]
     neighbor_indices = sorted(
         {idx for lst in neighbor_map.values() for idx in lst}
     )
@@ -445,7 +570,7 @@ def main() -> None:
         coords = coord_override if coord_override is not None else embed_points(matrix)
         plot_points(
             coords,
-            codes,
+            display_labels,
             {idx: neighbor_map[idx] for idx in indices},
             args.output_image,
             show_background=True,
@@ -454,7 +579,7 @@ def main() -> None:
             coords_umap = embed_points_umap(matrix)
             plot_points(
                 coords_umap,
-                codes,
+                display_labels,
                 {idx: neighbor_map[idx] for idx in indices},
                 args.output_umap_image,
                 show_background=True,
@@ -466,6 +591,7 @@ def main() -> None:
         subset_order = indices + subset_extra
         subset_matrix = matrix[np.ix_(subset_order, subset_order)]
         subset_codes = [codes[i] for i in subset_order]
+        subset_labels = [display_labels[i] for i in subset_order]
 
         index_map = {global_idx: local_idx for local_idx, global_idx in enumerate(subset_order)}
         remapped = {
@@ -480,7 +606,7 @@ def main() -> None:
         )
         plot_points(
             coords,
-            subset_codes,
+            subset_labels,
             remapped,
             args.output_image,
             show_background=False,
@@ -489,7 +615,7 @@ def main() -> None:
             coords_umap = embed_points_umap(subset_matrix)
             plot_points(
                 coords_umap,
-                subset_codes,
+                subset_labels,
                 remapped,
                 args.output_umap_image,
                 show_background=False,
@@ -516,13 +642,13 @@ def main() -> None:
             {
                 "k": entry.k,
                 "score": entry.score,
-                "codes": [codes[i] for i in entry.indices],
+                "codes": [display_labels[i] for i in entry.indices],
                 "quality_metrics": entry.metrics,
             }
             for entry in evaluated
         ]
         best_neighbors = {
-            codes[idx]: [codes[n] for n in neighbors]
+            display_labels[idx]: [display_labels[n] for n in neighbors]
             for idx, neighbors in neighbor_map.items()
         }
         serialized = {
@@ -535,7 +661,7 @@ def main() -> None:
                 "neighbor_coherence": {
                     "summary": neighbor_summary,
                     "per_language": {
-                        codes[idx]: value
+                        display_labels[idx]: value
                         for idx, value in quality_metrics[
                             "neighbor_coherence"
                         ]["per_language"].items()
@@ -571,6 +697,23 @@ def filter_languages(
     filtered_matrix = matrix[np.ix_(indices, indices)]
     filtered_codes = [codes[i] for i in indices]
     return filtered_matrix, filtered_codes
+
+
+def derive_codes_from_metadata(metadata_csv: Path | None) -> List[str]:
+    if metadata_csv is None:
+        raise ValueError(
+            "Provide --metadata-csv when using --lang2vec-distance without an NPZ input."
+        )
+    if not metadata_csv.exists():
+        raise ValueError(f"Metadata CSV not found: {metadata_csv}")
+    df = pd.read_csv(metadata_csv)
+    if "code" not in df.columns:
+        raise ValueError("Metadata CSV must contain a 'code' column.")
+    codes = df["code"].astype(str).tolist()
+    deduped = list(dict.fromkeys(code for code in codes if code))
+    if not deduped:
+        raise ValueError("No language codes found in the metadata CSV.")
+    return deduped
 
 
 if __name__ == "__main__":
