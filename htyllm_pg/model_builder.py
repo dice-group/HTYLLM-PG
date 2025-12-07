@@ -429,6 +429,8 @@ class Attention(nn.Module):
         return output
 
 from deepspeed.moe.layer import MoE
+from torch.utils.checkpoint import checkpoint
+
 class Transformer(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., moe_layers:List[int]=[], 
                  num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
@@ -522,12 +524,18 @@ class Transformer(nn.Module):
             
             x = attn_out + x # Residual connection
 
-            if i in self.moe_layers: # moe layers feed forward nn
-                output, moe_loss, _ = ff(x)
+            if i in self.moe_layers:
+                # MoE layers: Can't use checkpoint due to multiple return values
+                output, moe_loss, exp_counts = ff(x)
                 l_aux += moe_loss
-                x = x + output # residual connection 
-            else: # "normal" feed forward layers 
-                x = ff(x) + x # residual connetion
+                x = x + output
+                expert_counts[f"layer_{i}"] = exp_counts
+            else:
+                # Regular FF layers: Use gradient checkpointing during training
+                if self.use_gradient_checkpointing and self.training:
+                    x = checkpoint(ff, x, use_reentrant=False) + x
+                else:
+                    x = ff(x) + x
 
         output = self.norm(x) # normalization
         
@@ -615,7 +623,7 @@ class MoE_Transformer(nn.Module):
             return logits, l_aux
 
 
-def moe_builder(vocab_size: int, max_seq_len: int, dim=768, depth=4, heads=4, mlp_dim=512, 
+def moe_builder(vocab_size: int = 131072, max_seq_len: int = 2048, dim=768, depth=4, heads=4, mlp_dim=512, 
                 dim_head=64, dropout=0., emb_dropout=0., moe_layers=[0, 3],
                 num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0,
                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1,

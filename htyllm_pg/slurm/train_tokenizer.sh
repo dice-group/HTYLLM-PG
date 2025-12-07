@@ -22,6 +22,6 @@ echo "Python version: $(python --version)"
 
 export PYTHONUNBUFFERED=1
 
-srun python htyllm_pg/train_tokenizer.py /scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/preprocessed_tokenizer_subset/
+srun python htyllm_pg/train_tokenizer.py /scratch/hpc-prf-merlin/luke/fineweb_samples/
 
 echo "Job finished at $(date)"

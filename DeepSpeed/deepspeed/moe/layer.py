@@ -33,7 +33,7 @@ class MoE(nn.Module):
         use_tutel (bool, optional): default=False, whether to use Tutel optimizations (if installed).
         enable_expert_tensor_parallelism (bool, optional): default=False, whether to use tensor parallelism for experts
         top2_2nd_expert_sampling (bool, optional): default=True, whether to perform sampling for 2nd expert
-        topany_gating_impl (str, optional): default='opt_mem', implementation choice for top-any gating, valid options are 'opt' or 'opt_mem'.
+        topany_gating_impl (str, optional): default='sparse', implementation choice for top-any gating, valid options are 'opt' or 'sparse'.
     """
 
     def __init__(self,
@@ -53,7 +53,7 @@ class MoE(nn.Module):
                  enable_expert_tensor_parallelism: bool = False,
                  top2_2nd_expert_sampling: bool = True,
                  gate_backward: str = "sign",
-                 topany_gating_impl: str = "opt_mem") -> None:
+                 topany_gating_impl: str = "sparse") -> None:
 
         super(MoE, self).__init__()
 

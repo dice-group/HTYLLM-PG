@@ -6,7 +6,7 @@ from tokenizers import models, normalizers, pre_tokenizers, trainers, Tokenizer,
 PAD_TOKEN = "<|pad|>"
 EOT_TOKEN = "<|endoftext|>"
 
-def train_tokenizer(folder_path, vocab_size=262_144, batch_size=1000):
+def train_tokenizer(folder_path, vocab_size=131_072, batch_size=1000):
     tokenizer = Tokenizer(models.BPE())
     
     tokenizer.normalizer = normalizers.Sequence([
@@ -43,6 +43,7 @@ def train_tokenizer(folder_path, vocab_size=262_144, batch_size=1000):
     
     assert test_str == decoded, "Encode-decode roundtrip failed!"
     
+    return tokenizer
 
 def test_tokenizer(tokenizer):
     test_sentences = {
@@ -66,7 +67,7 @@ def test_tokenizer(tokenizer):
 def main():
     parser = argparse.ArgumentParser(description="Train BPE tokenizer and test on multiple languages")
     parser.add_argument("folder_path", type=str, help="Path to folder containing training data")
-    parser.add_argument("--vocab_size", type=int, default=262_144, help="Vocabulary size (default: 262144)")
+    parser.add_argument("--vocab_size", type=int, default=131_072, help="Vocabulary size (default: 131072)")
     parser.add_argument("--batch_size", type=int, default=1000, help="Batch size for training (default: 1000)")
     
     args = parser.parse_args()

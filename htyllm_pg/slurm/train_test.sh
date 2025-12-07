@@ -1,13 +1,14 @@
 #!/bin/bash
 #SBATCH --job-name=moe-multinode
-#SBATCH --nodes=2                    
+#SBATCH --nodes=1                    
 #SBATCH --ntasks-per-node=1           # 1 DeepSpeed launcher per node
 #SBATCH --cpus-per-task=4
 #SBATCH --time=00:30:00
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:h100:2             # 4 GPUs per node
+#SBATCH --gres=gpu:h100:1             # 4 GPUs per node
 #SBATCH --mem=32GB
 #SBATCH --account=hpc-prf-merlin
+#SBATCH --qos express
 
 set -e
 
@@ -21,8 +22,18 @@ module load compiler/GCCcore/12.3.0
 
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 
+mkdir -p /scratch/hpc-prf-merlin/luke/.cache/torch_extensions
+mkdir -p /scratch/hpc-prf-merlin/luke/.triton/autotune
 
-GPUS_PER_NODE=2   
+export TORCH_EXTENSIONS_DIR="/scratch/hpc-prf-merlin/luke/.cache/torch_extensions"
+
+export TRITON_CACHE_DIR="/scratch/hpc-prf-merlin/luke/.triton/autotune"
+
+export XDG_CACHE_HOME="/scratch/hpc-prf-merlin/luke/.cache"
+
+
+
+GPUS_PER_NODE=1   
 
 HOSTFILE="${SLURM_SUBMIT_DIR}/hostfile_${SLURM_JOB_ID}"
 scontrol show hostnames "${SLURM_JOB_NODELIST}" | while read -r host; do
@@ -51,9 +62,11 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
     htyllm_pg/train.py \
       --deepspeed \
       --deepspeed_config ds_config.json \
-      --epochs 1 \
-      --batch-size 224 \
+      --epochs 5 \
+      --batch-size 16 \
       --lr 1e-4 \
-      --topany-gating-impl "opt_mem" \
-      --data-dir ../tokenized_data
+      --topany-gating-impl "sparse" \
+      --use-gradient-checkpointing \
+      --use-flash-attention \
+      --data-dir ../tokenized_subsets/five_representatives_mediods
 '

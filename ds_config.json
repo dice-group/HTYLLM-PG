@@ -1,23 +1,39 @@
 {
-  "gradient_accumulation_steps": 1,
-  "train_micro_batch_size_per_gpu": 9,
-  "fp16": {
+  "gradient_accumulation_steps": 16,
+  "train_micro_batch_size_per_gpu": 10,
+  "gradient_clipping": 1.0,
+  "optimizer": {
+    "type": "AdamW",
+    "params": {
+      "lr": 0.0001,
+      "betas": [0.9, 0.999],
+      "eps": 1e-8,
+      "weight_decay": 0.0001
+    }
+  },
+  "bf16": {
     "enabled": true
   },
+  "communication_data_type": "bf16",
   "zero_optimization": {
-    "stage": 2
+    "stage": 2,
+    "overlap_comm": true,
+    "allgather_bucket_size": 5e8,
+    "reduce_bucket_size": 5e8
   },
   "checkpoint": {
     "save_dir": "./checkpoints",
     "load_dir": "./checkpoints",
-    "checkpoint_steps": 1000
+    "checkpoint_steps": 150
   },
   "flops_profiler": {
     "enabled": true,
-    "profile_step": 200,
+    "profile_step": 10,
     "module_depth": -1,
     "top_modules": 3,
     "detailed": true,
-    "output_file": "profiles/flops_profile_rank${RANK}.txt"
-  }
+    "output_file": "profiles/flops_profile_3_7b.txt"
+  },
+  "steps_per_print": 10,
+  "wall_clock_breakdown": false
 }

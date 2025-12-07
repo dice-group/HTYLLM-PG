@@ -1,0 +1,804 @@
+
+-------------------------- DeepSpeed Flops Profiler --------------------------
+Profile Summary at step 101:
+Notations:
+data parallel size (dp_size), model parallel size(mp_size),
+number of parameters (params), number of multiply-accumulate operations(MACs),
+number of floating-point operations (flops), floating-point operations per second (FLOPS),
+fwd latency (forward propagation latency), bwd latency (backward propagation latency),
+step (weights update latency), iter latency (sum of fwd, bwd and step latency)
+
+world size:                                                             4       
+data parallel size:                                                     4       
+model parallel size:                                                    1       
+batch size per GPU:                                                     4       
+expert tensor parallelism enabled:                                      0       
+params per GPU:                                                         372.69 M
+params of model:                                                        372.69 M
+   non-expert params of model:                                          305.46 M
+   expert params of model:                                              67.22 M 
+fwd MACs per GPU:                                                       1.83 TMACs
+fwd flops per GPU:                                                      4.73 T  
+fwd flops of model = fwd flops per GPU * mp_size:                       4.73 T  
+fwd latency:                                                            85.33 ms
+fwd FLOPS per GPU = fwd flops per GPU / fwd latency:                    55.47 TFLOPS
+bwd latency:                                                            279.89 ms
+bwd FLOPS per GPU = 2 * fwd flops per GPU / bwd latency:                33.82 TFLOPS
+fwd+bwd FLOPS per GPU = 3 * fwd flops per GPU / (fwd+bwd latency):      38.88 TFLOPS
+step latency:                                                           25.37 ms
+iter latency:                                                           390.59 ms
+FLOPS per GPU = 3 * fwd flops per GPU / iter latency:                   36.36 TFLOPS
+samples/second:                                                         40.96   
+
+----------------------------- Aggregated Profile per GPU -----------------------------
+Top 3 modules in terms of params, MACs or fwd latency at different model depths:
+depth 0:
+    params      - {'MoE_Transformer': '372.69 M'}
+    MACs        - {'MoE_Transformer': '1.83 TMACs'}
+    fwd latency - {'MoE_Transformer': '1.76 Gs'}
+depth 1:
+    params      - {'Linear': '134.48 M', 'Embedding': '134.22 M', 'Transformer': '102.94 M'}
+    MACs        - {'Linear': '1.1 TMACs', 'Transformer': '734.08 GMACs', 'Embedding': '0 MACs'}
+    fwd latency - {'Transformer': '81.24 ms', 'Linear': '3.62 ms', 'Embedding': '212.67 us'}
+depth 2:
+    params      - {'ModuleList': '102.94 M', 'LayerNorm': '1.02 K'}
+    MACs        - {'ModuleList': '734.08 GMACs', 'LayerNorm': '0 MACs'}
+    fwd latency - {'ModuleList': '80.58 ms', 'LayerNorm': '33.86 us'}
+depth 3:
+    params      - {'ModuleList': '102.94 M'}
+    MACs        - {'ModuleList': '734.08 GMACs'}
+    fwd latency - {'ModuleList': '80.58 ms'}
+depth 4:
+    params      - {'MoE': '67.24 M', 'Attention': '18.89 M', 'FeedForward': '16.81 M'}
+    MACs        - {'Attention': '463.48 GMACs', 'FeedForward': '137.37 GMACs', 'MoE': '133.23 GMACs'}
+    fwd latency - {'Attention': '39.41 ms', 'MoE': '38.93 ms', 'FeedForward': '2.24 ms'}
+depth 5:
+    params      - {'MOELayer': '67.24 M', 'Sequential': '21.53 M', 'Linear': '14.16 M'}
+    MACs        - {'Sequential': '176.01 GMACs', 'MOELayer': '133.23 GMACs', 'Linear': '115.91 GMACs'}
+    fwd latency - {'MOELayer': '38.84 ms', 'Softmax': '7.28 ms', 'Sequential': '3.11 ms'}
+depth 6:
+    params      - {'Experts': '67.22 M', 'Linear': '21.52 M', 'TopKGate': '16.42 K'}
+    MACs        - {'Linear': '176.01 GMACs', 'Experts': '133.09 GMACs', 'TopKGate': '134.15 MMACs'}
+    fwd latency - {'Experts': '11.77 ms', 'TopKGate': '10.75 ms', 'Linear': '1.39 ms'}
+depth 7:
+    params      - {'ModuleList': '67.22 M', 'GAMoEGateT': '16.42 K'}
+    MACs        - {'ModuleList': '133.09 GMACs', 'GAMoEGateT': '134.15 MMACs'}
+    fwd latency - {'ModuleList': '11.23 ms', 'GAMoEGateT': '1.31 ms'}
+depth 8:
+    params      - {'FeedForward': '67.22 M'}
+    MACs        - {'FeedForward': '133.09 GMACs'}
+    fwd latency - {'FeedForward': '11.23 ms'}
+depth 9:
+    params      - {'Sequential': '67.22 M'}
+    MACs        - {'Sequential': '133.09 GMACs'}
+    fwd latency - {'Sequential': '10.65 ms'}
+
+------------------------------ Detailed Profile per GPU ------------------------------
+Each module profile is listed after its name in the following order: 
+params, percentage of total params, MACs, percentage of total MACs, fwd latency, percentage of total fwd latency, fwd FLOPS
+
+Note: 1. A module can have torch.nn.module or torch.nn.functional to compute logits (e.g. CrossEntropyLoss). They are not counted as submodules, thus not to be printed out. However they make up the difference between a parent's MACs (or latency) and the sum of its submodules'.
+2. Number of floating-point operations is a theoretical estimation, thus FLOPS computed using that could be larger than the maximum system throughput.
+3. The fwd latency listed in the top module's profile is directly captured at the module forward function in PyTorch, thus it's less than the fwd latency shown above which is captured in DeepSpeed.
+
+MoE_Transformer(
+  372.69 M = 100% Params, 1.83 TMACs = 100% MACs, 1.76 Gs = 100% latency, 2.68 KFLOPS
+  (token_embedding): Embedding(134.22 M = 36.01% Params, 0 MACs = 0% MACs, 212.67 us = 0% latency, 0 FLOPS, 262144, 512)
+  (dropout): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 44.82 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+  (transformer): Transformer(
+    102.94 M = 27.62% Params, 734.08 GMACs = 40.05% MACs, 81.24 ms = 0% latency, 31.21 TFLOPS
+    (norm): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 33.86 us = 0% latency, 619.14 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+    (layers): ModuleList(
+      (0): ModuleList(
+        (0): Attention(
+          1.57 M = 0.42% Params, 38.62 GMACs = 2.11% MACs, 3.64 ms = 0% latency, 21.3 TFLOPS
+          (norm): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 91.79 us = 0% latency, 228.36 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+          (attend): Softmax(0 = 0% Params, 0 MACs = 0% MACs, 619.89 us = 0% latency, 324.46 GFLOPS, dim=-1)
+          (dropout): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 15.02 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          (to_qkv): Linear(1.18 M = 0.32% Params, 9.66 GMACs = 0.53% MACs, 168.8 us = 0% latency, 114.44 TFLOPS, in_features=512, out_features=2304, bias=False)
+          (to_out): Sequential(
+            393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 110.86 us = 0% latency, 58.08 TFLOPS
+            (0): Linear(393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 62.94 us = 0% latency, 102.3 TFLOPS, in_features=768, out_features=512, bias=True)
+            (1): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 14.54 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+        (1): MoE(
+          16.81 M = 4.51% Params, 54.53 GMACs = 2.97% MACs, 11.1 ms = 0% latency, 49.1 TFLOPS
+          (deepspeed_moe): MOELayer(
+            16.81 M = 4.51% Params, 54.53 GMACs = 2.97% MACs, 11.07 ms = 0% latency, 49.22 TFLOPS
+            (gate): TopKGate(
+              4.11 K = 0% Params, 33.54 MMACs = 0% MACs, 3.25 ms = 0% latency, 20.63 GFLOPS
+              (wg): GAMoEGateT(4.11 K = 0% Params, 33.54 MMACs = 0% MACs, 453.47 us = 0% latency, 147.92 GFLOPS)
+            )
+            (experts): Experts(
+              16.81 M = 4.51% Params, 54.49 GMACs = 2.97% MACs, 3.49 ms = 0% latency, 31.22 TFLOPS
+              (deepspeed_experts): ModuleList(
+                (0): FeedForward(
+                  2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 1.82 ms = 0% latency, 7.5 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 1.79 ms = 0% latency, 7.62 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 45.06 us = 0% latency, 184.52 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 147.58 us = 0% latency, 46.15 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 35.29 us = 0% latency, 188.51 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 14.31 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 1.46 ms = 0% latency, 4.65 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.68 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (1): FeedForward(
+                  2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 233.41 us = 0% latency, 58.43 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 215.29 us = 0% latency, 63.35 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 32.9 us = 0% latency, 252.72 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 40.77 us = 0% latency, 167.07 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 23.13 us = 0% latency, 287.63 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.97 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 39.1 us = 0% latency, 174.21 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.49 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (2): FeedForward(
+                  2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 216.96 us = 0% latency, 62.86 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 199.79 us = 0% latency, 68.26 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 27.18 us = 0% latency, 305.92 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 36.24 us = 0% latency, 187.96 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 21.93 us = 0% latency, 303.26 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 37.67 us = 0% latency, 180.82 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.25 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (3): FeedForward(
+                  2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 219.58 us = 0% latency, 62.11 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 201.7 us = 0% latency, 67.61 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 27.18 us = 0% latency, 305.92 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 34.81 us = 0% latency, 195.68 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 20.98 us = 0% latency, 317.05 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.49 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 39.1 us = 0% latency, 174.21 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.25 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (4): FeedForward(
+                  2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 211.24 us = 0% latency, 64.56 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 194.55 us = 0% latency, 70.1 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 27.42 us = 0% latency, 303.26 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 35.05 us = 0% latency, 194.35 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 21.46 us = 0% latency, 310 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.25 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 34.33 us = 0% latency, 198.4 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.49 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (5): FeedForward(
+                  2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 215.53 us = 0% latency, 63.28 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 199.32 us = 0% latency, 68.42 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 29.09 us = 0% latency, 285.86 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 35.76 us = 0% latency, 190.46 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 21.93 us = 0% latency, 303.26 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 37.91 us = 0% latency, 179.68 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (6): FeedForward(
+                  2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 209.09 us = 0% latency, 65.22 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 192.17 us = 0% latency, 70.97 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 26.94 us = 0% latency, 308.63 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 34.57 us = 0% latency, 197.03 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 20.74 us = 0% latency, 320.69 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.25 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 33.62 us = 0% latency, 202.62 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.54 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (7): FeedForward(
+                  2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 212.67 us = 0% latency, 64.13 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 6.81 GMACs = 0.37% MACs, 196.22 us = 0% latency, 69.5 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 28.13 us = 0% latency, 295.55 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 33.38 us = 0% latency, 204.07 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 22.41 us = 0% latency, 296.81 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 3.41 GMACs = 0.19% MACs, 36.72 us = 0% latency, 185.52 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      (1): ModuleList(
+        (0): Attention(
+          1.57 M = 0.42% Params, 38.62 GMACs = 2.11% MACs, 3.3 ms = 0% latency, 23.48 TFLOPS
+          (norm): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 40.77 us = 0% latency, 514.14 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+          (attend): Softmax(0 = 0% Params, 0 MACs = 0% MACs, 611.31 us = 0% latency, 329.02 GFLOPS, dim=-1)
+          (dropout): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 13.83 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          (to_qkv): Linear(1.18 M = 0.32% Params, 9.66 GMACs = 0.53% MACs, 74.63 us = 0% latency, 258.87 TFLOPS, in_features=512, out_features=2304, bias=False)
+          (to_out): Sequential(
+            393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 88.21 us = 0% latency, 73 TFLOPS
+            (0): Linear(393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 48.88 us = 0% latency, 131.75 TFLOPS, in_features=768, out_features=512, bias=True)
+            (1): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.92 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+        (1): FeedForward(
+          2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 291.35 us = 0% latency, 118.01 TFLOPS
+          (net): Sequential(
+            2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 272.51 us = 0% latency, 126.16 TFLOPS
+            (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 36.95 us = 0% latency, 567.21 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+            (1): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 61.99 us = 0% latency, 277.01 TFLOPS, in_features=512, out_features=2048, bias=True)
+            (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 44.58 us = 0% latency, 376.12 GFLOPS, approximate='none')
+            (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.44 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+            (4): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 51.5 us = 0% latency, 333.44 TFLOPS, in_features=2048, out_features=512, bias=True)
+            (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.49 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+      )
+      (2): ModuleList(
+        (0): Attention(
+          1.57 M = 0.42% Params, 38.62 GMACs = 2.11% MACs, 3.25 ms = 0% latency, 23.85 TFLOPS
+          (norm): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 34.33 us = 0% latency, 610.54 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+          (attend): Softmax(0 = 0% Params, 0 MACs = 0% MACs, 604.15 us = 0% latency, 332.91 GFLOPS, dim=-1)
+          (dropout): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.92 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          (to_qkv): Linear(1.18 M = 0.32% Params, 9.66 GMACs = 0.53% MACs, 60.32 us = 0% latency, 320.26 TFLOPS, in_features=512, out_features=2304, bias=False)
+          (to_out): Sequential(
+            393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 84.88 us = 0% latency, 75.87 TFLOPS
+            (0): Linear(393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 46.25 us = 0% latency, 139.22 TFLOPS, in_features=768, out_features=512, bias=True)
+            (1): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.21 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+        (1): FeedForward(
+          2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 277.28 us = 0% latency, 123.99 TFLOPS
+          (net): Sequential(
+            2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 259.4 us = 0% latency, 132.54 TFLOPS
+            (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 36 us = 0% latency, 582.24 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+            (1): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 57.22 us = 0% latency, 300.09 TFLOPS, in_features=512, out_features=2048, bias=True)
+            (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 41.01 us = 0% latency, 408.92 GFLOPS, approximate='none')
+            (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.49 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+            (4): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 49.11 us = 0% latency, 349.62 TFLOPS, in_features=2048, out_features=512, bias=True)
+            (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+      )
+      (3): ModuleList(
+        (0): Attention(
+          1.57 M = 0.42% Params, 38.62 GMACs = 2.11% MACs, 3.24 ms = 0% latency, 23.88 TFLOPS
+          (norm): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 33.38 us = 0% latency, 627.99 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+          (attend): Softmax(0 = 0% Params, 0 MACs = 0% MACs, 604.39 us = 0% latency, 332.78 GFLOPS, dim=-1)
+          (dropout): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 12.16 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          (to_qkv): Linear(1.18 M = 0.32% Params, 9.66 GMACs = 0.53% MACs, 61.04 us = 0% latency, 316.5 TFLOPS, in_features=512, out_features=2304, bias=False)
+          (to_out): Sequential(
+            393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 81.78 us = 0% latency, 78.74 TFLOPS
+            (0): Linear(393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 44.11 us = 0% latency, 145.99 TFLOPS, in_features=768, out_features=512, bias=True)
+            (1): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.44 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+        (1): MoE(
+          16.81 M = 4.51% Params, 27.58 GMACs = 1.5% MACs, 10.69 ms = 0% latency, 25.76 TFLOPS
+          (deepspeed_moe): MOELayer(
+            16.81 M = 4.51% Params, 27.58 GMACs = 1.5% MACs, 10.67 ms = 0% latency, 25.82 TFLOPS
+            (gate): TopKGate(
+              4.11 K = 0% Params, 33.54 MMACs = 0% MACs, 2.53 ms = 0% latency, 26.5 GFLOPS
+              (wg): GAMoEGateT(4.11 K = 0% Params, 33.54 MMACs = 0% MACs, 292.54 us = 0% latency, 229.29 GFLOPS)
+            )
+            (experts): Experts(
+              16.81 M = 4.51% Params, 27.55 GMACs = 1.5% MACs, 3 ms = 0% latency, 18.36 TFLOPS
+              (deepspeed_experts): ModuleList(
+                (0): FeedForward(
+                  2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 1.52 ms = 0% latency, 4.53 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 1.5 ms = 0% latency, 4.59 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 38.15 us = 0% latency, 110.19 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 268.94 us = 0% latency, 12.8 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 24.08 us = 0% latency, 139.65 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 13.59 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 1.08 ms = 0% latency, 3.19 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.44 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (1): FeedForward(
+                  2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 209.33 us = 0% latency, 32.94 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 191.45 us = 0% latency, 36.01 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 28.37 us = 0% latency, 148.16 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 34.57 us = 0% latency, 99.61 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 17.4 us = 0% latency, 193.21 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.49 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 34.09 us = 0% latency, 101 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (2): FeedForward(
+                  2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 189.54 us = 0% latency, 36.37 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 172.38 us = 0% latency, 40 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 24.08 us = 0% latency, 174.56 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 28.37 us = 0% latency, 121.37 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 16.69 us = 0% latency, 201.5 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 29.8 us = 0% latency, 115.55 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (3): FeedForward(
+                  2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 190.97 us = 0% latency, 36.1 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 174.05 us = 0% latency, 39.61 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 22.41 us = 0% latency, 187.56 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 28.13 us = 0% latency, 122.4 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 15.5 us = 0% latency, 216.99 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 31.47 us = 0% latency, 109.42 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (4): FeedForward(
+                  2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 193.36 us = 0% latency, 35.66 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 176.19 us = 0% latency, 39.13 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 23.13 us = 0% latency, 181.76 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 32.19 us = 0% latency, 106.99 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 15.74 us = 0% latency, 213.71 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 29.33 us = 0% latency, 117.42 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (5): FeedForward(
+                  2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 195.26 us = 0% latency, 35.31 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 178.58 us = 0% latency, 38.61 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 22.17 us = 0% latency, 189.58 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 30.76 us = 0% latency, 111.96 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 16.93 us = 0% latency, 198.66 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.49 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 31.23 us = 0% latency, 110.25 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.25 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (6): FeedForward(
+                  2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 186.44 us = 0% latency, 36.98 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 169.52 us = 0% latency, 40.67 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 21.22 us = 0% latency, 198.1 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 28.85 us = 0% latency, 119.37 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 15.74 us = 0% latency, 213.71 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 29.8 us = 0% latency, 115.55 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (7): FeedForward(
+                  2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 188.83 us = 0% latency, 36.51 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 3.44 GMACs = 0.19% MACs, 172.14 us = 0% latency, 40.05 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 22.41 us = 0% latency, 187.56 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 27.18 us = 0% latency, 126.69 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 15.26 us = 0% latency, 220.39 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.72 GMACs = 0.09% MACs, 31.23 us = 0% latency, 110.25 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      (4): ModuleList(
+        (0): Attention(
+          1.57 M = 0.42% Params, 38.62 GMACs = 2.11% MACs, 3.28 ms = 0% latency, 23.64 TFLOPS
+          (norm): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 39.82 us = 0% latency, 526.45 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+          (attend): Softmax(0 = 0% Params, 0 MACs = 0% MACs, 606.3 us = 0% latency, 331.73 GFLOPS, dim=-1)
+          (dropout): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 13.35 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          (to_qkv): Linear(1.18 M = 0.32% Params, 9.66 GMACs = 0.53% MACs, 70.33 us = 0% latency, 274.66 TFLOPS, in_features=512, out_features=2304, bias=False)
+          (to_out): Sequential(
+            393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 86.78 us = 0% latency, 74.2 TFLOPS
+            (0): Linear(393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 47.21 us = 0% latency, 136.41 TFLOPS, in_features=768, out_features=512, bias=True)
+            (1): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.21 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+        (1): FeedForward(
+          2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 280.38 us = 0% latency, 122.62 TFLOPS
+          (net): Sequential(
+            2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 260.83 us = 0% latency, 131.81 TFLOPS
+            (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 36.72 us = 0% latency, 570.9 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+            (1): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 56.27 us = 0% latency, 305.18 TFLOPS, in_features=512, out_features=2048, bias=True)
+            (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 42.92 us = 0% latency, 390.75 GFLOPS, approximate='none')
+            (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.49 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+            (4): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 46.97 us = 0% latency, 365.6 TFLOPS, in_features=2048, out_features=512, bias=True)
+            (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+      )
+      (5): ModuleList(
+        (0): Attention(
+          1.57 M = 0.42% Params, 38.62 GMACs = 2.11% MACs, 3.23 ms = 0% latency, 23.98 TFLOPS
+          (norm): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 32.66 us = 0% latency, 641.74 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+          (attend): Softmax(0 = 0% Params, 0 MACs = 0% MACs, 604.39 us = 0% latency, 332.78 GFLOPS, dim=-1)
+          (dropout): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.92 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          (to_qkv): Linear(1.18 M = 0.32% Params, 9.66 GMACs = 0.53% MACs, 59.84 us = 0% latency, 322.81 TFLOPS, in_features=512, out_features=2304, bias=False)
+          (to_out): Sequential(
+            393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 82.25 us = 0% latency, 78.29 TFLOPS
+            (0): Linear(393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 44.58 us = 0% latency, 144.43 TFLOPS, in_features=768, out_features=512, bias=True)
+            (1): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.97 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+        (1): FeedForward(
+          2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 272.51 us = 0% latency, 126.16 TFLOPS
+          (net): Sequential(
+            2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 254.39 us = 0% latency, 135.15 TFLOPS
+            (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 34.57 us = 0% latency, 606.33 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+            (1): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 54.6 us = 0% latency, 314.51 TFLOPS, in_features=512, out_features=2048, bias=True)
+            (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 41.25 us = 0% latency, 406.56 GFLOPS, approximate='none')
+            (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.73 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+            (4): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 46.49 us = 0% latency, 369.35 TFLOPS, in_features=2048, out_features=512, bias=True)
+            (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+      )
+      (6): ModuleList(
+        (0): Attention(
+          1.57 M = 0.42% Params, 38.62 GMACs = 2.11% MACs, 3.24 ms = 0% latency, 23.94 TFLOPS
+          (norm): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 34.09 us = 0% latency, 614.81 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+          (attend): Softmax(0 = 0% Params, 0 MACs = 0% MACs, 605.82 us = 0% latency, 332 GFLOPS, dim=-1)
+          (dropout): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.68 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          (to_qkv): Linear(1.18 M = 0.32% Params, 9.66 GMACs = 0.53% MACs, 58.65 us = 0% latency, 329.37 TFLOPS, in_features=512, out_features=2304, bias=False)
+          (to_out): Sequential(
+            393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 82.49 us = 0% latency, 78.06 TFLOPS
+            (0): Linear(393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 43.15 us = 0% latency, 149.22 TFLOPS, in_features=768, out_features=512, bias=True)
+            (1): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.97 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+        (1): MoE(
+          16.81 M = 4.51% Params, 34.48 GMACs = 1.88% MACs, 8.24 ms = 0% latency, 41.81 TFLOPS
+          (deepspeed_moe): MOELayer(
+            16.81 M = 4.51% Params, 34.48 GMACs = 1.88% MACs, 8.21 ms = 0% latency, 41.93 TFLOPS
+            (gate): TopKGate(
+              4.11 K = 0% Params, 33.54 MMACs = 0% MACs, 2.63 ms = 0% latency, 25.53 GFLOPS
+              (wg): GAMoEGateT(4.11 K = 0% Params, 33.54 MMACs = 0% MACs, 282.53 us = 0% latency, 237.42 GFLOPS)
+            )
+            (experts): Experts(
+              16.81 M = 4.51% Params, 34.44 GMACs = 1.88% MACs, 2.52 ms = 0% latency, 27.39 TFLOPS
+              (deepspeed_experts): ModuleList(
+                (0): FeedForward(
+                  2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 1.01 ms = 0% latency, 8.51 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 993.25 us = 0% latency, 8.68 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 36.24 us = 0% latency, 145.03 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 139.71 us = 0% latency, 30.82 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 23.37 us = 0% latency, 179.95 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 13.35 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 705.24 us = 0% latency, 6.1 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.97 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (1): FeedForward(
+                  2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 209.09 us = 0% latency, 41.23 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 189.54 us = 0% latency, 45.48 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 26.94 us = 0% latency, 195.08 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 33.38 us = 0% latency, 128.99 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 18.84 us = 0% latency, 223.23 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.73 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 30.28 us = 0% latency, 142.19 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.49 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (2): FeedForward(
+                  2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 197.89 us = 0% latency, 43.56 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 180.48 us = 0% latency, 47.76 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 23.13 us = 0% latency, 227.26 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 29.8 us = 0% latency, 144.47 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 17.64 us = 0% latency, 238.31 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.97 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 31.23 us = 0% latency, 137.85 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (3): FeedForward(
+                  2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 196.7 us = 0% latency, 43.83 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 179.77 us = 0% latency, 47.95 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 24.08 us = 0% latency, 218.26 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 30.99 us = 0% latency, 138.91 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 18.12 us = 0% latency, 232.04 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.49 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 29.33 us = 0% latency, 146.82 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.25 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (4): FeedForward(
+                  2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 189.3 us = 0% latency, 45.54 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 172.38 us = 0% latency, 50.01 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 22.17 us = 0% latency, 237.03 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 29.56 us = 0% latency, 145.63 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 16.45 us = 0% latency, 255.58 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.25 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 28.85 us = 0% latency, 149.24 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (5): FeedForward(
+                  2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 192.17 us = 0% latency, 44.86 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 174.76 us = 0% latency, 49.33 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 21.7 us = 0% latency, 242.24 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 30.52 us = 0% latency, 141.08 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 17.17 us = 0% latency, 244.93 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.49 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 28.61 us = 0% latency, 150.49 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (6): FeedForward(
+                  2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 195.03 us = 0% latency, 44.2 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 177.15 us = 0% latency, 48.66 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 22.41 us = 0% latency, 234.51 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 30.52 us = 0% latency, 141.08 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 17.17 us = 0% latency, 244.93 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.49 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 30.52 us = 0% latency, 141.08 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.54 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (7): FeedForward(
+                  2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 192.64 us = 0% latency, 44.75 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 4.31 GMACs = 0.23% MACs, 175.24 us = 0% latency, 49.19 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 21.7 us = 0% latency, 242.24 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 29.56 us = 0% latency, 145.63 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 16.45 us = 0% latency, 255.58 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 2.15 GMACs = 0.12% MACs, 32.9 us = 0% latency, 130.86 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.25 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      (7): ModuleList(
+        (0): Attention(
+          1.57 M = 0.42% Params, 38.62 GMACs = 2.11% MACs, 3.27 ms = 0% latency, 23.71 TFLOPS
+          (norm): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 40.05 us = 0% latency, 523.32 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+          (attend): Softmax(0 = 0% Params, 0 MACs = 0% MACs, 605.58 us = 0% latency, 332.13 GFLOPS, dim=-1)
+          (dropout): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 13.59 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          (to_qkv): Linear(1.18 M = 0.32% Params, 9.66 GMACs = 0.53% MACs, 70.1 us = 0% latency, 275.6 TFLOPS, in_features=512, out_features=2304, bias=False)
+          (to_out): Sequential(
+            393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 82.25 us = 0% latency, 78.29 TFLOPS
+            (0): Linear(393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 44.82 us = 0% latency, 143.66 TFLOPS, in_features=768, out_features=512, bias=True)
+            (1): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.21 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+        (1): FeedForward(
+          2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 281.81 us = 0% latency, 122 TFLOPS
+          (net): Sequential(
+            2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 262.02 us = 0% latency, 131.21 TFLOPS
+            (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 35.29 us = 0% latency, 594.04 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+            (1): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 59.13 us = 0% latency, 290.41 TFLOPS, in_features=512, out_features=2048, bias=True)
+            (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 42.2 us = 0% latency, 397.37 GFLOPS, approximate='none')
+            (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.21 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+            (4): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 46.97 us = 0% latency, 365.6 TFLOPS, in_features=2048, out_features=512, bias=True)
+            (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+      )
+      (8): ModuleList(
+        (0): Attention(
+          1.57 M = 0.42% Params, 38.62 GMACs = 2.11% MACs, 3.24 ms = 0% latency, 23.94 TFLOPS
+          (norm): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 37.67 us = 0% latency, 556.44 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+          (attend): Softmax(0 = 0% Params, 0 MACs = 0% MACs, 604.39 us = 0% latency, 332.78 GFLOPS, dim=-1)
+          (dropout): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 12.16 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          (to_qkv): Linear(1.18 M = 0.32% Params, 9.66 GMACs = 0.53% MACs, 58.65 us = 0% latency, 329.37 TFLOPS, in_features=512, out_features=2304, bias=False)
+          (to_out): Sequential(
+            393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 78.68 us = 0% latency, 81.84 TFLOPS
+            (0): Linear(393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 41.72 us = 0% latency, 154.33 TFLOPS, in_features=768, out_features=512, bias=True)
+            (1): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.97 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+        (1): FeedForward(
+          2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 272.99 us = 0% latency, 125.94 TFLOPS
+          (net): Sequential(
+            2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 254.15 us = 0% latency, 135.27 TFLOPS
+            (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 34.57 us = 0% latency, 606.33 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+            (1): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 56.98 us = 0% latency, 301.35 TFLOPS, in_features=512, out_features=2048, bias=True)
+            (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 40.29 us = 0% latency, 416.18 GFLOPS, approximate='none')
+            (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.25 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+            (4): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 46.49 us = 0% latency, 369.35 TFLOPS, in_features=2048, out_features=512, bias=True)
+            (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.54 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+      )
+      (9): ModuleList(
+        (0): Attention(
+          1.57 M = 0.42% Params, 38.62 GMACs = 2.11% MACs, 3.23 ms = 0% latency, 23.99 TFLOPS
+          (norm): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 32.42 us = 0% latency, 646.46 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+          (attend): Softmax(0 = 0% Params, 0 MACs = 0% MACs, 603.44 us = 0% latency, 333.31 GFLOPS, dim=-1)
+          (dropout): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.97 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          (to_qkv): Linear(1.18 M = 0.32% Params, 9.66 GMACs = 0.53% MACs, 57.7 us = 0% latency, 334.81 TFLOPS, in_features=512, out_features=2304, bias=False)
+          (to_out): Sequential(
+            393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 78.44 us = 0% latency, 82.09 TFLOPS
+            (0): Linear(393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 39.58 us = 0% latency, 162.7 TFLOPS, in_features=768, out_features=512, bias=True)
+            (1): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.21 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+        (1): MoE(
+          16.81 M = 4.51% Params, 16.64 GMACs = 0.91% MACs, 8.91 ms = 0% latency, 18.66 TFLOPS
+          (deepspeed_moe): MOELayer(
+            16.81 M = 4.51% Params, 16.64 GMACs = 0.91% MACs, 8.88 ms = 0% latency, 18.71 TFLOPS
+            (gate): TopKGate(
+              4.11 K = 0% Params, 33.54 MMACs = 0% MACs, 2.34 ms = 0% latency, 28.67 GFLOPS
+              (wg): GAMoEGateT(4.11 K = 0% Params, 33.54 MMACs = 0% MACs, 282.29 us = 0% latency, 237.62 GFLOPS)
+            )
+            (experts): Experts(
+              16.81 M = 4.51% Params, 16.61 GMACs = 0.91% MACs, 2.75 ms = 0% latency, 12.07 TFLOPS
+              (deepspeed_experts): ModuleList(
+                (0): FeedForward(
+                  2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 1.31 ms = 0% latency, 3.18 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 1.29 ms = 0% latency, 3.23 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 38.86 us = 0% latency, 65.21 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 260.59 us = 0% latency, 7.97 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 23.37 us = 0% latency, 86.78 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 13.59 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 874.76 us = 0% latency, 2.37 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.21 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (1): FeedForward(
+                  2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 200.27 us = 0% latency, 20.76 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 182.63 us = 0% latency, 22.76 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 26.94 us = 0% latency, 94.07 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 30.04 us = 0% latency, 69.11 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 17.64 us = 0% latency, 114.92 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.73 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 28.85 us = 0% latency, 71.97 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (2): FeedForward(
+                  2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 190.26 us = 0% latency, 21.85 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 171.18 us = 0% latency, 24.28 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 22.89 us = 0% latency, 110.73 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 27.66 us = 0% latency, 75.07 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 15.26 us = 0% latency, 132.88 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 28.13 us = 0% latency, 73.8 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.25 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (3): FeedForward(
+                  2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 188.35 us = 0% latency, 22.07 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 169.99 us = 0% latency, 24.45 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 21.7 us = 0% latency, 116.81 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 28.37 us = 0% latency, 73.18 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 15.02 us = 0% latency, 134.98 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.25 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 27.42 us = 0% latency, 75.72 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (4): FeedForward(
+                  2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 190.02 us = 0% latency, 21.88 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 172.38 us = 0% latency, 24.12 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 22.41 us = 0% latency, 113.09 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 27.18 us = 0% latency, 76.39 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 14.78 us = 0% latency, 137.16 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.25 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 25.99 us = 0% latency, 79.89 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 13.59 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (5): FeedForward(
+                  2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 183.34 us = 0% latency, 22.67 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 165.22 us = 0% latency, 25.16 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 22.41 us = 0% latency, 113.09 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 26.7 us = 0% latency, 77.75 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 14.54 us = 0% latency, 139.41 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 26.7 us = 0% latency, 77.75 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (6): FeedForward(
+                  2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 184.3 us = 0% latency, 22.56 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 166.18 us = 0% latency, 25.01 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 20.5 us = 0% latency, 123.61 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 27.18 us = 0% latency, 76.39 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 15.02 us = 0% latency, 134.98 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.01 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 25.99 us = 0% latency, 79.89 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.54 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+                (7): FeedForward(
+                  2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 185.49 us = 0% latency, 22.41 TFLOPS
+                  (net): Sequential(
+                    2.1 M = 0.56% Params, 2.08 GMACs = 0.11% MACs, 168.56 us = 0% latency, 24.66 TFLOPS
+                    (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 20.5 us = 0% latency, 123.61 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+                    (1): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 27.66 us = 0% latency, 75.07 TFLOPS, in_features=512, out_features=2048, bias=True)
+                    (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 15.26 us = 0% latency, 132.88 GFLOPS, approximate='none')
+                    (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.25 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                    (4): Linear(1.05 M = 0.28% Params, 1.04 GMACs = 0.06% MACs, 27.66 us = 0% latency, 75.07 TFLOPS, in_features=2048, out_features=512, bias=True)
+                    (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.54 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      (10): ModuleList(
+        (0): Attention(
+          1.57 M = 0.42% Params, 38.62 GMACs = 2.11% MACs, 3.28 ms = 0% latency, 23.61 TFLOPS
+          (norm): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 39.1 us = 0% latency, 536.09 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+          (attend): Softmax(0 = 0% Params, 0 MACs = 0% MACs, 606.3 us = 0% latency, 331.73 GFLOPS, dim=-1)
+          (dropout): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 13.59 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          (to_qkv): Linear(1.18 M = 0.32% Params, 9.66 GMACs = 0.53% MACs, 70.33 us = 0% latency, 274.66 TFLOPS, in_features=512, out_features=2304, bias=False)
+          (to_out): Sequential(
+            393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 85.59 us = 0% latency, 75.23 TFLOPS
+            (0): Linear(393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 45.78 us = 0% latency, 140.67 TFLOPS, in_features=768, out_features=512, bias=True)
+            (1): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.92 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+        (1): FeedForward(
+          2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 282.29 us = 0% latency, 121.79 TFLOPS
+          (net): Sequential(
+            2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 263.21 us = 0% latency, 130.62 TFLOPS
+            (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 35.52 us = 0% latency, 590.05 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+            (1): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 56.27 us = 0% latency, 305.18 TFLOPS, in_features=512, out_features=2048, bias=True)
+            (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 41.96 us = 0% latency, 399.63 GFLOPS, approximate='none')
+            (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 11.68 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+            (4): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 47.45 us = 0% latency, 361.92 TFLOPS, in_features=2048, out_features=512, bias=True)
+            (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+      )
+      (11): ModuleList(
+        (0): Attention(
+          1.57 M = 0.42% Params, 38.62 GMACs = 2.11% MACs, 3.23 ms = 0% latency, 24.02 TFLOPS
+          (norm): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 33.38 us = 0% latency, 627.99 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+          (attend): Softmax(0 = 0% Params, 0 MACs = 0% MACs, 602.25 us = 0% latency, 333.97 GFLOPS, dim=-1)
+          (dropout): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 12.64 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          (to_qkv): Linear(1.18 M = 0.32% Params, 9.66 GMACs = 0.53% MACs, 58.17 us = 0% latency, 332.07 TFLOPS, in_features=512, out_features=2304, bias=False)
+          (to_out): Sequential(
+            393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 78.92 us = 0% latency, 81.6 TFLOPS
+            (0): Linear(393.73 K = 0.11% Params, 3.22 GMACs = 0.18% MACs, 41.48 us = 0% latency, 155.22 TFLOPS, in_features=768, out_features=512, bias=True)
+            (1): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.97 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+        (1): FeedForward(
+          2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 276.57 us = 0% latency, 124.31 TFLOPS
+          (net): Sequential(
+            2.1 M = 0.56% Params, 17.17 GMACs = 0.94% MACs, 257.49 us = 0% latency, 133.52 TFLOPS
+            (0): LayerNorm(1.02 K = 0% Params, 0 MACs = 0% MACs, 35.76 us = 0% latency, 586.12 GFLOPS, (512,), eps=1e-05, elementwise_affine=True)
+            (1): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 54.6 us = 0% latency, 314.51 TFLOPS, in_features=512, out_features=2048, bias=True)
+            (2): GELU(0 = 0% Params, 0 MACs = 0% MACs, 40.77 us = 0% latency, 411.31 GFLOPS, approximate='none')
+            (3): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 10.97 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+            (4): Linear(1.05 M = 0.28% Params, 8.59 GMACs = 0.47% MACs, 46.49 us = 0% latency, 369.35 TFLOPS, in_features=2048, out_features=512, bias=True)
+            (5): Dropout(0 = 0% Params, 0 MACs = 0% MACs, 9.78 us = 0% latency, 0 FLOPS, p=0.0, inplace=False)
+          )
+        )
+      )
+    )
+  )
+  (output_projection): Linear(134.48 M = 36.08% Params, 1.1 TMACs = 59.95% MACs, 3.62 ms = 0% latency, 607.5 TFLOPS, in_features=512, out_features=262144, bias=True)
+)
+------------------------------------------------------------------------------

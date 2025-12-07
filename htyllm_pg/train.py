@@ -1,16 +1,97 @@
 from numpy import argmax
 from torch import nn
 import torch
+import os
 from torch.utils.data import DataLoader, Dataset
+import torch.nn.functional as F
 import deepspeed
 from deepspeed import comm
 import argparse
 import wandb
+import wandb
+import json
 from htyllm_pg.model_builder import moe_builder
 from htyllm_pg.dataset import create_dataloaders
+from htyllm_pg.util.visualization import create_expert_heatmap
 from tqdm.auto import tqdm
 
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
+
+
+# TODO: LF: naive solution maybe? We should look at this: 
+def chunked_cross_entropy(logits, targets, chunk_size=4096, ignore_index=-100):
+    """
+    Computes CrossEntropyLoss in chunks to avoid OOM from casting 
+    huge logit tensors to FP32 all at once.
+    """
+    # logits: [Batch, Seq, Vocab] -> [Batch*Seq, Vocab]
+    # targets: [Batch, Seq] -> [Batch*Seq]
+    logits = logits.view(-1, logits.size(-1))
+    targets = targets.view(-1)
+    
+    num_tokens = targets.size(0)
+    total_loss = 0.0
+    num_valid_tokens = 0 # Counter for non-ignored tokens
+    
+    for i in range(0, num_tokens, chunk_size):
+        end = min(i + chunk_size, num_tokens)
+        
+        # Slice the tensors 
+        chunk_logits = logits[i:end]
+        chunk_targets = targets[i:end]
+        
+        chunk_loss = F.cross_entropy(
+            chunk_logits.float(), 
+            chunk_targets, 
+            reduction='sum', 
+            ignore_index=ignore_index
+        )
+        
+        total_loss += chunk_loss
+        
+        if ignore_index is not None:
+            num_valid_tokens += (chunk_targets != ignore_index).sum()
+        else:
+            num_valid_tokens += (end - i)
+
+    # Average the loss
+    return total_loss / num_valid_tokens
+
+
+def save_config(args, output_dir):
+    """Saves the model configuration to a JSON file."""
+    config = {
+        "vocab_size": args.vocab_size,
+        "max_seq_len": args.max_seq_len,
+        "dim": args.dim,
+        "depth": args.depth,
+        "heads": args.heads,
+        "mlp_dim": args.mlp_dim,
+        "dim_head": args.dim_head,
+        "dropout": args.dropout,
+        "emb_dropout": args.emb_dropout,
+        "moe_layers": args.moe_layers,
+        "num_experts": args.num_experts,
+        "k": args.k,
+        "capacity_factor": args.capacity_factor,
+        "eval_capacity_factor": args.eval_capacity_factor,
+        "min_capacity": args.min_capacity,
+        "use_residual": args.use_residual,
+        "gate_backward": args.gate_backward,
+        "ep_size": args.ep_size,
+        "topany_gating_impl": args.topany_gating_impl,
+        "use_flash_attention": args.use_flash_attention,
+        "use_gradient_checkpointing": args.use_gradient_checkpointing,
+        "architectures": ["HTYLLMForCausalLM"],
+        "model_type": "htyllm_moe"
+    }
+    
+    os.makedirs(output_dir, exist_ok=True)
+    config_path = os.path.join(output_dir, "config.json")
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+    print(f"Saved configuration to {config_path}")
+
 
 def get_args() -> argparse.Namespace :
     parser = argparse.ArgumentParser()
@@ -21,11 +102,11 @@ def get_args() -> argparse.Namespace :
     parser.add_argument("--lr", default=0.0001, type=float, help="Learning rate for AdamW optimizer!")
     parser.add_argument("--weight-decay", default=1e-4, type=float, dest="weight_decay")
     parser.add_argument("--checkpoint-dir", type=str, dest="checkpoint_dir", default="./checkpoints", help="Directory to save checkpoints")
-    parser.add_argument("--checkpoint-steps", type=int, dest="checkpoint_steps", default=10000, help="Save checkpoint every N steps")
+    parser.add_argument("--checkpoint-steps", type=int, dest="checkpoint_steps", default=100, help="Save checkpoint every N steps")
     parser.add_argument("--load-checkpoint", type=int, dest="load_checkpoint", default=None, help="Checkpoint step to load, e.g. 1000")
     
     # Model architecture parameters
-    parser.add_argument("--vocab-size", type=int, dest="vocab_size", default=262144, help="Vocabulary size")
+    parser.add_argument("--vocab-size", type=int, dest="vocab_size", default=131072, help="Vocabulary size")
     parser.add_argument("--max-seq-len", type=int, dest="max_seq_len", default=2048, help="Maximum sequence length")
     parser.add_argument("--dim", type=int, default=512, help="Model dimension")
     parser.add_argument("--depth", type=int, default=12, help="Number of transformer layers")
@@ -43,8 +124,11 @@ def get_args() -> argparse.Namespace :
     parser.add_argument("--use-residual", action="store_true", dest="use_residual", help="Use residual connection in MoE")
     parser.add_argument("--gate-backward", type=str, dest="gate_backward", default="ste", help="Gate backward method")
     parser.add_argument("--ep-size", type=int, dest="ep_size", default=1, help="Expert parallel size")
-    parser.add_argument("--topany-gating-impl", type=str, dest="topany_gating_impl", default="opt_mem", help="Top-any gating implementation: 'opt' or 'opt_mem'")
+    parser.add_argument("--topany-gating-impl", type=str, dest="topany_gating_impl", default="sparse", help="Top-any gating implementation: 'opt' or 'sparse'")
     parser.add_argument("--use-flash-attention", action="store_true", dest="use_flash_attention", help="Use Flash Attention (optimized) instead of standard attention")
+    parser.add_argument("--use-gradient-checkpointing", action="store_true", dest="use_gradient_checkpointing", default=True, help="Use gradient checkpointing to save memory")
+    
+    parser.add_argument("--train-split", type=float, dest="train_split", default=0.95, help="Fraction of data for training (1.0 = no test split)")
     
     parser.add_argument("--local_rank", type=int, default=-1)
     parser = deepspeed.add_config_arguments(parser)
@@ -76,11 +160,13 @@ def main():
         gate_backward=args.gate_backward,
         ep_size=args.ep_size,
         topany_gating_impl=args.topany_gating_impl,
-        use_flash_attention=args.use_flash_attention
+        use_flash_attention=args.use_flash_attention,
+        use_gradient_checkpointing=args.use_gradient_checkpointing
     )
 
     pytorch_total_params = sum(p.numel() for p in model_pytorch.parameters() if p.requires_grad)
 
+    # Get model parameters for DeepSpeed
     base_params = {
         "params": [p for p in model_pytorch.parameters() if p.requires_grad],
         "name": "parameters",
@@ -89,16 +175,9 @@ def main():
     # let DeepSpeed split into MoE / non-MoE param groups
     param_groups = split_params_into_different_moe_groups_for_optimizer(base_params)
 
-    # construct AdamW on those groups
-    optimizer = torch.optim.AdamW(
-        param_groups,
-        lr=args.lr,
-        weight_decay=args.weight_decay,
-    )
-
     model, optimizer, _, _ = deepspeed.initialize(
-        model = model_pytorch,
-        optimizer=optimizer,
+        model=model_pytorch,
+        model_parameters=param_groups,
         args=args,
     )
 
@@ -130,6 +209,7 @@ def main():
                 "ep_size": args.ep_size,
                 "topany_gating_impl": args.topany_gating_impl,
                 "use_flash_attention": args.use_flash_attention,
+                "use_gradient_checkpointing": args.use_gradient_checkpointing,
                 "lr": args.lr,
                 "weight_decay": args.weight_decay,
                 "batch_size": args.batch_size,
@@ -137,6 +217,17 @@ def main():
                 "total_trainable_params": pytorch_total_params,
             }
         )
+        
+        # Define metrics to use 'step' as x-axis
+        wandb.define_metric("step")
+        wandb.define_metric("train_loss", step_metric="step")
+        wandb.define_metric("expert_counts/*", step_metric="step")
+        wandb.define_metric("expert_percentage/*", step_metric="step")
+        wandb.define_metric("expert_metrics/*", step_metric="step")
+        wandb.define_metric("test_loss", step_metric="step")
+        
+        # Save config.json for conversion scripts
+        save_config(args, args.checkpoint_dir)
     
     # Load checkpoint if specified
     global_step = 0
@@ -149,7 +240,9 @@ def main():
 
     # Use pad_token_id = 0 
     PAD_TOKEN_ID = 0
-    criterion = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN_ID).to(device)
+    # Ensure ignore_index matches dataset (-100)
+    print(f"PAD_TOKEN_ID: {PAD_TOKEN_ID}")
+    criterion = nn.CrossEntropyLoss(ignore_index=-100).to(device)
     
     # real data if data_dir provided otherwise dummy data
     if args.data_dir:
@@ -157,7 +250,8 @@ def main():
             args.data_dir, 
             seq_length=args.max_seq_len, 
             batch_size=args.batch_size, 
-            num_workers=args.workers
+            num_workers=args.workers,
+            train_split=args.train_split
         )
     else:
         train_dataset = DummyTextDataset(vocab_size=args.vocab_size, seq_len=args.max_seq_len, num_samples=8_000)
@@ -179,17 +273,77 @@ def main():
             if attention_mask is not None:
                 attention_mask = attention_mask.to(device)
 
-            output, l_aux = model(input_ids, attention_mask=attention_mask)
+            output, l_aux, expert_counts = model(input_ids, attention_mask=attention_mask)
             
-            ce_loss = criterion(output.float().transpose(1, 2), target)
+            ce_loss = chunked_cross_entropy(output, target) 
 
             loss = ce_loss + 0.01 * l_aux
 
+            # After line 276: output, l_aux, expert_counts = model(input_ids, attention_mask=attention_mask)
+
+            if RANK == 0 and global_step == 0:
+                print(f"=== FIRST BATCH DIAGNOSTICS ===")
+                print(f"ce_loss: {ce_loss.item():.4f}")
+                print(f"l_aux: {l_aux.item() if hasattr(l_aux, 'item') else l_aux:.4f}")
+                print(f"total loss: {(ce_loss + 0.01 * l_aux).item():.4f}")
+                print(f"logits range: [{output.min().item():.2f}, {output.max().item():.2f}]")
+                print(f"logits std: {output.std().item():.2f}")
+                print(f"any NaN in logits: {torch.isnan(output).any().item()}")
+                print(f"any Inf in logits: {torch.isinf(output).any().item()}")
+                print(f"input_ids range: [{input_ids.min().item()}, {input_ids.max().item()}]")
+                print(f"num tokens with label=-100: {(target == -100).sum().item()} / {target.numel()}")
+                print(f"================================")
             model.backward(loss)
             model.step()
             
             if RANK == 0:
-                wandb.log({"train_loss": loss.item(), "epoch": epoch, "step": global_step})
+                log_dict = {"train_loss": loss.item(), "epoch": epoch, "step": global_step}
+                
+                # Log expert usage per MoE layer
+                for layer_name, exp_counts in expert_counts.items():
+                    if exp_counts is not None:
+                        exp_counts_cpu = exp_counts.detach().cpu().float()
+                        num_experts = exp_counts_cpu.numel()
+                        total_tokens = exp_counts_cpu.sum().item()
+                        
+                        # Log individual expert counts
+                        for expert_idx in range(num_experts):
+                            count = exp_counts_cpu[expert_idx].item()
+                            log_dict[f"expert_counts/{layer_name}/expert_{expert_idx}"] = count
+                            # Also log as percentage
+                            if total_tokens > 0:
+                                log_dict[f"expert_percentage/{layer_name}/expert_{expert_idx}"] = (count / total_tokens) * 100
+                        
+                        # Log expert load balance metrics
+                        if total_tokens > 0:
+                            # Ideal uniform distribution
+                            ideal_per_expert = total_tokens / num_experts
+                            # Load imbalance: max/mean ratio (1.0 = perfect balance)
+                            mean_count = exp_counts_cpu.mean().item()
+                            max_count = exp_counts_cpu.max().item()
+                            if mean_count > 0:
+                                log_dict[f"expert_metrics/{layer_name}/load_imbalance"] = max_count / mean_count
+                            # Coefficient of variation (lower = more balanced)
+                            std_count = exp_counts_cpu.std().item()
+                            if mean_count > 0:
+                                log_dict[f"expert_metrics/{layer_name}/cv"] = std_count / mean_count
+                            
+                            # Average experts per token
+                            # We use input_ids and attention_mask from the outer loop scope
+                            num_valid_tokens = input_ids.numel()
+                            if attention_mask is not None:
+                                num_valid_tokens = attention_mask.sum().item()
+                                
+                            if num_valid_tokens > 0:
+                                log_dict[f"expert_metrics/{layer_name}/avg_experts_per_token"] = total_tokens / num_valid_tokens
+                
+                # Log heatmap every 100 steps
+                if global_step % 100 == 0:
+                    heatmap_buf = create_expert_heatmap(expert_counts)
+                    if heatmap_buf:
+                        log_dict["expert_heatmap"] = wandb.Image(heatmap_buf, caption=f"Expert Usage Step {global_step}")
+
+                wandb.log(log_dict)
             
             # Save checkpoint periodically
             global_step += 1
@@ -198,38 +352,49 @@ def main():
                     print(f"Saving checkpoint at step {global_step}...")
                 model.save_checkpoint(args.checkpoint_dir, tag=f"step_{global_step}")
 
-    # Evaluation after training is complete
-    if RANK == 0:
-        print(f"\n{'='*50}")
-        print("Training complete! Starting evaluation...")
-        print(f"{'='*50}\n")
-    
-    model.eval()
-    with torch.inference_mode():
-        test_loss_sum = 0
-        num_test_batches = 0
-        
-        for batch in tqdm(test_dataloader, desc="Evaluating"):
-            input_ids = batch['input_ids'].to(device)
-            target = batch['labels'].to(device)
-            attention_mask = batch.get('attention_mask', None)
-            if attention_mask is not None:
-                attention_mask = attention_mask.to(device)
-
-            output, l_aux = model(input_ids, attention_mask=attention_mask)
-            test_loss = criterion(output.float().transpose(1,2), target) + 0.01 * l_aux
-            test_loss_sum += test_loss.item()
-            num_test_batches += 1
-            
-        avg_test_loss = test_loss_sum / num_test_batches
-        
+    # Evaluation after training is complete (only if test data exists)
+    if test_dataloader is not None and len(test_dataloader) > 0:
         if RANK == 0:
             print(f"\n{'='*50}")
-            print(f"Final Test Loss: {avg_test_loss:.4f}")
+            print("Training complete! Starting evaluation...")
             print(f"{'='*50}\n")
-            wandb.log({"test_loss": avg_test_loss})
-            # Test prediction 
-            test_pred, _ = model(torch.arange(10).unsqueeze(0).to(device))
+        
+        model.eval()
+        with torch.inference_mode():
+            test_loss_sum = 0
+            num_test_batches = 0
+            
+            for batch in tqdm(test_dataloader, desc="Evaluating"):
+                input_ids = batch['input_ids'].to(device)
+                target = batch['labels'].to(device)
+                attention_mask = batch.get('attention_mask', None)
+                if attention_mask is not None:
+                    attention_mask = attention_mask.to(device)
+
+                output, l_aux, _ = model(input_ids, attention_mask=attention_mask)
+                test_loss = criterion(output.float().transpose(1,2), target) + 0.01 * l_aux
+                test_loss_sum += test_loss.item()
+                num_test_batches += 1
+            
+            if num_test_batches > 0:
+                avg_test_loss = test_loss_sum / num_test_batches
+                
+                if RANK == 0:
+                    print(f"\n{'='*50}")
+                    print(f"Final Test Loss: {avg_test_loss:.4f}")
+                    print(f"{'='*50}\n")
+                    wandb.log({"test_loss": avg_test_loss})
+    else:
+        if RANK == 0:
+            print(f"\n{'='*50}")
+            print("Training complete! (No test split configured)")
+            print(f"{'='*50}\n")
+    
+    # Test prediction
+    if RANK == 0:
+        model.eval()
+        with torch.inference_mode():
+            test_pred, _, _ = model(torch.arange(10).unsqueeze(0).to(device))
             print(f"Test prediction shape: {test_pred.shape}")
             print(f"Prediction for [0,...,9]: {torch.argmax(test_pred.squeeze()[9])}")
             print(f"{'='*50}\n")

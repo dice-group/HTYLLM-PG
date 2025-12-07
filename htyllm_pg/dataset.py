@@ -67,13 +67,24 @@ class MultiLangTokenDataset(Dataset):
         # Extract pre-packed sequence
         seq = tokens[local_idx]
         mask = masks[local_idx]
+
+        # seq is [T], we want input=[0..T-1], label=[1..T]
+        input_ids = seq[:-1].astype(np.int64)
+        labels = seq[1:].astype(np.int64)
         
+        # If mask[i] == 0, it means seq[i] is padding.
+        label_mask = mask[1:] 
+        
+        # Apply the "Ignore Index" (-100) to the labels
+        # Wherever the mask says "padding", we set label to -100
+        # so the loss function ignores it! 
+        labels[label_mask == 0] = -100
+         
         return {
-            'input_ids': seq[:-1].astype(np.int64),
-            'labels': seq[1:].astype(np.int64),
+            'input_ids': input_ids,
+            'labels': labels,
             'attention_mask': mask[:-1].astype(np.int64)
         }
-
 
 # Usage with DeepSpeed
 def create_dataloaders(data_dir, seq_length=2048, batch_size=8, num_workers=4, 
@@ -119,7 +130,9 @@ def create_dataloaders(data_dir, seq_length=2048, batch_size=8, num_workers=4,
         batch_size=batch_size,
         sampler=train_sampler,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=True,
+        persistent_workers=True,
+        prefetch_factor=4
     )
     
     test_loader = DataLoader(
@@ -127,7 +140,9 @@ def create_dataloaders(data_dir, seq_length=2048, batch_size=8, num_workers=4,
         batch_size=batch_size,
         sampler=test_sampler,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=True,
+        persistent_workers=True,
+        prefetch_factor=4
     )
     
     return train_loader, train_sampler, test_loader, test_sampler

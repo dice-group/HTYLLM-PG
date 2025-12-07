@@ -12,7 +12,7 @@ from .packing import pack_documents
 
 
 def tokenize_and_save(input_folder, output_folder, tokenizer_path="tokenizer.json", 
-                      seq_length=2048, batch_size=10000, pack_batch_size=10000):
+                      seq_length=2048, batch_size=30000, pack_batch_size=30000):
     """
     Tokenize all .jsonl.gz files in subfolders, pack using OBFD, and save as numpy arrays.
     

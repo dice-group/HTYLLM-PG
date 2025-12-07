@@ -501,29 +501,32 @@ def topanygating_opt(logits: Tensor, capacity_factor: float, min_capacity: int, 
 
 # ==== OURs ======
 
-def topanygating_opt_mem(
+def topanygating_sparse(
     logits: Tensor,
-    capacity_factor: float,
-    min_capacity: int,
-    K: Tensor,
+    capacity_factor: float = 2,
+    min_capacity: int = 1,
+    K: Tensor = None,
     gate_tensor=None,
     expert_mask=None,
     ep_group=None,
-) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-    """Implements Top-Any Gating on already-binarized `logits` ∈ {0,1}."""
-
+) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, int]:
+    """
+    Implements Top-Any Gating using Sparse Operations (index_add).
+    Returns indices rather than a dense [T, E, C] mask to save memory.
+    """
     gates = logits                                   # [T, E] (binary)
     mask = gates.bool()                              # [T, E] (bool)
-    exp_counts = mask.sum(dim=0)                     # [E] on device
+    tokens_per_batch = logits.shape[0]
+    num_experts = logits.shape[1]
+    exp_counts = mask.sum(dim=0)                     # [E]
+    cap_int = int(capacity_factor * tokens_per_batch / num_experts)
 
-    # global capacity = max tokens per expert across all ranks
-    new_capacity = exp_counts.max()
-    dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.get_world_group())
-    capacity = torch.clamp(new_capacity, min=1)       # ensure at least 1 to avoid zero-sized tensors
+    # calculate capacity TODO: LF: we could consider putting a limit on capacity but this will drop tokens
+    cap_int = max(cap_int, min_capacity)
+    #TODO: removed for now: dist.all_reduce(new_capacity, op=dist.ReduceOp.MAX, group=dist.get_world_group())
+    # We might drop tokens now 
 
-    num_experts = int(gates.shape[1])
-
-    # l_aux 
+    # calculate L_aux
     if gate_tensor is None or expert_mask is None:
         me = gates.float().mean(dim=0)
         ce = mask.float().mean(dim=0)
@@ -540,27 +543,44 @@ def topanygating_opt_mem(
             load_balance_loss = gates.new_zeros(())
         efficiency_loss = gates.float().mean()
         l_aux = diverse_and_simple_gate_loss(gate_tensor, expert_mask) + load_balance_loss + efficiency_loss
+    
+    # Add activation penalty to encourage using more experts per token
+    # Penalize if average experts per token drops below target (1.5)
+    if gate_tensor is not None and hasattr(gate_tensor, '_activation_rate'):
+        activation_penalty = F.relu(1.5 - gate_tensor._activation_rate)
+        l_aux = l_aux + 0.1 * activation_penalty
 
-    # Scatter-based routing (replaces one-hot + einsum) 
-    # per-(token,expert) slot index (0..capacity-1) for selected pairs
-    cumsum = torch.cumsum(mask.to(torch.int32), dim=0)       # [T, E]
-    idx = torch.where(mask, cumsum - 1, torch.zeros_like(cumsum)).clamp_min(0)
+    # Calculate slots using cumsum on the bool mask
+    cumsum = torch.cumsum(mask.to(torch.int32), dim=0) 
+    
+    # Find active pairs (Non-zero entries)
+    # active_indices: [N_active, 2] -> [[token_idx, expert_idx], ...]
+    active_indices = torch.nonzero(mask, as_tuple=False)
+    
+    sample_idx = active_indices[:, 0]
+    expert_idx = active_indices[:, 1]
+    
+    # Get the slot ID for each active pair
+    # (cumsum includes the current element, so 1 for 0-based indexing)
+    slot_idx = cumsum[sample_idx, expert_idx] - 1
+    
+    # filter out tokens that exceed capacity or are negative
+    valid_mask = (slot_idx >= 0) & (slot_idx < cap_int)
+    
+    sample_idx = sample_idx[valid_mask]
+    expert_idx = expert_idx[valid_mask]
+    slot_idx = slot_idx[valid_mask]
+    
+    # normalize gates by K
+    # per-(token,expert) weight 
+    # We only grab the weights for valid, active pairs
+    gate_weights = gates[sample_idx, expert_idx] / torch.clamp(K[sample_idx], 1)
 
-    # per-(token,expert) weight split by K 
-    gate_weights = gates / torch.clamp(K, 1).unsqueeze(1)    # [T, E]
+    # Destination in flattened buffer: (Expert_Index * Capacity) + Slot_Index
+    destination_idx = (expert_idx * cap_int) + slot_idx
 
-    cap_int = int(capacity.item())
-    combine_weights = torch.zeros(
-        (gates.shape[0], gates.shape[1], cap_int),
-        device=logits.device,
-        dtype=logits.dtype,
-    )
-    src = (gate_weights * mask).unsqueeze(-1)                # [T, E, 1]
-    combine_weights.scatter_(2, idx.unsqueeze(-1), src)      # [T, E, C]
-
-    dispatch_mask = combine_weights.ne(0)                    # [T, E, C] bool
-    return l_aux, combine_weights, dispatch_mask, exp_counts.to('cpu')
-
+    # Return tuple required for sparse scatter/gather in MOELayer
+    return l_aux, sample_idx, destination_idx, gate_weights, exp_counts, cap_int
 
 
 class GAMoEGateSignBackward(torch.autograd.Function):
@@ -661,25 +681,37 @@ class GAMoEGateT(torch.nn.Module):
             gates = self.gates
 
         logit_scale = torch.clamp(self.temperature, max=self.clamp_max).exp()  # for init_t = 1 this is also logit_scale = 1
-        logits = torch.sigmoid(torch.matmul(F.normalize(x, dim=1), F.normalize(sim_matrix, dim=0)) * logit_scale )  # similarity - threshold but negativ becomes zero (deactivated)
+        raw_logits = torch.sigmoid(torch.matmul(F.normalize(x, dim=1), F.normalize(sim_matrix, dim=0)) * logit_scale)  # similarity scores in [0, 1]
         # logits = logits * self.experts_mask # zero-out expert -> TODO: Currently this is not need as we do not implement dynamic epxert adding and removal
-        gates = torch.sigmoid(self.gates * logit_scale) # put gates into [0 - 1]
-
+        gates_scaled = torch.sigmoid(self.gates * logit_scale) # put gates into [0 - 1]
+        
         if self.training:
             # training: thresholded + binarised
-            logits = logits - gates 
+            logits = raw_logits - gates_scaled 
             logits = self._apply_gate_backward(logits)  
+            
+            # Force minimum 1 expert per token to prevent complete collapse
+            no_expert_mask = (logits.sum(dim=1) == 0)
+            if no_expert_mask.any():
+                max_idx = torch.argmax(raw_logits[no_expert_mask], dim=1)
+                forced = F.one_hot(max_idx, num_classes=logits.shape[1]).float()
+                logits = logits.clone()
+                logits[no_expert_mask] = forced
+            
             top_k = torch.sum(logits > 0, dim=1).to(torch.int)
+            
+            # Store activation rate for loss computation (used in topanygating_sparse)
+            self._activation_rate = logits.sum(dim=1).mean()
         else:
-            new_logits = logits - gates
+            new_logits = raw_logits - gates_scaled
             # make it binary according to chosen backward rule
             new_logits = self._apply_gate_backward(new_logits)
 
             top_k = torch.sum(new_logits > 0, dim=1).to(torch.int)
 
-            mask = (torch.sum(new_logits, dim=1) == 0).to(torch.int).repeat(logits.shape[1]).reshape(logits.shape[1], -1).T
-            max_index = torch.argmax(logits, dim=1)
-            one_hot = F.one_hot(max_index, num_classes=logits.shape[1])
+            mask = (torch.sum(new_logits, dim=1) == 0).to(torch.int).repeat(raw_logits.shape[1]).reshape(raw_logits.shape[1], -1).T
+            max_index = torch.argmax(raw_logits, dim=1)
+            one_hot = F.one_hot(max_index, num_classes=raw_logits.shape[1])
             logits = mask * one_hot + new_logits
 
             top_k = torch.max(top_k, torch.ones(top_k.shape).to(top_k.device)).to(torch.int)
@@ -718,7 +750,7 @@ class TopKGate(Module):
                  ep_group: Union[torch.distributed.ProcessGroup, None] = None,
                  top2_2nd_expert_sampling: bool = True,
                  gate_backward: str = "sign",
-                 topany_gating_impl: str = "opt_mem") -> None:
+                 topany_gating_impl: str = "sparse") -> None:
         super().__init__()
 
         if k == -1:
@@ -761,8 +793,8 @@ class TopKGate(Module):
             logits = torch.nn.functional.linear(input_fp32, weight=self.wg.weight.float(), bias=None)
 
         if self.k == -1:
-            if self.topany_gating_impl == "opt_mem":
-                gate_output = topanygating_opt_mem(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
+            if self.topany_gating_impl == "sparse":
+                gate_output = topanygating_sparse(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
                                          self.min_capacity, top_k, self.wg.sim_matrix, None #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn
                                          , self.ep_group)
             elif self.topany_gating_impl == "opt":
@@ -770,7 +802,7 @@ class TopKGate(Module):
                                          self.min_capacity, top_k, self.wg.sim_matrix, None #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn
                                          , self.ep_group)
             else:
-                raise ValueError(f"Invalid topany_gating_impl: {self.topany_gating_impl}. Must be 'opt' or 'opt_mem'.")
+                raise ValueError(f"Invalid topany_gating_impl: {self.topany_gating_impl}. Must be 'opt' or 'sparse'.")
         elif self.k == 1:
             gate_output = top1gating(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
                                      self.min_capacity, used_token, self.noisy_gate_policy if self.training else None,
@@ -857,17 +889,49 @@ class MOELayer(Base):
         # group_size = kwargs['group_size'] if 'group_size' in kwargs.keys() else 1
         reshaped_input = input[0].reshape(-1, d_model)
 
+        S, M = reshaped_input.size(0), reshaped_input.size(1)
+        is_sparse_topany = False
+
         if self.use_tutel:
             self.l_aux, C, E, indices_, locations_, gates_, self.exp_counts = self.gate(reshaped_input, input[1], True)
-            S, M = reshaped_input.size(0), reshaped_input.size(1)
 
             if not hasattr(self, '_tutel_dispatcher'):
                 self._tutel_dispatcher = tutel_moe.fast_dispatcher(E, C, M, dispatch_dtype=reshaped_input.dtype)
             self._tutel_dispatcher.update(indices_, locations_, gates_, capacity=C)
             dispatched_input = self._tutel_dispatcher.encode(reshaped_input)
         else:
-            self.l_aux, combine_weights, dispatch_mask, self.exp_counts = self.gate(reshaped_input, input[1])
-            dispatched_input = einsum("sec,sm->ecm", dispatch_mask.type_as(input[0]), reshaped_input)
+            # Call the gate
+            gate_output = self.gate(reshaped_input, input[1])
+
+            # Check return signature to detect Sparse vs Dense implementation
+            if len(gate_output) == 6 and self.gate.k == -1:
+                is_sparse_topany = True
+                self.l_aux, sample_idx, destination_idx, flat_weights, self.exp_counts, cap_int = gate_output
+                
+                num_experts = self.gate.wg.expert_num 
+                
+                # Create buffer: [Experts * Capacity, Model_Dim]
+                buffer = torch.zeros(
+                    (num_experts * cap_int, d_model),
+                    device=reshaped_input.device,
+                    dtype=reshaped_input.dtype
+                )
+                
+                # Prepare weights and inputs
+                # Select tokens: [N_active, M]
+                selected_tokens = reshaped_input[sample_idx]
+                
+                
+                # Scatter add to buffer (The Dispatch)
+                buffer.index_add_(0, destination_idx, selected_tokens)
+                
+                # Reshape for AllToAll: [E, C, M]
+                dispatched_input = buffer.view(num_experts, cap_int, d_model)
+                
+            else:
+                # DynMoe path
+                self.l_aux, combine_weights, dispatch_mask, self.exp_counts = gate_output
+                dispatched_input = einsum("sec,sm->ecm", dispatch_mask.type_as(input[0]), reshaped_input)
 
         if self.wall_clock_breakdown:
             self.timers(FIRST_ALLTOALL_TIMER).start()
@@ -926,6 +990,29 @@ class MOELayer(Base):
 
         if self.use_tutel:
             combined_output = self._tutel_dispatcher.decode(expert_output.view(E * C, M))
+        elif is_sparse_topany:
+            # SPARSE DECODE (Native Index Add)
+            # expert_output is [E, C, M]
+            # Flatten to [E*C, M]
+            expert_output_flat = expert_output.view(-1, d_model)
+            
+            # Prepare output buffer
+            combined_output = torch.zeros(
+                (S, M),
+                device=expert_output.device,
+                dtype=expert_output.dtype
+            )
+            
+            # Select specific expert outputs based on where we sent them
+            # [N_active, M]
+            selected_expert_out = expert_output_flat[destination_idx]
+            
+            # Scale by the same weights used in dispatch
+            weights_casted = flat_weights.to(dtype=expert_output.dtype).unsqueeze(1)
+            weighted_expert_out = selected_expert_out * weights_casted
+            
+            # Scatter add back to the original token positions
+            combined_output.index_add_(0, sample_idx, weighted_expert_out)
         else:
             combined_output = einsum("sec,ecm->sm", combine_weights.type_as(input[0]), expert_output)
 
