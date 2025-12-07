@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Shared inputs
+# inputs
 DISTANCE_NPZ="data_prep/processed_artifacts/lang2vec_all_distances.npz"
 METADATA_CSV="data_prep/base_data/fineweb2-language-distribution.csv"
 MIN_DOCUMENTS=500
@@ -9,7 +9,7 @@ MIN_DOCUMENTS=500
 RESULT_DIR="tools/farthest_runs"
 mkdir -p "${RESULT_DIR}"
 
-# Drop stale outputs so the directory reflects only the latest runs.
+#drop current results to not confudse with new results
 rm -f "${RESULT_DIR}/"*
 
 run_fp() {
@@ -47,7 +47,7 @@ run_fp "tier200_k4-16" \
   --k-min 4 \
   --k-max 16
 
-# Demo/test run using the bundled synthetic matrix
+# Demo/test run using the bundled synthetic matrix, this helped me to verify the algo works as inteded
 DEMO_DIST="data_prep/processed_artifacts/farthest_points_demo_distances.npz"
 DEMO_COORDS="data_prep/processed_artifacts/farthest_points_demo_coords.csv"
 if [[ -f "${DEMO_DIST}" ]]; then
