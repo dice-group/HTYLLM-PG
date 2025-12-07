@@ -525,12 +525,6 @@ def filter_languages(
 
     df = pd.read_csv(metadata_csv)
 
-    def normalize(value: str) -> str:
-        for suffix in ["_removed", "_train", "_test"]:
-            if value.endswith(suffix):
-                return value[: -len(suffix)]
-        return value
-
     aggregated = df.groupby("code")["documents"].max().reset_index()
     valid_codes = set(
         aggregated.loc[
