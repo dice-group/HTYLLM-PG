@@ -23,17 +23,6 @@ echo "Node: $SLURM_NODELIST"
 echo "Started at: $(date)"
 echo ""
 
-# Load required modules (adjust for your cluster)
-# Uncomment and modify as needed:
-# module load python/3.10
-# module load cuda/11.8
-# module load pytorch/2.0.1
-
-# Activate conda/virtual environment
-# Uncomment and modify as needed:
-# source activate your_env_name
-# or
-# source /path/to/venv/bin/activate
 
 set -euo pipefail
 
