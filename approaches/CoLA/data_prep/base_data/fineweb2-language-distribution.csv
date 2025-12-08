@@ -5096,3 +5096,4 @@ und_Goth,train,und,Goth,Undetermined language,-,-,1132,1441817,1.38MB,122676,119
 und_Armn,train,und,Armn,Undetermined language,-,-,30947,153178494,146.08MB,2296860,2.19MB,-,-,
 und_Geor,train,und,Geor,Undetermined language,-,-,11020,8160045,7.78MB,1511666,1.44MB,-,-,
 und_Cans,train,und,Cans,Undetermined language,-,-,2956,5220890,4.98MB,1546316,1.47MB,-,-,
+eng_Latn,train,eng,Latn,English,Indo-European,,25900000000,,,54800000000000,54.8TB,,,HIGH
