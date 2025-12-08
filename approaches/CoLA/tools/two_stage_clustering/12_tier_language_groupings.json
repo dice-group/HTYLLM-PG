@@ -69,40 +69,6 @@
   },
   "2": {
     "languages": [
-      "che_Cyrl",
-      "ava_Cyrl",
-      "inh_Cyrl"
-    ],
-    "subgroups": {
-      "B0": [
-        "che_Cyrl",
-        "ava_Cyrl",
-        "inh_Cyrl"
-      ]
-    },
-    "metadata": {
-      "che_Cyrl": {
-        "name": "Chechen",
-        "family": "Nakh-Daghestanian",
-        "resource_availability": "LOW",
-        "subset": "che_Cyrl"
-      },
-      "ava_Cyrl": {
-        "name": "Avaric",
-        "family": "Nakh-Daghestanian",
-        "resource_availability": "LOW",
-        "subset": "ava_Cyrl"
-      },
-      "inh_Cyrl": {
-        "name": "Ingush",
-        "family": "Nakh-Daghestanian",
-        "resource_availability": "LOW",
-        "subset": "inh_Cyrl"
-      }
-    }
-  },
-  "3": {
-    "languages": [
       "xho_Latn",
       "zul_Latn",
       "nde_Latn"
@@ -132,6 +98,40 @@
         "family": "Niger-Congo",
         "resource_availability": "LOW",
         "subset": "nde_Latn"
+      }
+    }
+  },
+  "3": {
+    "languages": [
+      "hun_Latn",
+      "udm_Cyrl",
+      "kpv_Cyrl"
+    ],
+    "subgroups": {
+      "B0": [
+        "hun_Latn",
+        "udm_Cyrl",
+        "kpv_Cyrl"
+      ]
+    },
+    "metadata": {
+      "hun_Latn": {
+        "name": "Hungarian",
+        "family": "Uralic",
+        "resource_availability": "HIGH",
+        "subset": "hun_Latn"
+      },
+      "udm_Cyrl": {
+        "name": "Udmurt",
+        "family": "Uralic",
+        "resource_availability": "LOW",
+        "subset": "udm_Cyrl"
+      },
+      "kpv_Cyrl": {
+        "name": "Komi-Zyrian",
+        "family": "Uralic",
+        "resource_availability": "LOW",
+        "subset": "kpv_Cyrl"
       }
     }
   }
