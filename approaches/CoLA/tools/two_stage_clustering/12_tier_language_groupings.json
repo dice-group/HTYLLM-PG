@@ -1,0 +1,138 @@
+{
+  "0": {
+    "languages": [
+      "roh_Latn",
+      "fur_Latn",
+      "wln_Latn"
+    ],
+    "subgroups": {
+      "B0": [
+        "roh_Latn",
+        "fur_Latn",
+        "wln_Latn"
+      ]
+    },
+    "metadata": {
+      "roh_Latn": {
+        "name": "Romansh",
+        "family": "Indo-European",
+        "resource_availability": "LOW",
+        "subset": "roh_Latn"
+      },
+      "fur_Latn": {
+        "name": "Friulian",
+        "family": "Indo-European",
+        "resource_availability": "LOW",
+        "subset": "fur_Latn"
+      },
+      "wln_Latn": {
+        "name": "Walloon",
+        "family": "Indo-European",
+        "resource_availability": "LOW",
+        "subset": "wln_Latn"
+      }
+    }
+  },
+  "1": {
+    "languages": [
+      "arb_Arab",
+      "mlt_Latn",
+      "aeb_Arab"
+    ],
+    "subgroups": {
+      "B0": [
+        "arb_Arab",
+        "mlt_Latn",
+        "aeb_Arab"
+      ]
+    },
+    "metadata": {
+      "arb_Arab": {
+        "name": "Standard Arabic",
+        "family": "Afro-Asiatic",
+        "resource_availability": "HIGH",
+        "subset": "arb_Arab"
+      },
+      "mlt_Latn": {
+        "name": "Maltese",
+        "family": "Afro-Asiatic",
+        "resource_availability": "LOW",
+        "subset": "mlt_Latn"
+      },
+      "aeb_Arab": {
+        "name": "Tunisian Arabic",
+        "family": "Afro-Asiatic",
+        "resource_availability": "LOW",
+        "subset": "aeb_Arab"
+      }
+    }
+  },
+  "2": {
+    "languages": [
+      "che_Cyrl",
+      "ava_Cyrl",
+      "inh_Cyrl"
+    ],
+    "subgroups": {
+      "B0": [
+        "che_Cyrl",
+        "ava_Cyrl",
+        "inh_Cyrl"
+      ]
+    },
+    "metadata": {
+      "che_Cyrl": {
+        "name": "Chechen",
+        "family": "Nakh-Daghestanian",
+        "resource_availability": "LOW",
+        "subset": "che_Cyrl"
+      },
+      "ava_Cyrl": {
+        "name": "Avaric",
+        "family": "Nakh-Daghestanian",
+        "resource_availability": "LOW",
+        "subset": "ava_Cyrl"
+      },
+      "inh_Cyrl": {
+        "name": "Ingush",
+        "family": "Nakh-Daghestanian",
+        "resource_availability": "LOW",
+        "subset": "inh_Cyrl"
+      }
+    }
+  },
+  "3": {
+    "languages": [
+      "xho_Latn",
+      "zul_Latn",
+      "nde_Latn"
+    ],
+    "subgroups": {
+      "B0": [
+        "xho_Latn",
+        "zul_Latn",
+        "nde_Latn"
+      ]
+    },
+    "metadata": {
+      "xho_Latn": {
+        "name": "Xhosa",
+        "family": "Niger-Congo",
+        "resource_availability": "LOW",
+        "subset": "xho_Latn"
+      },
+      "zul_Latn": {
+        "name": "Zulu",
+        "family": "Niger-Congo",
+        "resource_availability": "LOW",
+        "subset": "zul_Latn"
+      },
+      "nde_Latn": {
+        "name": "North Ndebele",
+        "family": "Niger-Congo",
+        "resource_availability": "LOW",
+        "subset": "nde_Latn"
+      }
+    }
+  }
+}
