@@ -8,6 +8,8 @@ from datasets import load_dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
+from .shard_utils import find_language_shards
+
 
 @dataclass
 class TrainingConfig:
@@ -30,8 +32,10 @@ def train_tokenizer(config: TrainingConfig) -> TrainingResult:
     if not config.data_dir.is_dir():
         raise ValueError(f"Data directory not found: {config.data_dir}")
 
-    pattern = str(config.data_dir / "*.jsonl.gz")
-    dataset = load_dataset("json", data_files=pattern, split="train")
+    shard_paths = [str(path) for _, path in find_language_shards(config.data_dir)]
+    if not shard_paths:
+        raise ValueError(f"No shard files found under {config.data_dir}")
+    dataset = load_dataset("json", data_files=shard_paths, split="train")
 
     iterator = _TextIterator(dataset, config.text_key, config.max_samples)
     tokenizer = AutoTokenizer.from_pretrained(config.base_model, use_fast=True)

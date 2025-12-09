@@ -5,11 +5,13 @@ import json
 from dataclasses import dataclass
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import List, Optional
 
 import pandas as pd
 from tqdm import tqdm
 from transformers import AutoTokenizer
+
+from .shard_utils import find_language_shards
 
 
 @dataclass
@@ -22,11 +24,11 @@ class CoverageConfig:
 
 
 def compute_coverage(config: CoverageConfig) -> pd.DataFrame:
-    files = sorted(_collect_files(config.data_dir))
+    files = find_language_shards(config.data_dir)
 
     tasks = [
-        (path, config.tokenizer, config.max_lines)
-        for path in files
+        (language, path, config.tokenizer, config.max_lines)
+        for language, path in files
     ]
     workers = config.num_workers or cpu_count()
 
@@ -46,12 +48,6 @@ def compute_coverage(config: CoverageConfig) -> pd.DataFrame:
     return df
 
 
-def _collect_files(data_dir: Path) -> Iterable[Path]:
-    for entry in data_dir.iterdir():
-        if entry.is_file() and entry.name.endswith(".jsonl.gz"):
-            yield entry
-
-
 def _read_jsonl_gz(path: Path, max_lines: int) -> List[str]:
     texts: List[str] = []
     with gzip.open(path, "rt", encoding="utf-8") as handle:
@@ -68,8 +64,8 @@ def _read_jsonl_gz(path: Path, max_lines: int) -> List[str]:
     return texts
 
 
-def _compute_file_metrics(args: tuple[Path, str, int]) -> dict:
-    path, tokenizer_name, max_lines = args
+def _compute_file_metrics(args: tuple[str, Path, str, int]) -> dict:
+    language, path, tokenizer_name, max_lines = args
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_fast=True)
     texts = _read_jsonl_gz(path, max_lines=max_lines)
 
@@ -88,10 +84,9 @@ def _compute_file_metrics(args: tuple[Path, str, int]) -> dict:
     unknown_rate = unk_count / total_tokens if total_tokens else 0.0
 
     return {
-        "language": path.stem.replace(".jsonl", ""),
+        "language": language,
         "chars_per_token": chars_per_token,
         "pieces_per_word": pieces_per_word,
         "unknown_rate": unknown_rate,
         "num_texts": len(texts),
     }
-

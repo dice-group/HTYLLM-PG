@@ -12,6 +12,8 @@ from typing import Dict, List, Optional, Tuple
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from .shard_utils import find_language_shards
+
 
 @dataclass
 class ExtensionConfig:
@@ -48,6 +50,7 @@ def extend_tokenizer(
     base_vocab = set(base_tokenizer.get_vocab().keys())
     global_tokens: List[str] = []
     per_language: Dict[str, int] = {}
+    shard_map = {language: path for language, path in find_language_shards(config.data_dir)}
 
     tasks: List[Tuple[int, str, int]] = []
     for order, row in enumerate(allocation.itertuples(index=False)):
@@ -59,9 +62,9 @@ def extend_tokenizer(
         tasks.append((order, language, n_tokens))
 
     def process_language(language: str, n_tokens: int) -> Optional[List[str]]:
-        lang_file = config.data_dir / f"{language}.jsonl.gz"
-        if not lang_file.exists():
-            print(f"[tokenize_extension] Skipping {language}, missing file {lang_file}")
+        lang_file = shard_map.get(language)
+        if lang_file is None or not lang_file.exists():
+            print(f"[tokenize_extension] Skipping {language}, missing shard under {config.data_dir}")
             return None
 
         texts = _load_texts(lang_file, config.sample_docs, config.text_key)
