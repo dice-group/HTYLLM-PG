@@ -12,17 +12,22 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-DEFAULT_PLAN="${REPO_ROOT}/data_prep/processed_artifacts/sampling_plan_tier3_200langs.csv"
-PLAN_INPUT="${1:-${DEFAULT_PLAN}}"
+PLAN_INPUT="${1:-/scratch/hpc-prf-merlin/joel/HTYLLM-PG/approaches/CoLA/sample_data/generate_sample_plan/sampling_plan_tier3_200langs.csv}"
+TOKENIZER_FLAG="${2:-}"
 PLAN_CSV="$(realpath "${PLAN_INPUT}")"
-MAX_SAMPLE="${MAX_SAMPLE:-10_000_000}"
 OUTPUT_DIR="${OUTPUT_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/inital_samples_datatrove}"
+MAX_SAMPLE="${MAX_SAMPLE:-}"
 
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p "logs"
 
-echo "Sampling plan: ${PLAN_CSV}"
-echo "Per-language max sample: ${MAX_SAMPLE}"
-echo "Output directory: ${OUTPUT_DIR}"
+CLI_ARGS=( "${PLAN_CSV}" "${OUTPUT_DIR}" )
+[[ -n "${MAX_SAMPLE}" ]] && CLI_ARGS+=( "--max-sample" "${MAX_SAMPLE}" )
+[[ -n "${TOKENIZER_FLAG}" ]] && CLI_ARGS+=( "--tokenizer-training" )
 
-srun python sample_generator_datatrove.py "${PLAN_CSV}" "${MAX_SAMPLE}" "${OUTPUT_DIR}"
+echo "Sampling plan: ${PLAN_CSV}"
+echo "Output directory: ${OUTPUT_DIR}"
+[[ -n "${MAX_SAMPLE}" ]] && echo "Max sample per language: ${MAX_SAMPLE}"
+[[ -n "${TOKENIZER_FLAG}" ]] && echo "Tokenizer training mode: enabled"
+
+srun python sample_generator_datatrove.py "${CLI_ARGS[@]}"
