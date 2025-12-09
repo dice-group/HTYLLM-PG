@@ -30,6 +30,10 @@ from .loss import diverse_and_simple_gate_loss
 import uuid
 import wandb
 
+if TYPE_CHECKING:
+    Base = Module[Tensor]
+else:
+    Base = Module
 
 TOPK_GATE_TIMER = 'topk_gate'
 MOE_TIMER = 'moe'
