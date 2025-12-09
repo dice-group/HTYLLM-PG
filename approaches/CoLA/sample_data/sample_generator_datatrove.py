@@ -22,8 +22,8 @@ def _int_arg(value: str) -> int:
 def parse_args():
     parser = argparse.ArgumentParser(description="Datatrove sampler driven by CSV input.")
     parser.add_argument("plan_csv", type=Path, help="CSV listing languages (requires `subset` column, optional `documents`).")
-    parser.add_argument("max_sample", type=_int_arg, help="Maximum number of rows sampled per language.")
     parser.add_argument("output_dir", type=Path, help="Directory where sample JSONL files and manifest will be emitted.")
+    parser.add_argument("--max-sample", type=_int_arg, help="Optional cap on rows sampled per language.")
     parser.add_argument("--shard-index", type=int, help="Index of this shard when splitting the CSV across array jobs.")
     parser.add_argument("--num-shards", type=int, help="Total number of shards. Defaults to Slurm array size or 1.")
     return parser.parse_args()
@@ -41,7 +41,7 @@ def _resolve_shard(args) -> Tuple[int, int]:
     return shard_idx, num_shards
 
 
-def _load_plan(csv_path: Path, max_sample: int) -> List[Tuple[str, int]]:
+def _load_plan(csv_path: Path, max_sample: int | None) -> List[Tuple[str, int]]:
     df = pd.read_csv(csv_path)
     for col in PLAN_COLUMNS:
         if col not in df.columns:
@@ -50,8 +50,8 @@ def _load_plan(csv_path: Path, max_sample: int) -> List[Tuple[str, int]]:
     for _, row in df.iterrows():
         subset = str(row["subset"]).strip()
         docs = int(row["documents"]) if "documents" in df.columns else max_sample
-        docs = docs if docs > 0 else max_sample
-        size = min(max_sample, docs)
+        docs = docs if docs and docs > 0 else max_sample
+        size = min(max_sample, docs) if max_sample else docs
         plan.append((subset, size))
     return plan
 
