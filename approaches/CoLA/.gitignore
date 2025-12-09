@@ -1,0 +1,3 @@
+.pytest_cache/
+data_prep/tokenizer_extension/.models/
+data_prep/tokenizer_extension/logs/

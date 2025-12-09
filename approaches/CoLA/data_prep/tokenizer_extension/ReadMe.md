@@ -52,6 +52,21 @@ python -m tokenizer_extension.pipeline --config data_prep/tokenizer_extension/co
 - Every JSON line must contain the text key referenced by `*_text_key` (defaults to `text`).
 - Extension currently samples documents inside each shard (`extension_sample_docs`) and does **not** regenerate candidate token lists elsewhere, so the JSON data itself must represent the curated sample set for the tokenizer tier.
 
+### Preparing base tokenizer/model checkpoints
+- Store the Llama-3.1-8B tokenizer JSONs and model weights under `data_prep/tokenizer_extension/.models/` (this directory is git-ignored). Example layout:
+  ```
+  data_prep/tokenizer_extension/.models/
+    llama-3.1-8b/
+      tokenizer.json
+      tokenizer_config.json
+      special_tokens_map.json
+      config.json
+      pytorch_model.bin
+      ...
+  ```
+- You can populate it with `huggingface-cli download meta-llama/Llama-3.1-8B --local-dir data_prep/tokenizer_extension/.models/llama-3.1-8b`.
+- The tier configs reference this local path for both `base_tokenizer`/`extension_base_path` and `init_model_path`, so the pipeline never relies on shared caches or on-the-fly HF downloads.
+
 ## Open TODOs
 1. Adapt the extension stage to handle larger shards more efficiently (currently loads/tokenizes `extension_sample_docs` per language in Python).
 2. Add end-to-end CI-style validation to exercise the full pipeline automatically.

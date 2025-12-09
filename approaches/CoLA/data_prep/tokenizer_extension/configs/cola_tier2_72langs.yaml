@@ -1,7 +1,7 @@
 # CoLA tier 2 (72 languages) tokenizer-extension pipeline
 output_dir: /scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier2
 base_data_dir: /scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/tokenizer_cola_72_tier_samples
-base_tokenizer: meta-llama/Llama-3.1-8B
+base_tokenizer: ../.models/llama-3.1-8b
 base_max_lines: 10000
 base_num_workers: 64
 
@@ -13,14 +13,14 @@ train_text_key: text
 train_max_samples: None
 
 extend: true
-extension_base_path: /scratch/hpc-prf-merlin/shared_cache/huggingface/hub/models--meta-llama--Llama-3.1-8B/snapshots/d04e592bb4f6aa9cfee91e2e20afa771667e1d4b/
+extension_base_path: ../.models/llama-3.1-8b
 extension_data_dir: /scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/tokenizer_cola_72_tier_samples
 extension_sample_docs: 10000
 extension_text_key: text
 extension_num_workers: 8
 extension_vocab_cap: 208000
 init_embeddings: true
-init_model_path: meta-llama/Llama-3.1-8B
+init_model_path: ../.models/llama-3.1-8b
 init_model_output_dir: /scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier2/initialized_model
 
 compute_extended_coverage: true
