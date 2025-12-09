@@ -8,7 +8,7 @@ base_num_workers: 64
 train_multilingual: true
 train_data_dir: /scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/tokenizer_cola_200_tier_samples
 train_base_model: meta-llama/Llama-3.1-8B
-train_vocab_size: 300000
+train_vocab_size: 256000
 train_text_key: text
 train_max_samples: None
 

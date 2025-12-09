@@ -8,7 +8,7 @@ base_num_workers: 64
 train_multilingual: true
 train_data_dir: /scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/tokenizer_cola_12_tier_samples
 train_base_model: meta-llama/Llama-3.1-8B
-train_vocab_size: 300000
+train_vocab_size: 256000
 train_text_key: text
 train_max_samples: None
 
@@ -18,7 +18,7 @@ extension_data_dir: /scratch/hpc-prf-merlin/project_data/moe_study/adapter_datas
 extension_sample_docs: 10000
 extension_text_key: text
 extension_num_workers: 8
-extension_vocab_cap: 256000
+extension_vocab_cap: 160000
 init_embeddings: true
 init_model_path: meta-llama/Llama-3.1-8B
 init_model_output_dir: /scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier1/initialized_model
@@ -28,7 +28,7 @@ extended_data_dir: /scratch/hpc-prf-merlin/project_data/moe_study/adapter_datase
 extended_max_lines: 10000
 extended_num_workers: 64
 
-total_new_tokens: 128000
+total_new_tokens: 32000
 weight_ppw: 0.5
 weight_cpt: 0.5
 weight_unk: 0.0
