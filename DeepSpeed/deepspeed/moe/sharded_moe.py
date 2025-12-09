@@ -510,7 +510,7 @@ def topanygating_sparse(
     expert_mask=None,
     ep_group=None,
     sigmoid_probs: Tensor = None,
-    l1_lambda: float = 0.01,
+    l1_lambda: float = 0.001,
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, int]:
     """
     Implements Top-Any Gating using Sparse Operations (index_add).
@@ -653,7 +653,7 @@ class GAMoEGateT(torch.nn.Module):
         adaptive_experts: bool = False,
         init_t: float = 1.0,
         gate_backward: str = "sign",  # 'sign' (original) or 'ste'
-        l1_lambda: float = 0.01,  # L1 sparsity penalty coefficient (Lasso)
+        l1_lambda: float = 0.001,  # L1 sparsity penalty coefficient (Lasso) - lower = more experts, higher = fewer experts
     ):
         super().__init__()
         self.expert_num = num_global_experts # total number of experts in the model 
@@ -665,7 +665,7 @@ class GAMoEGateT(torch.nn.Module):
         # LF: these are the "embeddings" for the experts - used to compute similarity between tokens and experts
         # self.register_parameter('sim_matrix', torch.nn.Parameter(torch.empty(max_expert_num, model_dim).T.contiguous(), requires_grad=True))
         self.gates = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=True)  # learnable threshold for each expert
-        self.gates.data.fill_(-2.0) # initally negative so probability of selecting an expert is low 
+        self.gates.data.fill_(-1.0)  # mild negative bias - combined with L1 penalty encourages sparsity without collapsing to 1 expert 
         #self.experts_mask = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=False)  # non-learnable expert-mask
         self.temperature = torch.nn.Parameter(torch.log(torch.full([1], 1.0 / init_t, dtype=torch.float32)), requires_grad=False)
         # for init_t = 1.0 this will make temperature = 0
@@ -782,7 +782,7 @@ class TopKGate(Module):
                  top2_2nd_expert_sampling: bool = True,
                  gate_backward: str = "sign",
                  topany_gating_impl: str = "sparse",
-                 l1_lambda: float = 0.01) -> None:
+                 l1_lambda: float = 0.001) -> None:
         super().__init__()
 
         if k == -1:
