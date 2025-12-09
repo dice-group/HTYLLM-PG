@@ -2,25 +2,22 @@
 set -euo pipefail
 
 # Submits tokenizer-extension jobs for all CoLA tiers (12, 72, 200 languages).
-# Each job reuses the tokenizer-extension pipeline and points it to the sampled
-# tokenizer-training datasets generated via sample_data/run_all_samplers.sh.
+# Assumes this script is run from data_prep/tokenizer_extension.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_ROOT="${SCRIPT_DIR}/logs/tokenize_extension"
-CONFIG_DIR="${SCRIPT_DIR}/configs"
-SLURM_SCRIPT="${SCRIPT_DIR}/run_pipeline_slurm.sh"
+LOG_ROOT="logs/tokenize_extension"
+SLURM_SCRIPT="./run_pipeline_slurm.sh"
 
 if [[ ! -x "${SLURM_SCRIPT}" ]]; then
-  echo "[run_all_tokenizer_extensions] Missing or non-executable SLURM script: ${SLURM_SCRIPT}" >&2
+  echo "[run_all_tokenizer_extensions] Missing SLURM script: ${SLURM_SCRIPT}" >&2
   exit 1
 fi
 
 mkdir -p "${LOG_ROOT}"
 
 CONFIGS=(
-  "tier1_12langs|${CONFIG_DIR}/cola_tier1_12langs.yaml"
-  "tier2_72langs|${CONFIG_DIR}/cola_tier2_72langs.yaml"
-  "tier3_200langs|${CONFIG_DIR}/cola_tier3_200langs.yaml"
+  "tier1_12langs|configs/cola_tier1_12langs.yaml"
+  "tier2_72langs|configs/cola_tier2_72langs.yaml"
+  "tier3_200langs|configs/cola_tier3_200langs.yaml"
 )
 
 for entry in "${CONFIGS[@]}"; do
@@ -33,9 +30,5 @@ for entry in "${CONFIGS[@]}"; do
   job_name="tokenizer_ext_${tier}"
   log_path="${LOG_ROOT}/${tier}_%j.log"
   echo "[run_all_tokenizer_extensions] Submitting ${tier} job with config ${config_path}"
-  sbatch \
-    --chdir "${SCRIPT_DIR}" \
-    --job-name "${job_name}" \
-    --output "${log_path}" \
-    "${SLURM_SCRIPT}" "${config_path}"
+  sbatch --job-name "${job_name}" --output "${log_path}" "${SLURM_SCRIPT}" "${config_path}"
 done

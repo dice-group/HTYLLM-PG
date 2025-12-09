@@ -36,15 +36,16 @@ flowchart LR
 
 ### Running locally
 ```bash
-python -m tokenizer_extension.pipeline --config data_prep/tokenizer_extension/configs/cola_tier1_12langs.yaml
+cd data_prep/tokenizer_extension
+python pipeline.py --config configs/cola_tier1_12langs.yaml
 ```
 - Pass multiple `--config` values to run several tiers back-to-back.
-- Override the output root via `TOKENIZER_EXTENSION_OUTPUT_DIR=/path/to/run python -m ...`.
+- Override the output root via `TOKENIZER_EXTENSION_OUTPUT_DIR=/path/to/run python pipeline.py --config ...`.
 - With the default configs, the run produces `trained_tokenizer/`, `extended_tokenizer/`, and `initialized_model/` artifacts per tier, plus the CSV reports.
 
 ### SLURM-ready entry points
-- `run_pipeline_slurm.sh [CONFIG]` — single job that runs every stage sequentially via `srun`. The script now accepts an explicit config path or defaults to `configs/cola_tier1_12langs.yaml`; logs land in `logs/tokenize_extension/`.
-- `run_all_tokenizer_extensions.sh` — submits three jobs (tier1/2/3) that each invoke the SLURM script above so tokenizer training/extending happens for every sampled data tier.
+- `run_pipeline_slurm.sh [CONFIG]` — single job that runs every stage sequentially via `srun`. Run it from `data_prep/tokenizer_extension` (logs land in `logs/tokenize_extension/`).
+- `run_all_tokenizer_extensions.sh` — run from `data_prep/tokenizer_extension` to submit three jobs (tier1/2/3) that each invoke the SLURM script above.
 - `run_pipeline_staged.sh CONFIG` — advanced helper that submits each stage as its own job using `pipeline_slurm.py --stage ...` and waits between submissions; useful when the cluster requires per-stage resource tuning.
 
 ### Expectations on the input data

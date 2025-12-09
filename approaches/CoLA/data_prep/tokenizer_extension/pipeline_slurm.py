@@ -4,14 +4,18 @@ import pandas as pd
 
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 from typing import Optional, Sequence
 
-from .allocation import AllocationConfig, compute_allocation
-from .coverage import CoverageConfig, compute_coverage
-from .extension import ExtensionConfig, ExtensionResult, extend_tokenizer
-from .training import TrainingConfig, TrainingResult, train_tokenizer
+PACKAGE_PARENT = Path(__file__).resolve().parents[1]
+if str(PACKAGE_PARENT) not in sys.path:
+    sys.path.append(str(PACKAGE_PARENT))
 
-from .utils import load_pipeline_config, compare_metrics
+from tokenizer_extension.allocation import AllocationConfig, compute_allocation
+from tokenizer_extension.coverage import CoverageConfig, compute_coverage
+from tokenizer_extension.extension import ExtensionConfig, ExtensionResult, extend_tokenizer
+from tokenizer_extension.training import TrainingConfig, TrainingResult, train_tokenizer
+from tokenizer_extension.utils import load_pipeline_config, compare_metrics
 
 
 @dataclass
