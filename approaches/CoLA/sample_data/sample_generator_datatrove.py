@@ -24,6 +24,7 @@ def parse_args():
     parser.add_argument("plan_csv", type=Path, help="CSV listing languages (requires `subset` column, optional `documents`).")
     parser.add_argument("output_dir", type=Path, help="Directory where sample JSONL files and manifest will be emitted.")
     parser.add_argument("--max-sample", type=_int_arg, help="Optional cap on rows sampled per language.")
+    parser.add_argument("--tokenizer-training", action="store_true", help="If set, only sample 5%% of the plan allocations for tokenizer training.")
     parser.add_argument("--shard-index", type=int, help="Index of this shard when splitting the CSV across array jobs.")
     parser.add_argument("--num-shards", type=int, help="Total number of shards. Defaults to Slurm array size or 1.")
     return parser.parse_args()
@@ -41,7 +42,7 @@ def _resolve_shard(args) -> Tuple[int, int]:
     return shard_idx, num_shards
 
 
-def _load_plan(csv_path: Path, max_sample: int | None) -> List[Tuple[str, int]]:
+def _load_plan(csv_path: Path, max_sample: int | None, tokenizer_training: bool) -> List[Tuple[str, int]]:
     df = pd.read_csv(csv_path)
     for col in PLAN_COLUMNS:
         if col not in df.columns:
@@ -52,6 +53,8 @@ def _load_plan(csv_path: Path, max_sample: int | None) -> List[Tuple[str, int]]:
         docs = int(row["documents"]) if "documents" in df.columns else max_sample
         docs = docs if docs and docs > 0 else max_sample
         size = min(max_sample, docs) if max_sample else docs
+        if tokenizer_training and size:
+            size = max(1, int(size * 0.05))
         plan.append((subset, size))
     return plan
 
@@ -100,7 +103,7 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     shard_idx, num_shards = _resolve_shard(args)
-    full_plan = _load_plan(plan_path, args.max_sample)
+    full_plan = _load_plan(plan_path, args.max_sample, args.tokenizer_training)
     shard_plan = _slice_plan(full_plan, shard_idx, num_shards)
 
     manifest_rows = []
