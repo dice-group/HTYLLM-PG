@@ -42,7 +42,24 @@ echo "Hostfile:"
 cat "${HOSTFILE}"
 
 MASTER_ADDR=$(head -n 1 "${HOSTFILE}" | awk '{print $1}')
-MASTER_PORT=6000
+
+# Find an available port starting from BASE_PORT
+find_available_port() {
+  local port=$1
+  local max_attempts=100
+  for ((i=0; i<max_attempts; i++)); do
+    if ! ss -tuln | grep -q ":${port} "; then
+      echo "${port}"
+      return 0
+    fi
+    ((port++))
+  done
+  echo "ERROR: Could not find available port after ${max_attempts} attempts" >&2
+  return 1
+}
+
+BASE_PORT=6000
+MASTER_PORT=$(find_available_port ${BASE_PORT})
 
 echo "MASTER_ADDR = ${MASTER_ADDR}"
 echo "MASTER_PORT = ${MASTER_PORT}"
