@@ -7,4 +7,18 @@
 #SBATCH --mem=420G
 #SBATCH -p normal
 
-srun python -m tokenizer_extension.pipeline --config /scratch/hpc-prf-merlin/joel/moe-study/data_prep/tokenizer_extension/configs/llama3.2-1b.yaml
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_DIR="${SCRIPT_DIR}/logs/tokenize_extension"
+mkdir -p "${LOG_DIR}"
+
+DEFAULT_CONFIG="${SCRIPT_DIR}/configs/cola_tier1_12langs.yaml"
+CONFIG_PATH="${1:-${CONFIG_PATH:-${TOKENIZER_EXTENSION_CONFIG:-${DEFAULT_CONFIG}}}}"
+
+if [[ ! -f "${CONFIG_PATH}" ]]; then
+  echo "[run_pipeline_slurm] Config not found: ${CONFIG_PATH}" >&2
+  exit 1
+fi
+
+echo "[run_pipeline_slurm] Launching tokenizer extension pipeline with config ${CONFIG_PATH}"
+srun python -m tokenizer_extension.pipeline --config "${CONFIG_PATH}"
