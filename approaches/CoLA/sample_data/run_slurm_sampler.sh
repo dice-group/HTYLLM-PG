@@ -15,7 +15,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PLAN_INPUT="${1:-/scratch/hpc-prf-merlin/joel/HTYLLM-PG/approaches/CoLA/sample_data/generate_sample_plan/sampling_plan_tier3_200langs.csv}"
 TOKENIZER_FLAG="${2:-}"
 PLAN_CSV="$(realpath "${PLAN_INPUT}")"
-OUTPUT_DIR="${OUTPUT_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/inital_samples_datatrove}"
+OUTPUT_DIR="${OUTPUT_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_200_tier_samples}"
 MAX_SAMPLE="${MAX_SAMPLE:-}"
 
 mkdir -p "${OUTPUT_DIR}"
