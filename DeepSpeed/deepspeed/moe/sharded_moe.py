@@ -27,11 +27,9 @@ import torch.nn.functional as F
 from deepspeed.utils import groups
 from .mappings import drop_tokens, gather_tokens
 from .loss import diverse_and_simple_gate_loss
+import uuid
+import wandb
 
-if TYPE_CHECKING:
-    Base = Module[Tensor]
-else:
-    Base = Module
 
 TOPK_GATE_TIMER = 'topk_gate'
 MOE_TIMER = 'moe'
@@ -690,6 +688,7 @@ class GAMoEGateT(torch.nn.Module):
         if gate_backward not in allowed:
             raise ValueError(f"gate_backward must be one of {allowed}, got {gate_backward}")
         self.gate_backward = gate_backward
+        self.gate_id = str(uuid.uuid4())[:8]
 
     def _apply_gate_backward(self, scores: Tensor) -> Tensor:
         """Dispatch to the requested backward strategy."""
@@ -712,6 +711,14 @@ class GAMoEGateT(torch.nn.Module):
         # logits = logits * self.experts_mask # zero-out expert -> TODO: Currently this is not need as we do not implement dynamic epxert adding and removal
         gates_scaled = torch.sigmoid(self.gates * logit_scale) # put gates into [0 - 1]
         
+        if self.training and wandb is not None and wandb.run is not None and dist.get_rank() == 0:
+            wandb.log({
+                f"gates/{self.gate_id}/mean": gates_scaled.detach().mean().item(),
+                f"gates/{self.gate_id}/min": gates_scaled.detach().min().item(),
+                f"gates/{self.gate_id}/max": gates_scaled.detach().max().item(),
+                f"gates/{self.gate_id}/std": gates_scaled.detach().std().item(),
+            }, commit=False)
+
         # Note: L1 sparsity penalty is now applied directly on self.gates in topanygating_sparse()
         # This is more direct (targets thresholds) and avoids gradient leakage to representations
         
