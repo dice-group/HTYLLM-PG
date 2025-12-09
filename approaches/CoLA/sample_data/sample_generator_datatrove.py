@@ -70,7 +70,7 @@ def _slice_plan(plan: Sequence[Tuple[str, int]], shard_idx: int, num_shards: int
 
 
 def _build_executor(root_dir: Path, subset: str, sample_size: int) -> LocalPipelineExecutor:
-    dataset = "hf://datasets/HuggingFaceFW/fineweb/data/" if subset.lower() == "english" else f"hf://datasets/HuggingFaceFW/fineweb-2/data/{subset}/train"
+    dataset = "hf://datasets/HuggingFaceFW/fineweb/data/" if subset.lower() in ("english", "eng_latn") else f"hf://datasets/HuggingFaceFW/fineweb-2/data/{subset}/train"
     out_dir = root_dir / "samples" / subset
     out_dir.mkdir(parents=True, exist_ok=True)
     writer = JsonlWriter(str(out_dir))
