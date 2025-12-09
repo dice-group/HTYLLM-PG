@@ -6,6 +6,7 @@ set -euo pipefail
 # tokenizer-training datasets generated via sample_data/run_all_samplers.sh.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_ROOT="${SCRIPT_DIR}/logs/tokenize_extension"
 CONFIG_DIR="${SCRIPT_DIR}/configs"
 SLURM_SCRIPT="${SCRIPT_DIR}/run_pipeline_slurm.sh"
 
@@ -13,6 +14,8 @@ if [[ ! -x "${SLURM_SCRIPT}" ]]; then
   echo "[run_all_tokenizer_extensions] Missing or non-executable SLURM script: ${SLURM_SCRIPT}" >&2
   exit 1
 fi
+
+mkdir -p "${LOG_ROOT}"
 
 CONFIGS=(
   "tier1_12langs|${CONFIG_DIR}/cola_tier1_12langs.yaml"
@@ -28,6 +31,13 @@ for entry in "${CONFIGS[@]}"; do
   fi
 
   job_name="tokenizer_ext_${tier}"
+  out_log="${LOG_ROOT}/${tier}_%j.out"
+  err_log="${LOG_ROOT}/${tier}_%j.err"
   echo "[run_all_tokenizer_extensions] Submitting ${tier} job with config ${config_path}"
-  sbatch --chdir "${SCRIPT_DIR}" --job-name "${job_name}" "${SLURM_SCRIPT}" "${config_path}"
+  sbatch \
+    --chdir "${SCRIPT_DIR}" \
+    --job-name "${job_name}" \
+    --output "${out_log}" \
+    --error "${err_log}" \
+    "${SLURM_SCRIPT}" "${config_path}"
 done

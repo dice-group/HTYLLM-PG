@@ -12,6 +12,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${SCRIPT_DIR}/logs/tokenize_extension"
 mkdir -p "${LOG_DIR}"
 
+PYTHONPATH="${SCRIPT_DIR}/..:${PYTHONPATH:-}"
+export PYTHONPATH
+
 DEFAULT_CONFIG="${SCRIPT_DIR}/configs/cola_tier1_12langs.yaml"
 CONFIG_PATH="${1:-${CONFIG_PATH:-${TOKENIZER_EXTENSION_CONFIG:-${DEFAULT_CONFIG}}}}"
 
