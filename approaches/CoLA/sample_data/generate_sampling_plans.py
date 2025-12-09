@@ -1,16 +1,14 @@
 import argparse
 import json
-import pandas as pd
-
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
+import pandas as pd
 
 """generate sampling plans for the tiered language budgets.
 
 inputs:
-* Tier definitions (`language_tiers_12_72_200.json`)
+* Tier definitions (`*_tier_language_groupings.json`)
 * FineWeb language metadata (`fineweb2-language-distribution.csv`)
 
 It emits tier-specific CSVs listing the `subset` identifiers and how many
@@ -26,22 +24,18 @@ TOKEN_BUDGETS = {
     2: 24_000_000_000,  # 72-95 language tier
     3: 60_000_000_000,  # 200-language tier
 }
+TIER_FILENAMES = {
+    1: "12_tier_language_groupings.json",
+    2: "72_tier_language_groupings.json",
+    3: "200_tier_language_groupings.json",
+}
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 
 
-@dataclass
-class LanguageStat:
-    subset: str
-    words: float
-    documents: int
-    tokens_per_doc: float
-    weight: float
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build sampling plans per tier.")
-    parser.add_argument("--tier-json", default=REPO_ROOT / "data_prep/processed_artifacts/language_tiers_12_72_200.json", type=Path, help="Path to the JSON file describing the tier languages.")
+    parser.add_argument("--tier-dir", default=REPO_ROOT / "tools/two_stage_clustering", type=Path, help="Directory containing *_tier_language_groupings.json files.")
     parser.add_argument("--fineweb-csv", default=REPO_ROOT / "data_prep/base_data/fineweb2-language-distribution.csv", type=Path, help="FineWeb2 CSV with per-language word/document counts.")
     parser.add_argument("--output-dir", default=REPO_ROOT / "data_prep/processed_artifacts", type=Path, help="Directory where tier sampling plans will be written.")
     parser.add_argument("--alpha", default=ALPHA, type=float, help="Temperature/alpha value for smoothing the language weights.")
@@ -57,16 +51,29 @@ def _load_fineweb_stats(csv_path: Path) -> Dict[str, Dict[str, float]]:
     return df.set_index("subset").to_dict("index")
 
 
-def _load_tiers(tier_path: Path) -> List[Dict]:
-    data = json.loads(tier_path.read_text())
-    return data["tiers"]
+def _load_tier_languages(tier_dir: Path) -> Dict[int, List[str]]:
+    tier_dir = tier_dir.resolve()
+    tiers = {}
+    for tier_id, filename in TIER_FILENAMES.items():
+        path = tier_dir / filename
+        if not path.exists():
+            continue
+        data = json.loads(path.read_text())
+        seen, ordered = set(), []
+        for expert in data.values():
+            langs = expert.get("languages") or expert.get("language") or []
+            for lang in langs:
+                if lang not in seen:
+                    seen.add(lang)
+                    ordered.append(lang)
+        tiers[tier_id] = ordered
+    return tiers
 
 
-def _collect_language_stats(languages: Iterable[Dict], fineweb_stats: Dict[str, Dict[str, float]], alpha: float) -> Tuple[List[LanguageStat], List[str]]:
-    stats: List[LanguageStat] = []
+def _collect_language_stats(languages: Iterable[str], fineweb_stats: Dict[str, Dict[str, float]], alpha: float) -> Tuple[List[Tuple], List[str]]:
+    stats: List[Tuple] = []
     missing: List[str] = []
-    for lang in languages:
-        subset = lang["subset"]
+    for subset in dict.fromkeys(languages):
         if subset not in fineweb_stats:
             missing.append(subset)
             continue
@@ -81,47 +88,38 @@ def _collect_language_stats(languages: Iterable[Dict], fineweb_stats: Dict[str, 
 
         tokens_per_doc = words / documents
         weight = words ** alpha if words > 0 else 0.0
-        stats.append(
-            LanguageStat(
-                subset=subset,
-                words=words,
-                documents=documents,
-                tokens_per_doc=tokens_per_doc,
-                weight=weight,
-            )
-        )
+        stats.append((subset, words, documents, tokens_per_doc, weight))
     return stats, missing
 
 
-def _build_plan_for_tier(languages: Iterable[Dict], fineweb_stats: Dict[str, Dict[str, float]], tier_id: int, alpha: float, token_budget: int) -> Tuple[pd.DataFrame, Dict]:
+def _build_plan_for_tier(languages: Iterable[str], fineweb_stats: Dict[str, Dict[str, float]], tier_id: int, alpha: float, token_budget: int) -> Tuple[pd.DataFrame, Dict]:
     lang_stats, missing = _collect_language_stats(languages, fineweb_stats, alpha)
     if not lang_stats:
         raise ValueError(f"No valid languages for tier {tier_id}. Missing: {missing}")
 
-    total_weight = sum(stat.weight for stat in lang_stats)
+    total_weight = sum(stat[4] for stat in lang_stats)
     allocations = []
     total_effective_tokens = 0.0
-    for stat in lang_stats:
-        share = stat.weight / total_weight if total_weight > 0 else 0.0
+    for subset, words, documents, tokens_per_doc, weight in lang_stats:
+        share = weight / total_weight if total_weight > 0 else 0.0
         target_tokens = share * token_budget
-        capped_tokens = min(target_tokens, stat.words)
-
-        docs_target = int(capped_tokens / stat.tokens_per_doc)
+        capped_tokens = min(target_tokens, words)
+        docs_target = int(capped_tokens / tokens_per_doc)
         if capped_tokens > 0 and docs_target == 0:
             docs_target = 1
-        docs_target = min(docs_target, stat.documents)
-        effective_tokens = docs_target * stat.tokens_per_doc
+        docs_target = min(docs_target, documents)
+        effective_tokens = docs_target * tokens_per_doc
         total_effective_tokens += effective_tokens
 
         allocations.append(
             {
-                "subset": stat.subset,
+                "subset": subset,
                 "documents": docs_target,
                 "tokens_budgeted": round(target_tokens),
                 "tokens_effective": round(effective_tokens),
-                "words_available": round(stat.words),
-                "documents_available": stat.documents,
-                "tokens_per_document": stat.tokens_per_doc,
+                "words_available": round(words),
+                "documents_available": documents,
+                "tokens_per_document": tokens_per_doc,
             }
         )
 
@@ -141,18 +139,17 @@ def _build_plan_for_tier(languages: Iterable[Dict], fineweb_stats: Dict[str, Dic
 def main() -> None:
     args = parse_args()
     fineweb_stats = _load_fineweb_stats(args.fineweb_csv)
-    tiers = _load_tiers(args.tier_json)
+    tiers = _load_tier_languages(args.tier_dir)
 
     output_dir = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     summaries = []
-    for tier in tiers:
-        tier_id = int(tier["tier"])
-        if tier_id not in TOKEN_BUDGETS:
+    for tier_id, languages in tiers.items():
+        if tier_id not in TOKEN_BUDGETS or not languages:
             continue
         plan_df, summary = _build_plan_for_tier(
-            tier["languages"],
+            languages,
             fineweb_stats,
             tier_id,
             args.alpha,
