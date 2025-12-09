@@ -5,7 +5,7 @@ The tokenizer-extension package automates coverage analysis, allocation scoring,
 1. **Base coverage (`coverage.py`)** — reads every `*.jsonl.gz` from `base_data_dir`, tokenizes each shard with the base tokenizer, and writes `base_metrics.csv` with chars/token, pieces/word, and unknown-rate metrics.
 2. **Allocation (`allocation.py`)** — scales the base metrics, applies the weights and `gamma` from the config, and produces `allocation.csv` describing how many new tokens each language should get (`token_alloc`).
 3. **Multilingual training (`training.py`, optional)** — if `train_multilingual: true`, trains a new tokenizer from the shard texts (iterator over the gzipped JSONL files) and saves it under `trained_tokenizer/`.
-4. **Extension (`extension.py`)** — loads the base tokenizer and the trained multilingual tokenizer, samples per-language documents (`extension_sample_docs` per shard), keeps the highest-frequency tokens absent from the base vocab, and merges them into `extended_tokenizer/` with merge rules filtered to avoid invalid merges. Allocation drives how many tokens per language are selected.
+4. **Extension (`extension.py`)** — loads the base tokenizer and the trained multilingual tokenizer, samples per-language documents (`extension_sample_docs` per shard), keeps the highest-frequency tokens absent from the base vocab, and merges them into `extended_tokenizer/` with merge rules filtered to avoid invalid merges. Allocation drives how many tokens per language are selected. When `init_embeddings: true`, the stage also loads the base LM (`init_model_path`), resizes/initializes the embedding + LM head rows via mean pooling over the original tokenizer, and saves a ready-to-train checkpoint under `initialized_model/`.
 5. **Extended coverage (`coverage.py`, optional)** — re-runs coverage on the same shards but with `extended_tokenizer/`, writing `extended_metrics.csv`.
 6. **Comparison (`pipeline.py` / `pipeline_slurm.py`)** — joins base vs. extended coverage tables and tracks per-language deltas in `comparison.csv`.
 
@@ -40,6 +40,7 @@ python -m tokenizer_extension.pipeline --config data_prep/tokenizer_extension/co
 ```
 - Pass multiple `--config` values to run several tiers back-to-back.
 - Override the output root via `TOKENIZER_EXTENSION_OUTPUT_DIR=/path/to/run python -m ...`.
+- With the default configs, the run produces `trained_tokenizer/`, `extended_tokenizer/`, and `initialized_model/` artifacts per tier, plus the CSV reports.
 
 ### SLURM-ready entry points
 - `run_pipeline_slurm.sh [CONFIG]` — single job that runs every stage sequentially via `srun`. The script now accepts an explicit config path or defaults to `configs/cola_tier1_12langs.yaml`; logs land in `logs/tokenize_extension/`.

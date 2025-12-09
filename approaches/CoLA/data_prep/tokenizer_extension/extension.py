@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from transformers import AutoTokenizer
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 @dataclass
@@ -22,6 +23,9 @@ class ExtensionConfig:
     text_key: str = "text"
     vocab_cap: Optional[int] = 256_000
     num_workers: Optional[int] = None
+    init_embeddings: bool = False
+    model_path: Optional[str] = None
+    initialized_model_dir: Optional[Path] = None
 
 
 @dataclass
@@ -29,6 +33,7 @@ class ExtensionResult:
     added_tokens: int
     total_vocab_size: int
     per_language: Dict[str, int]
+    initialized_model_dir: Optional[Path] = None
 
 
 def extend_tokenizer(
@@ -114,11 +119,13 @@ def extend_tokenizer(
         config.vocab_cap,
     )
     total_size = len(AutoTokenizer.from_pretrained(str(config.output_dir), use_fast=True))
+    initialized_model_dir = _maybe_initialize_model_embeddings(config)
 
     return ExtensionResult(
         added_tokens=tokens_added,
         total_vocab_size=total_size,
         per_language=per_language,
+        initialized_model_dir=initialized_model_dir,
     )
 
 
@@ -241,3 +248,53 @@ def _merge_parts_exist(merge: str, vocab: Dict[str, int]) -> bool:
     left, right = tokens
     result = "".join(tokens)
     return left in vocab and right in vocab and result in vocab
+
+
+def _maybe_initialize_model_embeddings(config: ExtensionConfig) -> Optional[Path]:
+    if not config.init_embeddings:
+        return None
+    if not config.model_path:
+        print("[tokenize_extension] Skipping embedding initialization, model_path not provided.")
+        return None
+
+    target_dir = config.initialized_model_dir or (config.output_dir.parent / "initialized_model")
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    base_tokenizer = AutoTokenizer.from_pretrained(str(config.base_tokenizer_path), use_fast=True)
+    extended_tokenizer = AutoTokenizer.from_pretrained(str(config.output_dir), use_fast=True)
+    model = AutoModelForCausalLM.from_pretrained(str(config.model_path))
+
+    new_vocab_size = len(extended_tokenizer)
+    embedding_layer = model.get_input_embeddings()
+    original_vocab_size = embedding_layer.weight.shape[0]
+
+    if new_vocab_size != original_vocab_size:
+        model.resize_token_embeddings(new_vocab_size)
+        embedding_layer = model.get_input_embeddings()
+
+    output_layer = model.get_output_embeddings()
+
+    base_vocab = base_tokenizer.get_vocab()
+    extended_vocab = extended_tokenizer.get_vocab()
+    new_tokens = [tok for tok in extended_vocab if tok not in base_vocab]
+
+    print(f"[tokenize_extension] Initializing embeddings for {len(new_tokens)} new tokens.")
+    with torch.no_grad():
+        for token in new_tokens:
+            token_id = extended_vocab[token]
+            text = extended_tokenizer.convert_tokens_to_string([token])
+            if not text:
+                continue
+            base_ids = base_tokenizer(text, add_special_tokens=False)["input_ids"]
+            valid_ids = [idx for idx in base_ids if 0 <= idx < original_vocab_size]
+            if not valid_ids:
+                continue
+            mean_vec = embedding_layer.weight[valid_ids].mean(dim=0)
+            embedding_layer.weight[token_id] = mean_vec
+            if output_layer is not None and output_layer.weight.shape[0] == new_vocab_size:
+                output_layer.weight[token_id] = mean_vec
+
+    model.save_pretrained(target_dir)
+    extended_tokenizer.save_pretrained(target_dir / "tokenizer")
+    print(f"[tokenize_extension] Saved initialized model to {target_dir}")
+    return target_dir

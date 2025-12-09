@@ -19,6 +19,9 @@ extension_sample_docs: 10000
 extension_text_key: text
 extension_num_workers: 8
 extension_vocab_cap: 256000
+init_embeddings: true
+init_model_path: meta-llama/Llama-3.1-8B
+init_model_output_dir: /scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier2/initialized_model
 
 compute_extended_coverage: true
 extended_data_dir: /scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/tokenizer_cola_72_tier_samples

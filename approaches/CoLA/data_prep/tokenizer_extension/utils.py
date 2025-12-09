@@ -58,6 +58,17 @@ def load_pipeline_config(config_path: Path):
             text_key=cfg.get("extension_text_key", "text"),
             vocab_cap=cfg.get("extension_vocab_cap", 256000),
             num_workers=cfg.get("extension_num_workers"),
+            init_embeddings=cfg.get("init_embeddings", False),
+            model_path=(
+                cfg.get("init_model_path")
+                or cfg.get("extension_model_path")
+                or str(resolve_path(cfg["extension_base_path"], root))
+            ),
+            initialized_model_dir=(
+                resolve_path(cfg.get("init_model_output_dir"), root)
+                if cfg.get("init_model_output_dir")
+                else (output_dir / "initialized_model")
+            )
         )
         if cfg.get("extend")
         else None
