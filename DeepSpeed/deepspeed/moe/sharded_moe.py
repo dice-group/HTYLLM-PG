@@ -509,10 +509,17 @@ def topanygating_sparse(
     gate_tensor=None,
     expert_mask=None,
     ep_group=None,
+    sigmoid_probs: Tensor = None,
+    l1_lambda: float = 0.01,
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, int]:
     """
     Implements Top-Any Gating using Sparse Operations (index_add).
     Returns indices rather than a dense [T, E, C] mask to save memory.
+    
+    Args:
+        sigmoid_probs: The raw sigmoid probabilities σ(h_{t,e}) from the gate, shape [T, E].
+                       Used for L1 Lasso sparsity penalty.
+        l1_lambda: L1 sparsity penalty coefficient. Higher = more sparse (fewer experts per token).
     """
     gates = logits                                   # [T, E] (binary)
     mask = gates.bool()                              # [T, E] (bool)
@@ -544,31 +551,21 @@ def topanygating_sparse(
         efficiency_loss = gates.float().mean()
         l_aux = diverse_and_simple_gate_loss(gate_tensor, expert_mask) + load_balance_loss + efficiency_loss
     
-    # Add activation penalty to encourage using more experts per token
-    # Penalize if average experts per token drops below target (1.5)
-    if gate_tensor is not None:
-        # 1. Calculate experts used per token directly from the gates (binary mask)
-        # gates is shape [Batch, Num_Experts] with 0.0 or 1.0
-        experts_per_token = gates.sum(dim=1)
-
-        # 2. Define dynamic targets based on total available experts
-        # Example: Encourage usage between ~10% and ~40% of experts.
-        # - min_target:  10% of pool 
-        # - max_target: Cap 'free' usage at 40% (encourages efficiency)
-        target_min = max(1.0, num_experts * 0.1)
-        target_max = max(target_min + 1.0, num_experts * 0.4)
-
-        # 3. Calculate deviation penalty
-        # Penalize if usage < min (Too Little)
-        penalty_too_few = F.relu(target_min - experts_per_token)
-        # Penalize if usage > max (Too Many)
-        penalty_too_many = F.relu(experts_per_token - target_max)
-
-        # 4. Average the penalty across the batch
-        activation_penalty = (penalty_too_few + penalty_too_many).mean()
-
-        # Add to auxiliary loss 
-        l_aux = l_aux + 0.1 * activation_penalty
+    # L1 "Lasso" Sparsity Penalty (SOTA approach from sparse coding literature)
+    # L_sparsity = λ * (1/T) * Σ_t Σ_e σ(h_{t,e}) = λ * mean(sigmoid_probs)
+    # 
+    # Why it works: Applies constant pressure on all gates to close.
+    # The model will only open a gate if the reduction in the main Cross-Entropy loss
+    # outweighs the L1 penalty. This forces the model to be "economical" and naturally
+    # find the optimal k for each specific token:
+    #   - Easy tokens might get k=1
+    #   - Hard tokens might get k=4
+    #
+    # Unlike min/max target approaches, this doesn't artificially constrain the range
+    # but lets the model discover the optimal sparsity level through gradient descent.
+    if sigmoid_probs is not None and l1_lambda > 0:
+        l1_sparsity_loss = l1_lambda * sigmoid_probs.mean()
+        l_aux = l_aux + l1_sparsity_loss
 
 
     # Calculate slots using cumsum on the bool mask
@@ -656,6 +653,7 @@ class GAMoEGateT(torch.nn.Module):
         adaptive_experts: bool = False,
         init_t: float = 1.0,
         gate_backward: str = "sign",  # 'sign' (original) or 'ste'
+        l1_lambda: float = 0.01,  # L1 sparsity penalty coefficient (Lasso)
     ):
         super().__init__()
         self.expert_num = num_global_experts # total number of experts in the model 
@@ -667,6 +665,7 @@ class GAMoEGateT(torch.nn.Module):
         # LF: these are the "embeddings" for the experts - used to compute similarity between tokens and experts
         # self.register_parameter('sim_matrix', torch.nn.Parameter(torch.empty(max_expert_num, model_dim).T.contiguous(), requires_grad=True))
         self.gates = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=True)  # learnable threshold for each expert
+        self.gates.data.fill_(-2.0) # initally negative so probability of selecting an expert is low 
         #self.experts_mask = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=False)  # non-learnable expert-mask
         self.temperature = torch.nn.Parameter(torch.log(torch.full([1], 1.0 / init_t, dtype=torch.float32)), requires_grad=False)
         # for init_t = 1.0 this will make temperature = 0
@@ -678,6 +677,11 @@ class GAMoEGateT(torch.nn.Module):
         self.fp32_gate = fp32_gate
         self.max_expert_num = max_expert_num
         self.adaptive_experts = adaptive_experts
+        
+        # L1 Lasso sparsity penalty coefficient
+        # This applies constant pressure on gates to close; model opens gates only when
+        # the reduction in CE loss outweighs the L1 penalty, naturally finding optimal k per token
+        self.l1_lambda = l1_lambda
 
         # store backward policy
         allowed = {"sign", "ste"}
@@ -705,6 +709,12 @@ class GAMoEGateT(torch.nn.Module):
         raw_logits = torch.sigmoid(torch.matmul(F.normalize(x, dim=1), F.normalize(sim_matrix, dim=0)) * logit_scale)  # similarity scores in [0, 1]
         # logits = logits * self.experts_mask # zero-out expert -> TODO: Currently this is not need as we do not implement dynamic epxert adding and removal
         gates_scaled = torch.sigmoid(self.gates * logit_scale) # put gates into [0 - 1]
+        
+        # Store sigmoid probabilities for L1 Lasso sparsity penalty computation
+        # L_sparsity = λ * (1/T) * Σ_t Σ_e σ(h_{t,e}) = λ * mean(raw_logits)
+        # This provides constant pressure on gates to close; model will only open a gate
+        # if the reduction in CE loss outweighs the L1 penalty
+        self._sigmoid_probs = raw_logits
         
         if self.training:
             # training: thresholded + binarised
@@ -771,11 +781,12 @@ class TopKGate(Module):
                  ep_group: Union[torch.distributed.ProcessGroup, None] = None,
                  top2_2nd_expert_sampling: bool = True,
                  gate_backward: str = "sign",
-                 topany_gating_impl: str = "sparse") -> None:
+                 topany_gating_impl: str = "sparse",
+                 l1_lambda: float = 0.01) -> None:
         super().__init__()
 
         if k == -1:
-            self.wg = GAMoEGateT(model_dim, num_experts, max_expert_num=num_experts,  fp32_gate=True, adaptive_experts=True, init_t=1.0, gate_backward=gate_backward)
+            self.wg = GAMoEGateT(model_dim, num_experts, max_expert_num=num_experts, fp32_gate=True, adaptive_experts=True, init_t=1.0, gate_backward=gate_backward, l1_lambda=l1_lambda)
         else:
             self.wg = torch.nn.Linear(model_dim, num_experts, bias=False) # this is basically the routing network token -> experts 
         self.ep_group = ep_group
@@ -791,6 +802,7 @@ class TopKGate(Module):
         self.use_rts = use_rts
         self.top2_2nd_expert_sampling = top2_2nd_expert_sampling
         self.topany_gating_impl = topany_gating_impl
+        self.l1_lambda = l1_lambda
 
     def _set_ep_group(self, ep_group):
         assert self.ep_group is None, 'Attempting to override an existing ep_group'
@@ -814,10 +826,22 @@ class TopKGate(Module):
             logits = torch.nn.functional.linear(input_fp32, weight=self.wg.weight.float(), bias=None)
 
         if self.k == -1:
+            # Get sigmoid probabilities for L1 sparsity penalty (stored in forward pass)
+            sigmoid_probs = getattr(self.wg, '_sigmoid_probs', None) if self.training else None
+            l1_lambda = self.wg.l1_lambda if self.training else 0.0  # Only apply L1 penalty during training
+            
             if self.topany_gating_impl == "sparse":
-                gate_output = topanygating_sparse(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
-                                         self.min_capacity, top_k, self.wg.sim_matrix, None #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn
-                                         , self.ep_group)
+                gate_output = topanygating_sparse(
+                    logits, 
+                    self.capacity_factor if self.training else self.eval_capacity_factor,
+                    self.min_capacity, 
+                    top_k, 
+                    self.wg.sim_matrix, 
+                    None,  # self.wg.experts_mask as we dont use dynamic adding and removing of expert rn
+                    self.ep_group,
+                    sigmoid_probs=sigmoid_probs,
+                    l1_lambda=l1_lambda,
+                )
             elif self.topany_gating_impl == "opt":
                 gate_output = topanygating_opt(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
                                          self.min_capacity, top_k, self.wg.sim_matrix, None #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn
