@@ -665,7 +665,7 @@ class GAMoEGateT(torch.nn.Module):
         # LF: these are the "embeddings" for the experts - used to compute similarity between tokens and experts
         # self.register_parameter('sim_matrix', torch.nn.Parameter(torch.empty(max_expert_num, model_dim).T.contiguous(), requires_grad=True))
         self.gates = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=True)  # learnable threshold for each expert
-        self.gates.data.fill_(-1.0)  # mild negative bias - combined with L1 penalty encourages sparsity without collapsing to 1 expert 
+        #self.gates.data.fill_(-1.0)  
         #self.experts_mask = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=False)  # non-learnable expert-mask
         self.temperature = torch.nn.Parameter(torch.log(torch.full([1], 1.0 / init_t, dtype=torch.float32)), requires_grad=False)
         # for init_t = 1.0 this will make temperature = 0

@@ -153,7 +153,8 @@ class Transformer(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., moe_layers:List[int]=[], 
                  num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
                  min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1, 
-                 topany_gating_impl='sparse', use_flash_attention=False, use_gradient_checkpointing=True):
+                 topany_gating_impl='sparse', use_flash_attention=False, use_gradient_checkpointing=True,
+                 l1_lambda=0.0005):
         for moe in moe_layers:
             assert moe >= 0, "MOE layers must be greater than or equal to 0"
             assert moe < depth, "MOE layers must be less than the depth of the transformer"
@@ -187,7 +188,7 @@ class Transformer(nn.Module):
                 use_residual=use_residual, # whether to use residual connection in the MoE layer
                 gate_backward=gate_backward,
                 topany_gating_impl=topany_gating_impl, # implementation choice for top-any gating
-                #max_expert_num=4
+                l1_lambda=l1_lambda, # L1 Lasso sparsity penalty coefficient
             )
 
     def forward(self, x, attention_mask=None):
@@ -220,7 +221,8 @@ class MoE_Transformer(nn.Module):
     def __init__(self, vocab_size, max_seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0., moe_layers: List[int] = [],
                  num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
                  min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1, 
-                 topany_gating_impl='sparse', use_flash_attention=False, use_gradient_checkpointing=True):
+                 topany_gating_impl='sparse', use_flash_attention=False, use_gradient_checkpointing=True,
+                 l1_lambda=0.0005):
         super().__init__()
 
         self.token_embedding = nn.Embedding(vocab_size, dim) # lookup table for token_id -> embedding (shape: [vocab_size, dim], 
@@ -235,7 +237,8 @@ class MoE_Transformer(nn.Module):
                                       eval_capacity_factor=eval_capacity_factor, min_capacity=min_capacity,
                                       use_residual=use_residual, gate_backward=gate_backward, ep_size=ep_size,
                                       topany_gating_impl=topany_gating_impl, use_flash_attention=use_flash_attention,
-                                      use_gradient_checkpointing=use_gradient_checkpointing)
+                                      use_gradient_checkpointing=use_gradient_checkpointing,
+                                      l1_lambda=l1_lambda)
 
         self.output_projection = nn.Linear(dim, vocab_size, bias=False)
         # weight tying
@@ -279,7 +282,8 @@ def moe_builder(vocab_size: int = 131072, max_seq_len: int = 2048, dim=768, dept
                 dim_head=64, dropout=0., emb_dropout=0., moe_layers=[0, 3],
                 num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0,
                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1,
-                topany_gating_impl='sparse', use_flash_attention=False, use_gradient_checkpointing=True):
+                topany_gating_impl='sparse', use_flash_attention=False, use_gradient_checkpointing=True,
+                l1_lambda=0.0005):
     model = MoE_Transformer(
         vocab_size=vocab_size,
         max_seq_len=max_seq_len,
@@ -301,7 +305,8 @@ def moe_builder(vocab_size: int = 131072, max_seq_len: int = 2048, dim=768, dept
         ep_size=ep_size,
         topany_gating_impl=topany_gating_impl,
         use_flash_attention=use_flash_attention,
-        use_gradient_checkpointing=use_gradient_checkpointing
+        use_gradient_checkpointing=use_gradient_checkpointing,
+        l1_lambda=l1_lambda
     )
 
     return model
