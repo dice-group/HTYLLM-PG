@@ -34,7 +34,7 @@ class MoE(nn.Module):
         enable_expert_tensor_parallelism (bool, optional): default=False, whether to use tensor parallelism for experts
         top2_2nd_expert_sampling (bool, optional): default=True, whether to perform sampling for 2nd expert
         topany_gating_impl (str, optional): default='sparse', implementation choice for top-any gating, valid options are 'opt' or 'sparse'.
-        l1_lambda (float, optional): default=0.0001, L1 Lasso sparsity penalty coefficient for adaptive gating.
+        l1_lambda (float, optional): default=0.0005, L1 Lasso sparsity penalty coefficient for adaptive gating.
             Higher values = more sparse (fewer experts per token). Only used when k=-1 (top-any gating).
             This applies constant pressure on gates to close; the model will only open a gate if the 
             reduction in CE loss outweighs the penalty, naturally finding optimal k per token.
@@ -58,7 +58,7 @@ class MoE(nn.Module):
                  top2_2nd_expert_sampling: bool = True,
                  gate_backward: str = "sign",
                  topany_gating_impl: str = "sparse",
-                 l1_lambda: float = 0.0001) -> None:
+                 l1_lambda: float = 0.0005) -> None:
 
         super(MoE, self).__init__()
 

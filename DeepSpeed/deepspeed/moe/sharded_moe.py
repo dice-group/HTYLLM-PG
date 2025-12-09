@@ -510,7 +510,7 @@ def topanygating_sparse(
     expert_mask=None,
     ep_group=None,
     sigmoid_probs: Tensor = None,
-    l1_lambda: float = 0.0001,
+    l1_lambda: float = 0.0005,
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, int]:
     """
     Implements Top-Any Gating using Sparse Operations (index_add).
@@ -653,7 +653,7 @@ class GAMoEGateT(torch.nn.Module):
         adaptive_experts: bool = False,
         init_t: float = 1.0,
         gate_backward: str = "sign",  # 'sign' (original) or 'ste'
-        l1_lambda: float = 0.0001,  # L1 sparsity penalty coefficient (Lasso) - lower = more experts, higher = fewer experts
+        l1_lambda: float = 0.0005,  # L1 sparsity penalty coefficient (Lasso) - lower = more experts, higher = fewer experts
     ):
         super().__init__()
         self.expert_num = num_global_experts # total number of experts in the model 
@@ -782,7 +782,7 @@ class TopKGate(Module):
                  top2_2nd_expert_sampling: bool = True,
                  gate_backward: str = "sign",
                  topany_gating_impl: str = "sparse",
-                 l1_lambda: float = 0.0001) -> None:
+                 l1_lambda: float = 0.0005) -> None:
         super().__init__()
 
         if k == -1:
