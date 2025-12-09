@@ -509,7 +509,7 @@ def topanygating_sparse(
     gate_tensor=None,
     expert_mask=None,
     ep_group=None,
-    sigmoid_probs: Tensor = None,
+    gate_thresholds: Tensor = None,
     l1_lambda: float = 0.0005,
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, int]:
     """
@@ -517,8 +517,8 @@ def topanygating_sparse(
     Returns indices rather than a dense [T, E, C] mask to save memory.
     
     Args:
-        sigmoid_probs: The raw sigmoid probabilities σ(h_{t,e}) from the gate, shape [T, E].
-                       Used for L1 Lasso sparsity penalty.
+        gate_thresholds: The learnable gate threshold parameters (before sigmoid), shape [E].
+                         Used for L1 sparsity penalty on sigmoid(gate_thresholds).
         l1_lambda: L1 sparsity penalty coefficient. Higher = more sparse (fewer experts per token).
     """
     gates = logits                                   # [T, E] (binary)
@@ -551,20 +551,22 @@ def topanygating_sparse(
         efficiency_loss = gates.float().mean()
         l_aux = diverse_and_simple_gate_loss(gate_tensor, expert_mask) + load_balance_loss + efficiency_loss
     
-    # L1 "Lasso" Sparsity Penalty (SOTA approach from sparse coding literature)
-    # L_sparsity = λ * (1/T) * Σ_t Σ_e σ(h_{t,e}) = λ * mean(sigmoid_probs)
+    # L1 Sparsity Penalty on Gate Thresholds
+    # L_sparsity = λ * mean(σ(gate_thresholds))
     # 
-    # Why it works: Applies constant pressure on all gates to close.
-    # The model will only open a gate if the reduction in the main Cross-Entropy loss
-    # outweighs the L1 penalty. This forces the model to be "economical" and naturally
-    # find the optimal k for each specific token:
-    #   - Easy tokens might get k=1
-    #   - Hard tokens might get k=4
+    # Why it works: Directly applies pressure on gate thresholds to rise (become more selective).
+    # Higher sigmoid(gate_thresholds) = higher activation threshold = fewer experts per token.
+    # 
+    # Benefits over penalizing raw similarity scores:
+    #   1. Direct effect on sparsity (thresholds control activation, not similarities)
+    #   2. No gradient leakage to transformer representations
+    #   3. Cleaner optimization landscape - gates learn independently from sim_matrix
+    #   4. Doesn't penalize useful high-similarity expert-token pairs
     #
-    # Unlike min/max target approaches, this doesn't artificially constrain the range
-    # but lets the model discover the optimal sparsity level through gradient descent.
-    if sigmoid_probs is not None and l1_lambda > 0:
-        l1_sparsity_loss = l1_lambda * sigmoid_probs.mean()
+    # The model will lower a gate threshold only if the reduction in CE loss
+    # from activating that expert outweighs the L1 penalty.
+    if gate_thresholds is not None and l1_lambda > 0:
+        l1_sparsity_loss = l1_lambda * torch.sigmoid(gate_thresholds).mean()
         l_aux = l_aux + l1_sparsity_loss
 
 
@@ -710,11 +712,8 @@ class GAMoEGateT(torch.nn.Module):
         # logits = logits * self.experts_mask # zero-out expert -> TODO: Currently this is not need as we do not implement dynamic epxert adding and removal
         gates_scaled = torch.sigmoid(self.gates * logit_scale) # put gates into [0 - 1]
         
-        # Store sigmoid probabilities for L1 Lasso sparsity penalty computation
-        # L_sparsity = λ * (1/T) * Σ_t Σ_e σ(h_{t,e}) = λ * mean(raw_logits)
-        # This provides constant pressure on gates to close; model will only open a gate
-        # if the reduction in CE loss outweighs the L1 penalty
-        self._sigmoid_probs = raw_logits
+        # Note: L1 sparsity penalty is now applied directly on self.gates in topanygating_sparse()
+        # This is more direct (targets thresholds) and avoids gradient leakage to representations
         
         if self.training:
             # training: thresholded + binarised
@@ -826,8 +825,8 @@ class TopKGate(Module):
             logits = torch.nn.functional.linear(input_fp32, weight=self.wg.weight.float(), bias=None)
 
         if self.k == -1:
-            # Get sigmoid probabilities for L1 sparsity penalty (stored in forward pass)
-            sigmoid_probs = getattr(self.wg, '_sigmoid_probs', None) if self.training else None
+            # Get gate thresholds for L1 sparsity penalty (direct pressure on gates to rise)
+            gate_thresholds = self.wg.gates if self.training else None
             l1_lambda = self.wg.l1_lambda if self.training else 0.0  # Only apply L1 penalty during training
             
             if self.topany_gating_impl == "sparse":
@@ -839,7 +838,7 @@ class TopKGate(Module):
                     self.wg.sim_matrix, 
                     None,  # self.wg.experts_mask as we dont use dynamic adding and removing of expert rn
                     self.ep_group,
-                    sigmoid_probs=sigmoid_probs,
+                    gate_thresholds=gate_thresholds,
                     l1_lambda=l1_lambda,
                 )
             elif self.topany_gating_impl == "opt":
