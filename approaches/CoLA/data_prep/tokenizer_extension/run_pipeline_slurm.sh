@@ -9,14 +9,14 @@
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(realpath "${SCRIPT_DIR}/..")"
 LOG_DIR="${SCRIPT_DIR}/logs/tokenize_extension"
 mkdir -p "${LOG_DIR}"
 
-PYTHONPATH="${SCRIPT_DIR}/..:${PYTHONPATH:-}"
-export PYTHONPATH
+export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH:-}"
+export TOKENIZER_EXTENSION_CONFIG="${1:-${TOKENIZER_EXTENSION_CONFIG:-}}"
 
-DEFAULT_CONFIG="${SCRIPT_DIR}/configs/cola_tier1_12langs.yaml"
-CONFIG_PATH="${1:-${CONFIG_PATH:-${TOKENIZER_EXTENSION_CONFIG:-${DEFAULT_CONFIG}}}}"
+CONFIG_PATH="${TOKENIZER_EXTENSION_CONFIG:-${SCRIPT_DIR}/configs/cola_tier1_12langs.yaml}"
 
 if [[ ! -f "${CONFIG_PATH}" ]]; then
   echo "[run_pipeline_slurm] Config not found: ${CONFIG_PATH}" >&2
@@ -24,4 +24,5 @@ if [[ ! -f "${CONFIG_PATH}" ]]; then
 fi
 
 echo "[run_pipeline_slurm] Launching tokenizer extension pipeline with config ${CONFIG_PATH}"
+cd "${PROJECT_ROOT}"
 srun python -m tokenizer_extension.pipeline --config "${CONFIG_PATH}"

@@ -31,13 +31,11 @@ for entry in "${CONFIGS[@]}"; do
   fi
 
   job_name="tokenizer_ext_${tier}"
-  out_log="${LOG_ROOT}/${tier}_%j.out"
-  err_log="${LOG_ROOT}/${tier}_%j.err"
+  log_path="${LOG_ROOT}/${tier}_%j.log"
   echo "[run_all_tokenizer_extensions] Submitting ${tier} job with config ${config_path}"
   sbatch \
     --chdir "${SCRIPT_DIR}" \
     --job-name "${job_name}" \
-    --output "${out_log}" \
-    --error "${err_log}" \
+    --output "${log_path}" \
     "${SLURM_SCRIPT}" "${config_path}"
 done
