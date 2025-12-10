@@ -488,10 +488,12 @@ class HydraLoraLayer(BaseTunerLayer):
                     target_tensor[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
                 ).squeeze(-1)
                 valid_tokens = target_probs.numel()
+                target_entropy = float((-torch.log(target_probs + 1e-8)).mean().item())
                 metrics.update(
                     {
                         f"{prefix}_target_hit_rate": float(target_hits.mean().item()),
                         f"{prefix}_target_prob_mean": float(target_probs.mean().item()),
+                        f"{prefix}_target_neglogp": target_entropy,
                         f"{prefix}_target_token_frac": float(
                             valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
                         ),
@@ -503,6 +505,7 @@ class HydraLoraLayer(BaseTunerLayer):
                 {
                     f"{prefix}_target_hit_rate": 0.0,
                     f"{prefix}_target_prob_mean": 0.0,
+                    f"{prefix}_target_neglogp": 0.0,
                     f"{prefix}_target_token_frac": 0.0,
                 }
             )
@@ -515,6 +518,7 @@ class HydraLoraLayer(BaseTunerLayer):
                 {
                     f"{prefix}_target_hit_rate": 0.0,
                     f"{prefix}_target_prob_mean": 0.0,
+                    f"{prefix}_target_neglogp": 0.0,
                     f"{prefix}_target_token_frac": 0.0,
                 }
             )
@@ -694,10 +698,20 @@ class Linear(nn.Module, HydraLoraLayer):
                             head_entropy = float(
                                 (-route_weight * torch.log(route_weight + 1e-8)).sum(dim=-1).mean().item()
                             )
+                            total_head_assign = head_counts.sum()
+                            if total_head_assign > 0:
+                                head_frac = head_counts / total_head_assign
+                                head_max = float(head_frac.max().item())
+                                head_min = float(head_frac.min().item())
+                            else:
+                                head_max = 0.0
+                                head_min = 0.0
                             metrics = {
                                 "head_load_cv": head_cv,
                                 "head_active_frac": head_active,
                                 "head_router_entropy": head_entropy,
+                                "head_load_max_frac": head_max,
+                                "head_load_min_frac": head_min,
                             }
                             metrics_weight = float(token_count)
                             metrics_weight = self._append_target_metrics(
@@ -761,6 +775,14 @@ class Linear(nn.Module, HydraLoraLayer):
                             "expert_router_entropy": entropy,
                             "expert_topk_weight_mean": weight_mean,
                         }
+                        total_assign = counts.sum()
+                        if total_assign > 0:
+                            frac = counts / total_assign
+                            metrics["expert_load_max_frac"] = float(frac.max().item())
+                            metrics["expert_load_min_frac"] = float(frac.min().item())
+                        else:
+                            metrics["expert_load_max_frac"] = 0.0
+                            metrics["expert_load_min_frac"] = 0.0
                         metrics_weight = float(token_count)
                         metrics_weight = self._append_target_metrics(
                             metrics=metrics,

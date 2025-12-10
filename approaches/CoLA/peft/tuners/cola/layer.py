@@ -699,10 +699,12 @@ class ColaLayer(BaseTunerLayer):
                     language_targets[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
                 ).squeeze(-1)
                 valid_tokens = target_probs.numel()
+                target_entropy = float((-torch.log(target_probs + 1e-8)).mean().item())
                 metrics.update(
                     {
                         "language_target_hit_rate": float(target_hits.mean().item()),
                         "language_target_prob_mean": float(target_probs.mean().item()),
+                        "language_target_neglogp": target_entropy,
                         "language_target_token_frac": float(
                             valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
                         ),
@@ -714,6 +716,7 @@ class ColaLayer(BaseTunerLayer):
                 {
                     "language_target_hit_rate": 0.0,
                     "language_target_prob_mean": 0.0,
+                    "language_target_neglogp": 0.0,
                     "language_target_token_frac": 0.0,
                 }
             )
@@ -726,6 +729,7 @@ class ColaLayer(BaseTunerLayer):
                 {
                     "language_target_hit_rate": 0.0,
                     "language_target_prob_mean": 0.0,
+                    "language_target_neglogp": 0.0,
                     "language_target_token_frac": 0.0,
                 }
             )
@@ -943,11 +947,22 @@ class Linear(nn.Module, ColaLayer):
                         entropy = float((-router_probs * torch.log(router_probs + 1e-8)).sum(dim=-1).mean().item())
                         weight_mean = float(weights.mean().item())
 
+                        total_assign = counts.sum()
+                        if total_assign > 0:
+                            load_frac = counts / total_assign
+                            max_frac = float(load_frac.max().item())
+                            min_frac = float(load_frac.min().item())
+                        else:
+                            max_frac = 0.0
+                            min_frac = 0.0
+
                         metrics = {
                             "expert_load_cv": load_cv,
                             "active_expert_frac": active_frac,
                             "router_entropy": entropy,
                             "topk_weight_mean": weight_mean,
+                            "expert_load_max_frac": max_frac,
+                            "expert_load_min_frac": min_frac,
                         }
                         metrics_weight = float(token_count)
                         metrics_weight = self._append_language_target_metrics(
