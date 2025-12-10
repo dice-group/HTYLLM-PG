@@ -131,6 +131,9 @@ class ColaLayer(BaseTunerLayer):
         self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
         self.language_column = kwargs.pop("language_column", None)
         self.cola_strategy = kwargs.pop("cola_strategy", "fully")
+        self.language_guidance_scope = kwargs.pop("language_guidance_scope", "all")
+        if self.language_guidance_scope not in {"all", "expert_only", "none"}:
+            raise ValueError(f"Unknown language_guidance_scope '{self.language_guidance_scope}'.")
         if self.cola_strategy not in VALID_COLA_STRATEGIES:
             raise ValueError(f"Unknown CoLA collaboration strategy '{self.cola_strategy}'.")
         self._language_to_idx = {lang: idx for idx, lang in enumerate(self.language_list)} if self.language_list else {}
@@ -655,7 +658,7 @@ class ColaLayer(BaseTunerLayer):
         return values
 
     def _language_expert_targets(self, language_ids: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
-        if language_ids is None or self.language_id_to_expert.numel() == 0:
+        if (language_ids is None or self.language_id_to_expert.numel() == 0 or self.language_guidance_scope == "none"):
             return None
         if not torch.is_tensor(language_ids):
             return None
@@ -926,7 +929,8 @@ class Linear(nn.Module, ColaLayer):
                 router_inp = x.to(router_dtype)
                 logits = self.router(router_inp)
                 language_targets = self._language_expert_targets(language_ids)
-                self._cache_router_state(logits, language_ids, language_targets)
+                if self.language_guidance_scope != "none":
+                    self._cache_router_state(logits, language_ids, language_targets)
                 logits = self._apply_language_bias(logits, language_targets)
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
                 weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)

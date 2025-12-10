@@ -447,6 +447,12 @@ class FinetuningArguments(
         default="learned",
         metadata={"help": "Language routing mode: 'learned'=no intervention, 'bias'=fixed logit bonus, 'hard'=one-hot."},
     )
+    language_guidance_scope: Literal["all", "expert_only", "none"] = field(
+        default="all",
+        metadata={
+            "help": "Which routing stages receive language guidance: 'all'=experts+B heads, 'expert_only'=only experts, 'none'=no metadata."
+        },
+    )
     language_prior_weight: float = field(
         default=0.0,
         metadata={"help": "Weight γ for the language-prior auxiliary loss. Set to 0 to disable."},

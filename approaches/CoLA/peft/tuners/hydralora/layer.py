@@ -122,6 +122,9 @@ class HydraLoraLayer(BaseTunerLayer):
         self.language_router_mode = kwargs.pop("language_router_mode", "learned")
         self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
         self.language_column = kwargs.pop("language_column", None)
+        self.language_guidance_scope = kwargs.pop("language_guidance_scope", "all")
+        if self.language_guidance_scope not in {"all", "expert_only", "none"}:
+            raise ValueError(f"Unknown language_guidance_scope '{self.language_guidance_scope}'.")
         self._language_to_idx = {lang: idx for idx, lang in enumerate(self.language_list)} if self.language_list else {}
         if self.language_list:
             if self.language_to_family_ids is not None:
@@ -429,7 +432,7 @@ class HydraLoraLayer(BaseTunerLayer):
     def _language_head_targets(
             self, language_ids: Optional[torch.Tensor], adapter_name: str
     ) -> Optional[torch.Tensor]:
-        if language_ids is None or self.language_list is None:
+        if (language_ids is None or self.language_list is None or self.language_guidance_scope != "all"):
             return None
         head_count = self.lora_num.get(adapter_name)
         if not head_count:
@@ -442,7 +445,7 @@ class HydraLoraLayer(BaseTunerLayer):
         return head_ids
 
     def _language_expert_targets(self, language_ids: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
-        if language_ids is None or self.language_id_to_expert.numel() == 0:
+        if (language_ids is None or self.language_id_to_expert.numel() == 0 or self.language_guidance_scope == "none"):
             return None
         mapping = self.language_id_to_expert.to(language_ids.device)
         expert_ids = torch.full_like(language_ids, LANGUAGE_PAD_ID)
@@ -671,10 +674,10 @@ class Linear(nn.Module, HydraLoraLayer):
 
                     x = x.to(lora_A.weight.dtype)
                     route_logits = lora_route(x.to(torch.float32)).to(result.dtype)
-                    head_targets = self._language_head_targets(language_ids, active_adapter)
-                    self._cache_router_state(
-                        route_logits, language_ids, f"hydra_head_{active_adapter}", head_targets
-                    )
+                    use_head_guidance = self.language_guidance_scope == "all"
+                    head_targets = (self._language_head_targets(language_ids, active_adapter) if use_head_guidance else None)
+                    if use_head_guidance:
+                        self._cache_router_state(route_logits, language_ids, f"hydra_head_{active_adapter}", head_targets)
                     route_logits = self._apply_language_bias_heads(route_logits, head_targets)
                     route_weight = nn.functional.softmax(route_logits, dim=-1, dtype=torch.float32).to(result.dtype)
                     route_weight = self._enforce_language_heads(route_weight, head_targets)
@@ -722,7 +725,7 @@ class Linear(nn.Module, HydraLoraLayer):
                                 selection=head_assign.squeeze(-1),
                                 probs=route_weight,
                                 language_ids=language_ids,
-                                expect_targets=self.language_list is not None,
+                                expect_targets=use_head_guidance and self.language_list is not None,
                             )
                             record_hydralora_metrics(metrics, weight=metrics_weight)
 
@@ -735,8 +738,10 @@ class Linear(nn.Module, HydraLoraLayer):
                 router_dtype = getattr(self.router.weight, "dtype", torch.float32)
                 logits = self.router(x.to(router_dtype)).to(x.dtype)
                 
-                expert_targets = self._language_expert_targets(language_ids)
-                self._cache_router_state(logits, language_ids, "hydra_expert", expert_targets)
+                use_expert_guidance = self.language_guidance_scope in {"all", "expert_only"}
+                expert_targets = (self._language_expert_targets(language_ids) if use_expert_guidance else None)
+                if use_expert_guidance:
+                    self._cache_router_state(logits, language_ids, "hydra_expert", expert_targets)
                 logits = self._apply_language_bias_experts(logits, expert_targets)
                 
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
@@ -792,7 +797,7 @@ class Linear(nn.Module, HydraLoraLayer):
                             selection=topi[:, :, 0],
                             probs=router_probs,
                             language_ids=language_ids,
-                            expect_targets=self.language_list is not None,
+                            expect_targets=use_expert_guidance and self.language_list is not None,
                         )
                         record_hydralora_metrics(metrics, weight=metrics_weight)
 

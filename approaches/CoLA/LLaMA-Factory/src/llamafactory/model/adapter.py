@@ -414,6 +414,7 @@ def _setup_cola_tuning(
                 "language_router_mode": finetuning_args.language_router_mode,
                 "language_prior_weight": finetuning_args.language_prior_weight,
                 "language_bias_value": finetuning_args.language_bias_value,
+                "language_guidance_scope": finetuning_args.language_guidance_scope,
             }
         )
         init_lora_weights = finetuning_args.cola_init_lora_weights
@@ -811,6 +812,7 @@ def _setup_hydralora_tuning(
                 "language_router_mode": finetuning_args.language_router_mode,
                 "language_prior_weight": finetuning_args.language_prior_weight,
                 "language_bias_value": finetuning_args.language_bias_value,
+                "language_guidance_scope": finetuning_args.language_guidance_scope,
             }
         )
 

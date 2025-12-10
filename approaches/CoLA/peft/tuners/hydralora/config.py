@@ -176,6 +176,12 @@ class HydraLoraConfig(PeftConfig):
         default=5.0,
         metadata={"help": "Additive logit bonus applied in 'bias' routing mode."},
     )
+    language_guidance_scope: Literal["all", "expert_only", "none"] = field(
+        default="all",
+        metadata={
+            "help": "Which routing stages are guided by language metadata: 'all'=experts+heads, 'expert_only', or 'none'."
+        },
+    )
     language_list: Optional[List[str]] = field(
         default=None,
         metadata={"help": "Sorted language ids used for language-prior routing."},

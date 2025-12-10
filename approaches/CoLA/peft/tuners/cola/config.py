@@ -182,6 +182,10 @@ class ColaConfig(PeftConfig):
             "help": "Additive logit bias applied in 'bias' routing mode."
         },
     )
+    language_guidance_scope: Literal["all", "expert_only", "none"] = field(
+        default="all",
+        metadata={"help": "Whether language metadata guides all routing stages, only expert selection, or none."},
+    )
     language_list: Optional[List[str]] = field(
         default=None,
         metadata={"help": "Sorted list of languages used for language-prior routing."},
