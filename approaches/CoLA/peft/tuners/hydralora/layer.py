@@ -123,11 +123,14 @@ class HydraLoraLayer(BaseTunerLayer):
         self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
         self.language_column = kwargs.pop("language_column", None)
         self._language_to_idx = {lang: idx for idx, lang in enumerate(self.language_list)} if self.language_list else {}
-        language_expert_mapping = (
-            torch.arange(len(self.language_list), dtype=torch.long) if self.language_list else torch.empty(0,
-                                                                                                           dtype=torch.long)
-        )
-        self.register_buffer("language_id_to_expert", language_expert_mapping, persistent=False)
+        if self.language_list:
+            if self.language_to_family_ids is not None:
+                expert_mapping = torch.tensor(self.language_to_family_ids, dtype=torch.long)
+            else:
+                expert_mapping = torch.arange(len(self.language_list), dtype=torch.long)
+        else:
+            expert_mapping = torch.empty(0, dtype=torch.long)
+        self.register_buffer("language_id_to_expert", expert_mapping, persistent=False)
         family_mapping = (
             torch.tensor(self.language_to_family_ids, dtype=torch.long)
             if self.language_to_family_ids is not None
@@ -136,10 +139,12 @@ class HydraLoraLayer(BaseTunerLayer):
         self.register_buffer("language_id_to_family", family_mapping, persistent=False)
 
         if self.use_hydralora_experts:
-            if self.language_list:
+            if self.family_list:
+                self.num_experts = len(self.family_list)
+            elif self.language_list:
                 self.num_experts = len(self.language_list)
-                if self.top_k > self.num_experts:
-                    self.top_k = self.num_experts
+            if self.top_k > self.num_experts:
+                self.top_k = self.num_experts
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
             self._move_router_to_device_of_base_layer()
             if self.hydralora_debug:

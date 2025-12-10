@@ -136,11 +136,19 @@ class ColaLayer(BaseTunerLayer):
         self._language_to_idx = {lang: idx for idx, lang in enumerate(self.language_list)} if self.language_list else {}
         self._family_to_idx = {fam: idx for idx, fam in enumerate(self.family_list)} if self.family_list else {}
         self._family_a_modules: dict[int, nn.ModuleList] = {}
+        self._family_members: dict[int, list[int]] = {}
         self._expert_language_idx: dict[str, Optional[int]] = {}
-        language_mapping = (
-            torch.arange(len(self.language_list), dtype=torch.long) if self.language_list else torch.empty(0, dtype=torch.long)
-        )
-        self.register_buffer("language_id_to_expert", language_mapping, persistent=False)
+        if self.language_list and self.language_to_family_ids is not None:
+            for lang_idx, fam_idx in enumerate(self.language_to_family_ids):
+                self._family_members.setdefault(int(fam_idx), []).append(lang_idx)
+        if self.language_list:
+            if self.language_to_family_ids is not None:
+                expert_mapping = torch.tensor(self.language_to_family_ids, dtype=torch.long)
+            else:
+                expert_mapping = torch.arange(len(self.language_list), dtype=torch.long)
+        else:
+            expert_mapping = torch.empty(0, dtype=torch.long)
+        self.register_buffer("language_id_to_expert", expert_mapping, persistent=False)
         family_mapping = (
             torch.tensor(self.language_to_family_ids, dtype=torch.long)
             if self.language_to_family_ids is not None
@@ -149,10 +157,12 @@ class ColaLayer(BaseTunerLayer):
         self.register_buffer("language_id_to_family", family_mapping, persistent=False)
 
         if self.use_cola_experts:
-            if self.language_list:
+            if self.family_list:
+                self.num_experts = len(self.family_list)
+            elif self.language_list:
                 self.num_experts = len(self.language_list)
-                if self.top_k > self.num_experts:
-                    self.top_k = self.num_experts
+            if self.top_k > self.num_experts:
+                self.top_k = self.num_experts
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
             self._move_router_to_device_of_base_layer()
         self._missing_language_warning_emitted = False
@@ -228,16 +238,20 @@ class ColaLayer(BaseTunerLayer):
             adapter_names = []
 
             language_order = self.language_list or []
+            use_family_experts = bool(self.family_list)
             for e in range(self.num_experts):
                 name = f"expert_{e}"
                 adapter_names.append(name)
                 self._cola_expert_parent[name] = adapter_name
-                language_idx = None
-                family_idx = None
-                if self.language_list and e < len(language_order):
-                    language_idx = e
-                    if self.language_to_family_ids is not None and language_idx < len(self.language_to_family_ids):
-                        family_idx = self.language_to_family_ids[language_idx]
+                if use_family_experts:
+                    language_idx = None
+                    family_idx = e
+                else:
+                    language_idx = e if self.language_list and e < len(language_order) else None
+                    family_idx = None
+                    if language_idx is not None and self.language_to_family_ids is not None:
+                        if language_idx < len(self.language_to_family_ids):
+                            family_idx = self.language_to_family_ids[language_idx]
                 self._expert_language_idx[name] = language_idx
                 expert_num_A = self._expert_num_A[e] if self._expert_num_A else num_A
                 expert_num_B = self._expert_num_B[e] if self._expert_num_B else num_B
