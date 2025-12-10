@@ -204,6 +204,7 @@ class HydraLoraModel(BaseTuner):
             "hydralora_num_experts": lora_config.num_experts,
             "hydralora_top_k": lora_config.top_k,
             "hydralora_debug": getattr(lora_config, "hydralora_debug", False),
+            "hydralora_expert_lora_nums": lora_config.expert_lora_nums,
             "language_list": lora_config.language_list,
             "family_list": lora_config.family_list,
             "language_to_family_ids": lora_config.language_to_family_ids,

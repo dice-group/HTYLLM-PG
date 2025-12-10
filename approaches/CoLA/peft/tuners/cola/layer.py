@@ -85,6 +85,8 @@ class ColaLayer(BaseTunerLayer):
         self._caches: dict[str, Any] = {}
         self.ephemeral_gpu_offload: bool = ephemeral_gpu_offload
         setattr(self, "_active_adapters", [])
+        expert_num_A_override = kwargs.pop("expert_num_A", None)
+        expert_num_B_override = kwargs.pop("expert_num_B", None)
         self.kwargs = kwargs
 
         base_layer = self.get_base_layer()
@@ -154,6 +156,8 @@ class ColaLayer(BaseTunerLayer):
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
             self._move_router_to_device_of_base_layer()
         self._missing_language_warning_emitted = False
+        self._expert_num_A = self._normalize_expert_counts(expert_num_A_override, "expert_num_A")
+        self._expert_num_B = self._normalize_expert_counts(expert_num_B_override, "expert_num_B")
 
 
     def _fsdp_summon_is_active(self) -> bool:
@@ -235,17 +239,23 @@ class ColaLayer(BaseTunerLayer):
                     if self.language_to_family_ids is not None and language_idx < len(self.language_to_family_ids):
                         family_idx = self.language_to_family_ids[language_idx]
                 self._expert_language_idx[name] = language_idx
+                expert_num_A = self._expert_num_A[e] if self._expert_num_A else num_A
+                expert_num_B = self._expert_num_B[e] if self._expert_num_B else num_B
 
                 self.r[name] = r
                 self.lora_alpha[name] = lora_alpha
-                self.num_A[name] = num_A
-                self.num_B[name] = num_B
+                self.num_A[name] = expert_num_A
+                self.num_B[name] = expert_num_B
                 self.lora_dropout[name] = nn.Dropout(lora_dropout) if lora_dropout > 0 else nn.Identity()
                 if family_idx is not None:
                     shared = self._family_a_modules.get(family_idx)
                     if shared is None:
-                        shared = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(num_A)])
+                        shared = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(expert_num_A)])
                         self._family_a_modules[family_idx] = shared
+                    elif len(shared) != expert_num_A:
+                        raise ValueError(
+                            f"Family {family_idx} expects {len(shared)} shared A stacks, but expert {e} requested {expert_num_A}."
+                        )
                     module_list = nn.ModuleList()
                     for shared_layer in shared:
                         wrapper = nn.Linear(self.in_features, r, bias=False)
@@ -253,8 +263,8 @@ class ColaLayer(BaseTunerLayer):
                         module_list.append(wrapper)
                     self.lora_A[name] = module_list
                 else:
-                    self.lora_A[name] = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(num_A)])
-                self.lora_B[name] = nn.ModuleList([nn.Linear(r, self.out_features, bias=False) for _ in range(num_B)])
+                    self.lora_A[name] = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(expert_num_A)])
+                self.lora_B[name] = nn.ModuleList([nn.Linear(r, self.out_features, bias=False) for _ in range(expert_num_B)])
                 self.scaling[name] = lora_alpha / r
 
                 self._move_adapter_to_device_of_base_layer(name)
@@ -617,6 +627,18 @@ class ColaLayer(BaseTunerLayer):
                 enabled=self.cola_debug,
             )
         debug("=" * 60, enabled=self.cola_debug)
+
+    def _normalize_expert_counts(self, counts: Optional[list[int]], label: str) -> Optional[list[int]]:
+        if not self.use_cola_experts or counts is None:
+            return None
+        values = list(counts)
+        if not values:
+            return None
+        if len(values) != self.num_experts:
+            raise ValueError(f"{label} must provide {self.num_experts} entries, got {len(values)}.")
+        if any(v <= 0 for v in values):
+            raise ValueError(f"{label} entries must be positive integers.")
+        return values
 
     def _language_expert_targets(self, language_ids: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
         if language_ids is None or self.language_id_to_expert.numel() == 0:

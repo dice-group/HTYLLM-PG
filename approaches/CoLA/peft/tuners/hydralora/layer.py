@@ -74,6 +74,7 @@ class HydraLoraLayer(BaseTunerLayer):
         self._caches: dict[str, Any] = {}
         self.ephemeral_gpu_offload: bool = ephemeral_gpu_offload
         setattr(self, "_active_adapters", [])
+        expert_lora_nums_override = kwargs.pop("hydralora_expert_lora_nums", None)
         self.kwargs = kwargs
 
         base_layer = self.get_base_layer()
@@ -147,6 +148,7 @@ class HydraLoraLayer(BaseTunerLayer):
                     f"(in={self.in_features}, experts={self.num_experts}, top_k={self.top_k})"
                 )
         self._missing_language_warning_emitted: set[str] = set()
+        self._expert_lora_nums = self._normalize_expert_counts(expert_lora_nums_override)
 
     def update_layer(
             self, adapter_name, r, lora_alpha, lora_dropout, lora_num, init_lora_weights
@@ -161,16 +163,17 @@ class HydraLoraLayer(BaseTunerLayer):
                 adapter_children.append(name)
                 self._hydra_expert_parent[name] = adapter_name
 
+                expert_lora_num = self._expert_lora_nums[e] if self._expert_lora_nums else lora_num
                 self.r[name] = r
                 self.lora_alpha[name] = lora_alpha
-                self.lora_num[name] = lora_num
+                self.lora_num[name] = expert_lora_num
                 self.lora_dropout[name] = nn.Dropout(lora_dropout) if lora_dropout > 0 else nn.Identity()
                 # Core Hydra concept: one A, multiple B per expert
                 self.lora_A[name] = nn.Linear(self.in_features, r, bias=False)
                 self.lora_B[name] = nn.ModuleList(
-                    [nn.Linear(r, self.out_features, bias=False) for _ in range(lora_num)]
+                    [nn.Linear(r, self.out_features, bias=False) for _ in range(expert_lora_num)]
                 )
-                self.lora_route[name] = nn.Linear(self.in_features, lora_num, bias=False)
+                self.lora_route[name] = nn.Linear(self.in_features, expert_lora_num, bias=False)
                 self.scaling[name] = lora_alpha / r
 
                 self.reset_lora_parameters(name, init_lora_weights)
@@ -399,12 +402,24 @@ class HydraLoraLayer(BaseTunerLayer):
                 f"route.shape={tuple(route.weight.shape)}, "
                 f"scale={scale:.4f}"
             )
-            debug(
-                f"    stats: A(mean={a_mean:.4e}, std={a_std:.4e}), "
-                f"B(mean={b_mean:.4e}, std={b_std:.4e}), "
-                f"route(mean={route_mean:.4e}, std={route_std:.4e})"
-            )
+        debug(
+            f"    stats: A(mean={a_mean:.4e}, std={a_std:.4e}), "
+            f"B(mean={b_mean:.4e}, std={b_std:.4e}), "
+            f"route(mean={route_mean:.4e}, std={route_std:.4e})"
+        )
         debug("[HYDRA DEBUG] Expert verification complete\n" + "=" * 60)
+
+    def _normalize_expert_counts(self, counts: Optional[list[int]]) -> Optional[list[int]]:
+        if not self.use_hydralora_experts or counts is None:
+            return None
+        values = list(counts)
+        if not values:
+            return None
+        if len(values) != self.num_experts:
+            raise ValueError(f"hydralora_expert_lora_nums must provide {self.num_experts} entries, got {len(values)}.")
+        if any(v <= 0 for v in values):
+            raise ValueError("hydralora_expert_lora_nums entries must be positive integers.")
+        return values
 
     def _language_head_targets(
             self, language_ids: Optional[torch.Tensor], adapter_name: str
