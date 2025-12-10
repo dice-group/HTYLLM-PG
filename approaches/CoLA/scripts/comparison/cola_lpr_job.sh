@@ -41,6 +41,7 @@ LANGUAGE_COLUMN="${LANGUAGE_COLUMN:-language}"
 LANGUAGE_ROUTER_MODE="${LANGUAGE_ROUTER_MODE:-learned}"
 LANGUAGE_PRIOR_WEIGHT="${LANGUAGE_PRIOR_WEIGHT:-0.0}"
 LANGUAGE_BIAS_VALUE="${LANGUAGE_BIAS_VALUE:-0.0}"
+LANGUAGE_GUIDANCE_SCOPE="${LANGUAGE_GUIDANCE_SCOPE:-none}"
 USE_COLA_EXPERTS="${USE_COLA_EXPERTS:-True}"
 
 TRAIN_EPOCHS="${NUM_TRAIN_EPOCHS:-1}"
@@ -67,6 +68,7 @@ export WANDB_CONFIG_JSON=$(cat <<EOF
   "language_router_mode": "${LANGUAGE_ROUTER_MODE}",
   "language_prior_weight": ${LANGUAGE_PRIOR_WEIGHT},
   "language_bias_value": ${LANGUAGE_BIAS_VALUE},
+  "language_guidance_scope": "${LANGUAGE_GUIDANCE_SCOPE}",
   "cola_strategy": "${STRATEGY}",
   "use_cola_experts": ${USE_COLA_EXPERTS},
   "cola_num_experts": ${NUM_EXPERTS},
@@ -121,6 +123,7 @@ llamafactory-cli train \
   --language_router_mode "${LANGUAGE_ROUTER_MODE}" \
   --language_prior_weight "${LANGUAGE_PRIOR_WEIGHT}" \
   --language_bias_value "${LANGUAGE_BIAS_VALUE}" \
+  --language_guidance_scope "${LANGUAGE_GUIDANCE_SCOPE}" \
   --report_to wandb \
   --include_effective_tokens_per_second true \
   --include_num_input_tokens_seen true

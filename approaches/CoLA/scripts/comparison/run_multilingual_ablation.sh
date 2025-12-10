@@ -15,7 +15,6 @@ MODULE_INIT=${MODULE_INIT:-module purge && module load toolchain/foss/2024a syst
 
 DATASET_NAME=${DATASET_NAME:-c4}
 DATASET_DIR=${DATASET_DIR:-./LLaMA-Factory/data}
-LANGUAGE_MAP=${LANGUAGE_MAP:-/scratch/hpc-prf-merlin/joel/moe-study/configs/moelpr_lang_map.json}
 LANGUAGE_COLUMN=${LANGUAGE_COLUMN:-language}
 TOKENIZED_BASE_DIR=${TOKENIZED_BASE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter}
 
@@ -30,7 +29,6 @@ SBATCH_ARGS=${SBATCH_ARGS:-}
 
 required_paths=(
   DATASET_DIR
-  LANGUAGE_MAP
   TOKENIZED_BASE_DIR
 )
 
@@ -45,7 +43,7 @@ mkdir -p "${LOG_DIR}" "${OUTPUT_ROOT}"
 
 export CONDA_BASE CONDA_ENV MODULE_INIT
 export DATASET_NAME DATASET_DIR
-export LANGUAGE_MAP LANGUAGE_COLUMN
+export LANGUAGE_COLUMN
 export WANDB_PROJECT WANDB_ENTITY WANDB_RUN_GROUP
 
 timestamp="$(date +%Y%m%d_%H%M%S)"
@@ -55,64 +53,51 @@ fi
 
 # Model entries: <tokenizer_dir>|<model_name_or_path>
 MODEL_VARIANTS=(
-  "llama-3.2-1B_tokenizer|meta-llama/Llama-3.2-1B"
-  # "llama-3.2-3B_tokenizer|meta-llama/Llama-3.2-3B"
-  # "llama-3.1-8B_tokenizer|meta-llama/Llama-3.1-8B"
+  "llama-3.1-8B_tokenizer|meta-llama/Llama-3.1-8B"
 )
 
-# Language tiers: <tier_id>|<language_count>|<subset_key>|<path_suffix>
+# Language tiers: <tier_id>|<language_count>|<language_map_path>|<tokenized_suffix>
 LANGUAGE_TIERS=(
-  "tier22|22|twenty_two_representatives_mediods|22_langs"
-  # "tier95|95|ninty_five_representatives_mediods|95_langs"
-  # "tier199|199|hundred_ninty_nine_representatives_mediods|199_langs"
+  "tier12|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|12_langs"
+  "tier72|72|${REPO_ROOT}/tools/two_stage_clustering/72_tier_language_groupings.json|72_langs"
+  # "tier200|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|200_langs"
 )
 
-# Hydra variants: <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<top_k>
+# Hydra variants: <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>
 HYDRA_VARIANTS=(
-  "lora|False|1|learned|0.0|0.0|1"
-  "hydra-flat|False|3|learned|0.0|0.0|1"
-  # "hydra-route|True|3|learned|0.0|0.0|1"
-  # "hydra-route-lpr|True|3|bias|0.3|2.5|1"
+  "hydra-lora|False|1|learned|0.0|0.0|1|none"
+  "hydra-flat|False|3|learned|0.0|0.0|1|none"
+  "hydra-exp-bias|True|3|bias|0.1|5.0|1|all"
 )
 
-# CoLA variants: <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<top_k>
+# CoLA variants: <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>
 COLA_VARIANTS=(
-  "colaflat|False|1|3|fully|learned|0.0|0.0|1"
-  "colaflat-rand|False|1|3|random_ba|learned|0.0|0.0|1"
-  "colaexp|True|1|3|fully|learned|0.0|0.0|1"
-  "colaexp-lpr|True|1|3|fully|bias|0.3|5.0|1"
-  # "colafamily|True|1|3|fully|hard|0.0|0.0|1"
-  "colafamily-lpr|True|1|3|fully|hard|0.3|5.0|1"
+  "colaflat|False|1|3|fully|learned|0.0|0.0|1|none"
+  "colaexp-bias|True|1|3|fully|bias|0.1|5.0|1|all"
 )
 
 # Resource mappings
 DEFAULT_GPU_TYPE=${DEFAULT_GPU_TYPE:-h100}
 DEFAULT_GPU_COUNT=${DEFAULT_GPU_COUNT:-1}
-DEFAULT_WALLTIME=${DEFAULT_WALLTIME:-08:00:00}
+DEFAULT_WALLTIME=${DEFAULT_WALLTIME:-12:00:00}
 DEFAULT_PARTITION=${DEFAULT_PARTITION:-gpu}
 
 declare -A MODEL_GPU_MAP=(
-  ["meta-llama_Llama-3.2-1B"]=1
-  ["meta-llama_Llama-3.2-3B"]=2
   ["meta-llama_Llama-3.1-8B"]=4
 )
 
 declare -A MODEL_GPU_TYPE_MAP=(
-  ["meta-llama_Llama-3.2-1B"]="${DEFAULT_GPU_TYPE}"
-  ["meta-llama_Llama-3.2-3B"]="${DEFAULT_GPU_TYPE}"
   ["meta-llama_Llama-3.1-8B"]="${DEFAULT_GPU_TYPE}"
 )
 
 declare -A MODEL_PARTITION_MAP=(
-  ["meta-llama_Llama-3.2-1B"]="${DEFAULT_PARTITION}"
-  ["meta-llama_Llama-3.2-3B"]="${DEFAULT_PARTITION}"
   ["meta-llama_Llama-3.1-8B"]="${DEFAULT_PARTITION}"
 )
 
 declare -A TIER_WALLTIME_MAP=(
-  ["tier22"]="08:00:00"
-  ["tier95"]="16:00:00"
-  ["tier199"]="24:00:00"
+  ["tier12"]="12:00:00"
+  ["tier72"]="18:00:00"
+  ["tier200"]="24:00:00"
 )
 
 ENABLE_LM_EVAL_LISTENER=${ENABLE_LM_EVAL_LISTENER:-false}
@@ -243,7 +228,7 @@ for model_spec in "${MODEL_VARIANTS[@]}"; do
   model_slug="$(sanitize "${model_path}")"
 
   for tier_spec in "${LANGUAGE_TIERS[@]}"; do
-    IFS='|' read -r tier_id lang_count subset_key tier_path <<<"${tier_spec}"
+    IFS='|' read -r tier_id lang_count tier_map tier_path <<<"${tier_spec}"
     tier_slug="$(sanitize "${tier_id}")"
     tokenized_path="${TOKENIZED_BASE_DIR}/${tokenizer_dir}/${tier_path}"
 
@@ -254,7 +239,7 @@ for model_spec in "${MODEL_VARIANTS[@]}"; do
 
     # Hydra/LoRA runs
     for variant_spec in "${HYDRA_VARIANTS[@]}"; do
-      IFS='|' read -r label use_experts lora_num router_mode prior_weight bias_value top_k <<<"${variant_spec}"
+      IFS='|' read -r label use_experts lora_num router_mode prior_weight bias_value top_k guidance_scope <<<"${variant_spec}"
       variant_slug="$(sanitize "${label}")"
       if [[ "${use_experts}" == "True" ]]; then
         hydra_num_experts="${lang_count}"
@@ -273,9 +258,11 @@ for model_spec in "${MODEL_VARIANTS[@]}"; do
         "WANDB_NAME=${hydra_wandb}"
         "MODEL_NAME_OR_PATH=${model_path}"
         "TOKENIZED_PATH=${tokenized_path}"
+        "LANGUAGE_MAP=${tier_map}"
         "LANGUAGE_ROUTER_MODE=${router_mode}"
         "LANGUAGE_PRIOR_WEIGHT=${prior_weight}"
         "LANGUAGE_BIAS_VALUE=${bias_value}"
+        "LANGUAGE_GUIDANCE_SCOPE=${guidance_scope}"
         "USE_HYDRALORA_EXPERTS=${use_experts}"
         "HYDRALORA_NUM_EXPERTS=${hydra_num_experts}"
         "HYDRALORA_TOP_K=${top_k}"
@@ -292,7 +279,7 @@ for model_spec in "${MODEL_VARIANTS[@]}"; do
 
     # CoLA runs
     for variant_spec in "${COLA_VARIANTS[@]}"; do
-      IFS='|' read -r label use_experts num_A num_B strategy router_mode prior_weight bias_value top_k <<<"${variant_spec}"
+      IFS='|' read -r label use_experts num_A num_B strategy router_mode prior_weight bias_value top_k guidance_scope <<<"${variant_spec}"
       variant_slug="$(sanitize "${label}")"
       if [[ "${use_experts}" == "True" ]]; then
         cola_num_experts="${lang_count}"
@@ -311,9 +298,11 @@ for model_spec in "${MODEL_VARIANTS[@]}"; do
         "WANDB_NAME=${cola_wandb}"
         "MODEL_NAME_OR_PATH=${model_path}"
         "TOKENIZED_PATH=${tokenized_path}"
+        "LANGUAGE_MAP=${tier_map}"
         "LANGUAGE_ROUTER_MODE=${router_mode}"
         "LANGUAGE_PRIOR_WEIGHT=${prior_weight}"
         "LANGUAGE_BIAS_VALUE=${bias_value}"
+        "LANGUAGE_GUIDANCE_SCOPE=${guidance_scope}"
         "USE_COLA_EXPERTS=${use_experts}"
         "COLA_NUM_EXPERTS=${cola_num_experts}"
         "COLA_NUM_A=${num_A}"

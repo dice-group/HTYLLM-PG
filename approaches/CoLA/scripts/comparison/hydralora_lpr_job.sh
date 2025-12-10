@@ -42,6 +42,7 @@ LANGUAGE_COLUMN="${LANGUAGE_COLUMN:-language}"
 LANGUAGE_ROUTER_MODE="${LANGUAGE_ROUTER_MODE:-learned}"
 LANGUAGE_PRIOR_WEIGHT="${LANGUAGE_PRIOR_WEIGHT:-0.0}"
 LANGUAGE_BIAS_VALUE="${LANGUAGE_BIAS_VALUE:-0.0}"
+LANGUAGE_GUIDANCE_SCOPE="${LANGUAGE_GUIDANCE_SCOPE:-none}"
 
 USE_HYDRALORA_EXPERTS="${USE_HYDRALORA_EXPERTS:-False}"
 HYDRALORA_NUM_EXPERTS="${HYDRALORA_NUM_EXPERTS:-1}"
@@ -67,6 +68,7 @@ export WANDB_CONFIG_JSON=$(cat <<EOF
   "language_router_mode": "${LANGUAGE_ROUTER_MODE}",
   "language_prior_weight": ${LANGUAGE_PRIOR_WEIGHT},
   "language_bias_value": ${LANGUAGE_BIAS_VALUE},
+  "language_guidance_scope": "${LANGUAGE_GUIDANCE_SCOPE}",
   "use_hydralora_experts": ${USE_HYDRALORA_EXPERTS},
   "hydralora_num_experts": ${HYDRALORA_NUM_EXPERTS},
   "hydralora_top_k": ${HYDRALORA_TOP_K},
@@ -115,6 +117,7 @@ llamafactory-cli train \
   --language_router_mode "${LANGUAGE_ROUTER_MODE}" \
   --language_prior_weight "${LANGUAGE_PRIOR_WEIGHT}" \
   --language_bias_value "${LANGUAGE_BIAS_VALUE}" \
+  --language_guidance_scope "${LANGUAGE_GUIDANCE_SCOPE}" \
   --use_hydralora_experts "${USE_HYDRALORA_EXPERTS}" \
   --hydralora_num_experts "${HYDRALORA_NUM_EXPERTS}" \
   --hydralora_top_k "${HYDRALORA_TOP_K}" \
