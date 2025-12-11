@@ -20,6 +20,7 @@ To de-risk the pipeline and secure early paper-ready numbers we start with five 
 | Run | Adapter | Guidance | `language_router_mode` | `language_prior_weight` | Notes |
 | --- | --- | --- | --- | --- | --- |
 | T12-L0 | LoRA | `none` | learned | 0.0 | `finetuning_type=lora` (rank-8) |
+| T12-L0-Base | LoRA (base tokenizer) | `none` | learned | 0.0 | Uses original `meta-llama/Llama-3.1-8B` weights + base tokenized data |
 | T12-HF | HydraLoRA flat | `none` | learned | 0.0 | `lora_num=3`, `use_hydralora_experts=False` |
 | T12-HE | HydraLoRA experts | `all` | **bias** | **0.1** | `use_hydralora_experts=True`, cluster-guided experts with Stage 1 LPR |
 | T12-CF | CoLA flat | `none` | learned | 0.0 | `use_cola_experts=False`, `num_A=1,num_B=3` |
