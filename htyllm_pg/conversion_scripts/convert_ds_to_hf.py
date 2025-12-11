@@ -66,6 +66,9 @@ class HTYLLMForCausalLM(PreTrainedModel):
         output.expert_counts = expert_counts
         return output
 
+    def prepare_inputs_for_generation(self, input_ids, **kwargs):
+        return {"input_ids": input_ids}
+
 def convert(args):
     # 1. Load Config
     if args.config_path:
@@ -157,15 +160,9 @@ if not deepspeed.comm.is_initialized():
 
     deepspeed.init_distributed(dist_backend="nccl", auto_mpi_discovery=False)
 
-{inspect.getsource(HTYLLMConfig).replace(
-    'super().__init__(**kwargs)',
-    'super().__init__(**kwargs)\\n\\n    @property\\n    def num_hidden_layers(self):\\n        return self.depth'
-)}
+{inspect.getsource(HTYLLMConfig)}
 
-{inspect.getsource(HTYLLMForCausalLM).replace(
-    'return output', 
-    'return output\\n\\n    def prepare_inputs_for_generation(self, input_ids, **kwargs):\\n        return {"input_ids": input_ids}'
-)}
+{inspect.getsource(HTYLLMForCausalLM)}
 """
     
     with open(os.path.join(args.output_dir, "modeling_htyllm.py"), "w") as f:
