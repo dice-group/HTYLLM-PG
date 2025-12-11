@@ -43,6 +43,7 @@ LANGUAGE_ROUTER_MODE="${LANGUAGE_ROUTER_MODE:-learned}"
 LANGUAGE_PRIOR_WEIGHT="${LANGUAGE_PRIOR_WEIGHT:-0.0}"
 LANGUAGE_BIAS_VALUE="${LANGUAGE_BIAS_VALUE:-0.0}"
 LANGUAGE_GUIDANCE_SCOPE="${LANGUAGE_GUIDANCE_SCOPE:-none}"
+ACCELERATE_CONFIG_FILE="${ACCELERATE_CONFIG_FILE:-}"
 
 USE_HYDRALORA_EXPERTS="${USE_HYDRALORA_EXPERTS:-False}"
 HYDRALORA_NUM_EXPERTS="${HYDRALORA_NUM_EXPERTS:-1}"
@@ -79,7 +80,12 @@ EOF
 
 echo "[INFO] Running HydraLoRA LPR training into ${OUTPUT_DIR}"
 
-llamafactory-cli train \
+ACCELERATE_CMD=()
+if [[ -n "${ACCELERATE_CONFIG_FILE}" ]]; then
+  ACCELERATE_CMD=(accelerate launch --config_file "${ACCELERATE_CONFIG_FILE}")
+fi
+
+"${ACCELERATE_CMD[@]}" llamafactory-cli train \
   --stage sft \
   --do_train \
   --model_name_or_path "${MODEL_NAME_OR_PATH}" \

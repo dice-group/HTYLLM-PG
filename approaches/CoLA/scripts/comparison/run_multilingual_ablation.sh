@@ -269,6 +269,15 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     fi
     declare -a hydra_sbatch=()
     select_resources hydra_sbatch "${tier_id}"
+    tier_gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
+    accelerate_config=""
+    if [[ "${tier_gpu_count}" -ge 2 ]]; then
+      if [[ "${tier_gpu_count}" -ge 4 ]]; then
+        accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml"
+      else
+        accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_2gpu_config.yaml"
+      fi
+    fi
 
     hydra_descriptor="${tier_id}_${label}_${router_mode}_g${prior_weight}"
     hydra_output="${OUTPUT_ROOT}/${tier_slug}/hydra_${variant_slug}_${timestamp}"
@@ -293,6 +302,9 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "LANGUAGE_TIER=${tier_id}"
       "WANDB_TAGS=adapter:hydra,variant:${label},tier:${tier_id},mode:${router_mode},gamma:${prior_weight}"
     )
+    if [[ -n "${accelerate_config}" ]]; then
+      hydra_env+=("ACCELERATE_CONFIG_FILE=${accelerate_config}")
+    fi
 
     hydra_job=$(submit_job "Hydra-${label}-${tier_id}" \
       "${COMPARISON_DIR}/hydralora_lpr_job.sh" "${hydra_log}" hydra_env hydra_sbatch)
@@ -314,6 +326,15 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     fi
     declare -a cola_sbatch=()
     select_resources cola_sbatch "${tier_id}"
+    tier_gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
+    accelerate_config=""
+    if [[ "${tier_gpu_count}" -ge 2 ]]; then
+      if [[ "${tier_gpu_count}" -ge 4 ]]; then
+        accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml"
+      else
+        accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_2gpu_config.yaml"
+      fi
+    fi
 
     cola_descriptor="${tier_id}_${label}_${router_mode}_g${prior_weight}"
     cola_output="${OUTPUT_ROOT}/${tier_slug}/cola_${variant_slug}_${timestamp}"
@@ -340,6 +361,9 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "LANGUAGE_TIER=${tier_id}"
       "WANDB_TAGS=adapter:cola,variant:${label},tier:${tier_id},mode:${router_mode},gamma:${prior_weight}"
     )
+    if [[ -n "${accelerate_config}" ]]; then
+      cola_env+=("ACCELERATE_CONFIG_FILE=${accelerate_config}")
+    fi
 
     cola_job=$(submit_job "CoLA-${label}-${tier_id}" \
       "${COMPARISON_DIR}/cola_lpr_job.sh" "${cola_log}" cola_env cola_sbatch)
