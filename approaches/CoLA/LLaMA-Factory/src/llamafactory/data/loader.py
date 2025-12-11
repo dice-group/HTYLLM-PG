@@ -251,7 +251,17 @@ def get_dataset(
                     dataset_module["eval_dataset"] = tokenized_data["validation"]
 
             else:  # Dataset
-                dataset_module["train_dataset"] = tokenized_data
+                if "split" in tokenized_data.column_names:
+                    logger.info_rank0("Found split column in tokenized dataset, building train/validation splits.")
+                    val_ds = tokenized_data.filter(lambda ex: ex["split"] == "validation")
+                    train_ds = tokenized_data.filter(lambda ex: ex["split"] != "validation")
+                    for name, ds in [("train", train_ds), ("validation", val_ds)]:
+                        cols = [c for c in ("language", "split") if c in ds.column_names]
+                        if cols:
+                            ds = ds.remove_columns(cols)
+                        dataset_module[f"{'eval' if name == 'validation' else 'train'}_dataset"] = ds
+                else:
+                    dataset_module["train_dataset"] = tokenized_data
 
             if data_args.streaming:
                 dataset_module = {k: v.to_iterable_dataset() for k, v in dataset_module.items()}
