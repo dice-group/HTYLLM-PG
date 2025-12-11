@@ -1,0 +1,35 @@
+# CoLA tier 3 (200 languages) tokenizer-extension pipeline
+output_dir: /scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier3
+base_data_dir: /scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/tokenizer_cola_200_tier_samples/samples
+base_tokenizer: /scratch/hpc-prf-merlin/joel/HTYLLM-PG/approaches/CoLA/data_prep/tokenizer_extension/.models/llama-3.1-8b
+base_max_lines: 10000
+base_num_workers: 64
+
+train_multilingual: true
+train_data_dir: /scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/tokenizer_cola_200_tier_samples/samples
+train_base_model: meta-llama/Llama-3.1-8B
+train_vocab_size: 256000
+train_text_key: text
+train_max_samples: None
+
+extend: true
+extension_base_path: /scratch/hpc-prf-merlin/joel/HTYLLM-PG/approaches/CoLA/data_prep/tokenizer_extension/.models/llama-3.1-8b
+extension_data_dir: /scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/tokenizer_cola_200_tier_samples/samples
+extension_sample_docs: 10000
+extension_text_key: text
+extension_num_workers: 8
+extension_vocab_cap: 256000
+init_embeddings: true
+init_model_path: /scratch/hpc-prf-merlin/joel/HTYLLM-PG/approaches/CoLA/data_prep/tokenizer_extension/.models/llama-3.1-8b
+init_model_output_dir: /scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier3/initialized_model
+
+compute_extended_coverage: true
+extended_data_dir: /scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/tokenizer_cola_200_tier_samples/samples
+extended_max_lines: 10000
+extended_num_workers: 64
+
+total_new_tokens: 128000
+weight_ppw: 0.5
+weight_cpt: 0.5
+weight_unk: 0.0
+gamma: 2.0

@@ -1,0 +1,271 @@
+{
+    "languages": {
+        "en": {
+            "name": "English",
+            "family": "Germanic"
+        },
+        "de": {
+            "name": "German",
+            "family": "Germanic"
+        },
+        "nl": {
+            "name": "Dutch",
+            "family": "Germanic"
+        },
+        "af": {
+            "name": "Afrikaans",
+            "family": "Germanic"
+        },
+        "da": {
+            "name": "Danish",
+            "family": "Germanic"
+        },
+        "sv": {
+            "name": "Swedish",
+            "family": "Germanic"
+        },
+        "no": {
+            "name": "Norwegian",
+            "family": "Germanic"
+        },
+        "is": {
+            "name": "Icelandic",
+            "family": "Germanic"
+        },
+        "es": {
+            "name": "Spanish",
+            "family": "Italic"
+        },
+        "fr": {
+            "name": "French",
+            "family": "Italic"
+        },
+        "it": {
+            "name": "Italian",
+            "family": "Italic"
+        },
+        "pt": {
+            "name": "Portuguese",
+            "family": "Italic"
+        },
+        "ca": {
+            "name": "Catalan",
+            "family": "Italic"
+        },
+        "ro": {
+            "name": "Romanian",
+            "family": "Italic"
+        },
+        "gl": {
+            "name": "Galician",
+            "family": "Italic"
+        },
+        "ru": {
+            "name": "Russian",
+            "family": "Balto-Slavic"
+        },
+        "uk": {
+            "name": "Ukrainian",
+            "family": "Balto-Slavic"
+        },
+        "pl": {
+            "name": "Polish",
+            "family": "Balto-Slavic"
+        },
+        "cs": {
+            "name": "Czech",
+            "family": "Balto-Slavic"
+        },
+        "bg": {
+            "name": "Bulgarian",
+            "family": "Balto-Slavic"
+        },
+        "sk": {
+            "name": "Slovak",
+            "family": "Balto-Slavic"
+        },
+        "sl": {
+            "name": "Slovenian",
+            "family": "Balto-Slavic"
+        },
+        "lt": {
+            "name": "Lithuanian",
+            "family": "Balto-Slavic"
+        },
+        "lv": {
+            "name": "Latvian",
+            "family": "Balto-Slavic"
+        },
+        "hi": {
+            "name": "Hindi",
+            "family": "Indo-Iranian"
+        },
+        "ne": {
+            "name": "Nepali",
+            "family": "Indo-Iranian"
+        },
+        "mr": {
+            "name": "Marathi",
+            "family": "Indo-Iranian"
+        },
+        "sa": {
+            "name": "Sanskrit",
+            "family": "Indo-Iranian"
+        },
+        "fa": {
+            "name": "Persian",
+            "family": "Indo-Iranian"
+        },
+        "ur": {
+            "name": "Urdu",
+            "family": "Indo-Iranian"
+        },
+        "bn": {
+            "name": "Bengali",
+            "family": "Indo-Iranian"
+        },
+        "pa": {
+            "name": "Punjabi",
+            "family": "Indo-Iranian"
+        },
+        "gu": {
+            "name": "Gujarati",
+            "family": "Indo-Iranian"
+        },
+        "zh": {
+            "name": "Chinese",
+            "family": "Sino-Tibetan"
+        },
+        "bo": {
+            "name": "Tibetan",
+            "family": "Sino-Tibetan"
+        },
+        "my": {
+            "name": "Burmese",
+            "family": "Sino-Tibetan"
+        },
+        "ja": {
+            "name": "Japanese",
+            "family": "Japonic"
+        },
+        "ko": {
+            "name": "Korean",
+            "family": "Koreanic"
+        },
+        "ar": {
+            "name": "Arabic",
+            "family": "West Semitic"
+        },
+        "he": {
+            "name": "Hebrew",
+            "family": "West Semitic"
+        },
+        "am": {
+            "name": "Amharic",
+            "family": "West Semitic"
+        },
+        "vi": {
+            "name": "Vietnamese",
+            "family": "Austroasiatic"
+        },
+        "th": {
+            "name": "Thai",
+            "family": "Tai-Kadai"
+        },
+        "lo": {
+            "name": "Lao",
+            "family": "Tai-Kadai"
+        },
+        "tr": {
+            "name": "Turkish",
+            "family": "Turkic"
+        },
+        "az": {
+            "name": "Azerbaijani",
+            "family": "Turkic"
+        },
+        "kk": {
+            "name": "Kazakh",
+            "family": "Turkic"
+        },
+        "uz": {
+            "name": "Uzbek",
+            "family": "Turkic"
+        },
+        "id": {
+            "name": "Indonesian",
+            "family": "Austronesian"
+        },
+        "ms": {
+            "name": "Malay",
+            "family": "Austronesian"
+        },
+        "tl": {
+            "name": "Tagalog",
+            "family": "Austronesian"
+        },
+        "sw": {
+            "name": "Swahili",
+            "family": "Niger-Congo"
+        },
+        "yo": {
+            "name": "Yoruba",
+            "family": "Niger-Congo"
+        },
+        "hu": {
+            "name": "Hungarian",
+            "family": "Uralic"
+        },
+        "fi": {
+            "name": "Finnish",
+            "family": "Uralic"
+        },
+        "et": {
+            "name": "Estonian",
+            "family": "Uralic"
+        },
+        "ka": {
+            "name": "Georgian",
+            "family": "Kartvelian"
+        },
+        "hy": {
+            "name": "Armenian",
+            "family": "Indo-European-Other"
+        },
+        "sq": {
+            "name": "Albanian",
+            "family": "Indo-European-Other"
+        },
+        "el": {
+            "name": "Greek",
+            "family": "Indo-European-Other"
+        },
+        "eu": {
+            "name": "Basque",
+            "family": "Language-Isolate"
+        },
+        "mt": {
+            "name": "Maltese",
+            "family": "West Semitic"
+        }
+    },
+    "family_colors": {
+        "Germanic": "#1f77b4",
+        "Italic": "#ff7f0e",
+        "Balto-Slavic": "#2ca02c",
+        "Indo-Iranian": "#d62728",
+        "Sino-Tibetan": "#9467bd",
+        "Japonic": "#8c564b",
+        "Koreanic": "#e377c2",
+        "West Semitic": "#7f7f7f",
+        "Austroasiatic": "#bcbd22",
+        "Tai-Kadai": "#17becf",
+        "Turkic": "#ff9896",
+        "Austronesian": "#9edae5",
+        "Niger-Congo": "#c5b0d5",
+        "Uralic": "#c49c94",
+        "Kartvelian": "#f7b6d2",
+        "Indo-European-Other": "#dbdb8d",
+        "Language-Isolate": "#9c9ede"
+    }
+}
