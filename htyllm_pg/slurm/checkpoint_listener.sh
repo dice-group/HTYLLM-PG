@@ -12,6 +12,9 @@
 # (using the header above) or directly with `bash checkpoint_listener.sh ...`.
 set -euo pipefail
 
+# Minimal env setup - just need sbatch in PATH
+source ~/.bashrc 2>/dev/null || true
+
 usage() {
 cat <<EOF
 Usage: checkpoint_listener.sh --watch-dir DIR --eval-script SCRIPT [options]
@@ -22,7 +25,7 @@ evaluation jobs for each one.
 Options:
   --watch-dir DIR      Directory containing checkpoint-* folders
   --eval-script SCRIPT Script run via sbatch for evaluation
-  --tasks LIST         lm-eval tasks (default: belebele)
+  --tasks LIST         lm-eval tasks (optional, uses lm_eval_tasks.txt if not set)
   --batch-size N       lm-eval batch size (default: auto)
   --output-dir DIR     Where to save eval outputs (default: watch-dir/lm_eval)
   --wandb-project NAME W&B project (default: llama31_multilingual_eval_belebele)
@@ -34,7 +37,7 @@ Options:
 EOF
 }
 
-TASKS="belebele"
+TASKS=""
 BS="auto"
 POLL=120
 WANDB_PROJ=""            #"llama31_multilingual_eval_belebele"            #Insert our WANDB
@@ -93,7 +96,7 @@ submit() {
     "$SCRIPT" \
     --checkpoint "${ckpt_path}" \
     --output-dir "$OUT" \
-    --tasks "$TASKS" \
+    ${TASKS:+--tasks "$TASKS"} \
     --batch-size "$BS" \
     --wandb-project "$WANDB_PROJ" \
     --wandb-prefix "${wandb_prefix}" \

@@ -61,7 +61,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --deepspeed \
       --deepspeed_config ds_config.json \
       --epochs 1 \
-      --batch-size 10 \
+      --batch-size 20 \
       --lr 1e-4 \
       --dim 2048 \
       --depth 24 \
@@ -74,6 +74,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --use-gradient-checkpointing \
       --use-flash-attention \
       --ep-size 8 \
+      --l1-lambda 0.0005 \  
       --train-split 1.0 \
       --checkpoint-dir /scratch/hpc-prf-merlin/luke/checkpoints_multilingual \
       --checkpoint-steps 2000 \
