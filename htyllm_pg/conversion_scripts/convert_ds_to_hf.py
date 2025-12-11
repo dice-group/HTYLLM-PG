@@ -126,7 +126,9 @@ def convert(args):
 
     # 5. Save HF Model
     print(f"Saving to {args.output_dir}...")
-    hf_model.save_pretrained(args.output_dir)
+    # Use safe_serialization=False to handle tied/shared weights
+    # (token_embedding and output_projection share the same tensor)
+    hf_model.save_pretrained(args.output_dir, safe_serialization=False)
     
     # We read model_builder.py and append our wrapper classes
     model_builder_path = os.path.join(os.path.dirname(__file__), "../model_builder.py")
