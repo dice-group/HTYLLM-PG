@@ -18,7 +18,16 @@ dist/
 *.out
 *.err
 *.log
+*.venv
 
 **/wandb/
-approaches/CoLA/sample_data/.venv
-approaches/CoLA/sample_data/logs
+
+approaches/CoLA/data_prep/stratified_samples
+approaches/CoLA/data_prep/onehot_benchmark_samples
+approaches/CoLA/data_prep/llm_benchmark_samples
+
+
+approaches/CoLA/data_prep/processed_artifacts/**.json
+approaches/CoLA/data_prep/processed_artifacts/plots/*
+approaches/CoLA/sample_data/logs/*
+approaches/CoLA/data_prep/lang_cluster_analysis/lang2vec/

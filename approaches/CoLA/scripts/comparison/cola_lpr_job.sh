@@ -24,7 +24,7 @@ export WANDB_PROJECT="${WANDB_PROJECT:-htyllm-adapter-lpr}"
 export WANDB_ENTITY="${WANDB_ENTITY:-}"
 export WANDB_RUN_GROUP="${WANDB_RUN_GROUP:-lpr-ablation}"
 export WANDB_NAME="${WANDB_NAME:-cola-lpr}"
-export WANDB_TAGS="comparison,cola,lpr"
+export WANDB_TAGS="${WANDB_TAGS:-comparison,cola,lpr}"
 export PYTHONUNBUFFERED=1
 
 OUTPUT_DIR="${OUTPUT_DIR:?OUTPUT_DIR not set}"
@@ -41,6 +41,8 @@ LANGUAGE_COLUMN="${LANGUAGE_COLUMN:-language}"
 LANGUAGE_ROUTER_MODE="${LANGUAGE_ROUTER_MODE:-learned}"
 LANGUAGE_PRIOR_WEIGHT="${LANGUAGE_PRIOR_WEIGHT:-0.0}"
 LANGUAGE_BIAS_VALUE="${LANGUAGE_BIAS_VALUE:-0.0}"
+LANGUAGE_GUIDANCE_SCOPE="${LANGUAGE_GUIDANCE_SCOPE:-none}"
+ACCELERATE_CONFIG_FILE="${ACCELERATE_CONFIG_FILE:-}"
 USE_COLA_EXPERTS="${USE_COLA_EXPERTS:-True}"
 
 TRAIN_EPOCHS="${NUM_TRAIN_EPOCHS:-1}"
@@ -67,6 +69,7 @@ export WANDB_CONFIG_JSON=$(cat <<EOF
   "language_router_mode": "${LANGUAGE_ROUTER_MODE}",
   "language_prior_weight": ${LANGUAGE_PRIOR_WEIGHT},
   "language_bias_value": ${LANGUAGE_BIAS_VALUE},
+  "language_guidance_scope": "${LANGUAGE_GUIDANCE_SCOPE}",
   "cola_strategy": "${STRATEGY}",
   "use_cola_experts": ${USE_COLA_EXPERTS},
   "cola_num_experts": ${NUM_EXPERTS},
@@ -77,7 +80,12 @@ EOF
 
 echo "[INFO] Running CoLA LPR training into ${OUTPUT_DIR}"
 
-llamafactory-cli train \
+ACCELERATE_CMD=()
+if [[ -n "${ACCELERATE_CONFIG_FILE}" ]]; then
+  ACCELERATE_CMD=(accelerate launch --config_file "${ACCELERATE_CONFIG_FILE}")
+fi
+
+"${ACCELERATE_CMD[@]}" llamafactory-cli train \
   --stage sft \
   --do_train \
   --model_name_or_path "${MODEL_NAME_OR_PATH}" \
@@ -121,6 +129,7 @@ llamafactory-cli train \
   --language_router_mode "${LANGUAGE_ROUTER_MODE}" \
   --language_prior_weight "${LANGUAGE_PRIOR_WEIGHT}" \
   --language_bias_value "${LANGUAGE_BIAS_VALUE}" \
+  --language_guidance_scope "${LANGUAGE_GUIDANCE_SCOPE}" \
   --report_to wandb \
   --include_effective_tokens_per_second true \
   --include_num_input_tokens_seen true

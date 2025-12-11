@@ -94,34 +94,14 @@ def select_top(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Pick the top‑ranked sentences for CPT.")
-    parser.add_argument(
-        "--merged_root",
-        type=Path,
-        required=True,
-        help="Path to the merged tokenized dataset (output of merge_tokenized_ranks.py).",
-    )
-    parser.add_argument(
-        "--output_path",
-        type=Path,
-        required=True,
-        help="File that will contain the CPT corpus (JSON‑Lines).",
-    )
+    parser = argparse.ArgumentParser(description="Pick the top-ranked sentences for CPT.")
+    parser.add_argument("--merged_root", type=Path, required=True, help="Path to merged tokenized dataset.")
+    parser.add_argument("--output_path", type=Path, required=True, help="Output CPT corpus (JSONL).")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument(
-        "--size",
-        type=int,
-        default=20_000,
-        help="Number of examples to keep (default = 20k).",
-    )
-    group.add_argument(
-        "--percentile",
-        type=float,
-        help="Select the top X%% of examples instead of a fixed size.",
-    )
+    group.add_argument("--size", type=int, default=20000, help="Number of examples to keep.")
+    group.add_argument("--percentile", type=float, help="Top X% of examples to select.")
     args = parser.parse_args()
     select_top(args.merged_root, args.output_path, size=args.size, percentile=args.percentile)
-
 
 if __name__ == "__main__":
     main()

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 LANGUAGE_PAD_ID = -1
 
@@ -42,10 +42,38 @@ def load_language_map(spec: Optional[str]) -> Optional[Dict[str, str]]:
         raise ValueError("language_map must decode to a dict mapping language -> family.")
 
     normalized: Dict[str, str] = {}
-    for lang, family in data.items():
-        if lang is None or family is None:
+    if all(isinstance(value, str) or value is None for value in data.values()):
+        for lang, family in data.items():
+            if lang is None or family is None:
+                continue
+            normalized[str(lang)] = str(family)
+        return normalized if normalized else None
+
+    flattened = _flatten_groupings_payload(data)
+    if flattened:
+        return flattened
+
+    raise ValueError("language_map must decode to language->family or groupings JSON.")
+
+
+def _flatten_groupings_payload(payload: Dict[str, Any]) -> Dict[str, str]:
+    normalized: Dict[str, str] = {}
+    for group_id, entry in payload.items():
+        if not isinstance(entry, dict):
             continue
-        normalized[str(lang)] = str(family)
+        label = str(entry.get("group") or group_id)
+        languages = set(entry.get("languages") or entry.get("language") or [])
+        subgroups = entry.get("subgroups") or {}
+        if isinstance(subgroups, dict):
+            for members in subgroups.values():
+                if isinstance(members, list):
+                    languages.update(members)
+        metadata = entry.get("metadata") or {}
+        if isinstance(metadata, dict):
+            languages.update(metadata.keys())
+        for lang in languages:
+            lang_key = str(lang)
+            normalized.setdefault(lang_key, label)
     return normalized
 
 

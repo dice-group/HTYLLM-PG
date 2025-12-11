@@ -195,6 +195,8 @@ class ColaModel(BaseTuner):
             "lora_dropout": lora_config.lora_dropout,
             "num_A": lora_config.num_A,
             "num_B": lora_config.num_B,
+            "expert_num_A": lora_config.expert_num_A,
+            "expert_num_B": lora_config.expert_num_B,
             "use_cola_experts": lora_config.use_cola_experts,
             "cola_num_experts": lora_config.cola_num_experts,
             "cola_top_k": lora_config.cola_top_k,

@@ -85,6 +85,8 @@ class ColaLayer(BaseTunerLayer):
         self._caches: dict[str, Any] = {}
         self.ephemeral_gpu_offload: bool = ephemeral_gpu_offload
         setattr(self, "_active_adapters", [])
+        expert_num_A_override = kwargs.pop("expert_num_A", None)
+        expert_num_B_override = kwargs.pop("expert_num_B", None)
         self.kwargs = kwargs
 
         base_layer = self.get_base_layer()
@@ -129,16 +131,27 @@ class ColaLayer(BaseTunerLayer):
         self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
         self.language_column = kwargs.pop("language_column", None)
         self.cola_strategy = kwargs.pop("cola_strategy", "fully")
+        self.language_guidance_scope = kwargs.pop("language_guidance_scope", "all")
+        if self.language_guidance_scope not in {"all", "expert_only", "none"}:
+            raise ValueError(f"Unknown language_guidance_scope '{self.language_guidance_scope}'.")
         if self.cola_strategy not in VALID_COLA_STRATEGIES:
             raise ValueError(f"Unknown CoLA collaboration strategy '{self.cola_strategy}'.")
         self._language_to_idx = {lang: idx for idx, lang in enumerate(self.language_list)} if self.language_list else {}
         self._family_to_idx = {fam: idx for idx, fam in enumerate(self.family_list)} if self.family_list else {}
         self._family_a_modules: dict[int, nn.ModuleList] = {}
+        self._family_members: dict[int, list[int]] = {}
         self._expert_language_idx: dict[str, Optional[int]] = {}
-        language_mapping = (
-            torch.arange(len(self.language_list), dtype=torch.long) if self.language_list else torch.empty(0, dtype=torch.long)
-        )
-        self.register_buffer("language_id_to_expert", language_mapping, persistent=False)
+        if self.language_list and self.language_to_family_ids is not None:
+            for lang_idx, fam_idx in enumerate(self.language_to_family_ids):
+                self._family_members.setdefault(int(fam_idx), []).append(lang_idx)
+        if self.language_list:
+            if self.language_to_family_ids is not None:
+                expert_mapping = torch.tensor(self.language_to_family_ids, dtype=torch.long)
+            else:
+                expert_mapping = torch.arange(len(self.language_list), dtype=torch.long)
+        else:
+            expert_mapping = torch.empty(0, dtype=torch.long)
+        self.register_buffer("language_id_to_expert", expert_mapping, persistent=False)
         family_mapping = (
             torch.tensor(self.language_to_family_ids, dtype=torch.long)
             if self.language_to_family_ids is not None
@@ -147,13 +160,17 @@ class ColaLayer(BaseTunerLayer):
         self.register_buffer("language_id_to_family", family_mapping, persistent=False)
 
         if self.use_cola_experts:
-            if self.language_list:
+            if self.family_list:
+                self.num_experts = len(self.family_list)
+            elif self.language_list:
                 self.num_experts = len(self.language_list)
-                if self.top_k > self.num_experts:
-                    self.top_k = self.num_experts
+            if self.top_k > self.num_experts:
+                self.top_k = self.num_experts
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
             self._move_router_to_device_of_base_layer()
         self._missing_language_warning_emitted = False
+        self._expert_num_A = self._normalize_expert_counts(expert_num_A_override, "expert_num_A")
+        self._expert_num_B = self._normalize_expert_counts(expert_num_B_override, "expert_num_B")
 
 
     def _fsdp_summon_is_active(self) -> bool:
@@ -224,28 +241,38 @@ class ColaLayer(BaseTunerLayer):
             adapter_names = []
 
             language_order = self.language_list or []
+            use_family_experts = bool(self.family_list)
             for e in range(self.num_experts):
                 name = f"expert_{e}"
                 adapter_names.append(name)
                 self._cola_expert_parent[name] = adapter_name
-                language_idx = None
-                family_idx = None
-                if self.language_list and e < len(language_order):
-                    language_idx = e
-                    if self.language_to_family_ids is not None and language_idx < len(self.language_to_family_ids):
-                        family_idx = self.language_to_family_ids[language_idx]
+                if use_family_experts:
+                    language_idx = None
+                    family_idx = e
+                else:
+                    language_idx = e if self.language_list and e < len(language_order) else None
+                    family_idx = None
+                    if language_idx is not None and self.language_to_family_ids is not None:
+                        if language_idx < len(self.language_to_family_ids):
+                            family_idx = self.language_to_family_ids[language_idx]
                 self._expert_language_idx[name] = language_idx
+                expert_num_A = self._expert_num_A[e] if self._expert_num_A else num_A
+                expert_num_B = self._expert_num_B[e] if self._expert_num_B else num_B
 
                 self.r[name] = r
                 self.lora_alpha[name] = lora_alpha
-                self.num_A[name] = num_A
-                self.num_B[name] = num_B
+                self.num_A[name] = expert_num_A
+                self.num_B[name] = expert_num_B
                 self.lora_dropout[name] = nn.Dropout(lora_dropout) if lora_dropout > 0 else nn.Identity()
                 if family_idx is not None:
                     shared = self._family_a_modules.get(family_idx)
                     if shared is None:
-                        shared = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(num_A)])
+                        shared = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(expert_num_A)])
                         self._family_a_modules[family_idx] = shared
+                    elif len(shared) != expert_num_A:
+                        raise ValueError(
+                            f"Family {family_idx} expects {len(shared)} shared A stacks, but expert {e} requested {expert_num_A}."
+                        )
                     module_list = nn.ModuleList()
                     for shared_layer in shared:
                         wrapper = nn.Linear(self.in_features, r, bias=False)
@@ -253,8 +280,8 @@ class ColaLayer(BaseTunerLayer):
                         module_list.append(wrapper)
                     self.lora_A[name] = module_list
                 else:
-                    self.lora_A[name] = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(num_A)])
-                self.lora_B[name] = nn.ModuleList([nn.Linear(r, self.out_features, bias=False) for _ in range(num_B)])
+                    self.lora_A[name] = nn.ModuleList([nn.Linear(self.in_features, r, bias=False) for _ in range(expert_num_A)])
+                self.lora_B[name] = nn.ModuleList([nn.Linear(r, self.out_features, bias=False) for _ in range(expert_num_B)])
                 self.scaling[name] = lora_alpha / r
 
                 self._move_adapter_to_device_of_base_layer(name)
@@ -618,8 +645,20 @@ class ColaLayer(BaseTunerLayer):
             )
         debug("=" * 60, enabled=self.cola_debug)
 
+    def _normalize_expert_counts(self, counts: Optional[list[int]], label: str) -> Optional[list[int]]:
+        if not self.use_cola_experts or counts is None:
+            return None
+        values = list(counts)
+        if not values:
+            return None
+        if len(values) != self.num_experts:
+            raise ValueError(f"{label} must provide {self.num_experts} entries, got {len(values)}.")
+        if any(v <= 0 for v in values):
+            raise ValueError(f"{label} entries must be positive integers.")
+        return values
+
     def _language_expert_targets(self, language_ids: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
-        if language_ids is None or self.language_id_to_expert.numel() == 0:
+        if (language_ids is None or self.language_id_to_expert.numel() == 0 or self.language_guidance_scope == "none"):
             return None
         if not torch.is_tensor(language_ids):
             return None
@@ -663,10 +702,12 @@ class ColaLayer(BaseTunerLayer):
                     language_targets[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
                 ).squeeze(-1)
                 valid_tokens = target_probs.numel()
+                target_entropy = float((-torch.log(target_probs + 1e-8)).mean().item())
                 metrics.update(
                     {
                         "language_target_hit_rate": float(target_hits.mean().item()),
                         "language_target_prob_mean": float(target_probs.mean().item()),
+                        "language_target_neglogp": target_entropy,
                         "language_target_token_frac": float(
                             valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
                         ),
@@ -678,6 +719,7 @@ class ColaLayer(BaseTunerLayer):
                 {
                     "language_target_hit_rate": 0.0,
                     "language_target_prob_mean": 0.0,
+                    "language_target_neglogp": 0.0,
                     "language_target_token_frac": 0.0,
                 }
             )
@@ -690,6 +732,7 @@ class ColaLayer(BaseTunerLayer):
                 {
                     "language_target_hit_rate": 0.0,
                     "language_target_prob_mean": 0.0,
+                    "language_target_neglogp": 0.0,
                     "language_target_token_frac": 0.0,
                 }
             )
@@ -886,7 +929,8 @@ class Linear(nn.Module, ColaLayer):
                 router_inp = x.to(router_dtype)
                 logits = self.router(router_inp)
                 language_targets = self._language_expert_targets(language_ids)
-                self._cache_router_state(logits, language_ids, language_targets)
+                if self.language_guidance_scope != "none":
+                    self._cache_router_state(logits, language_ids, language_targets)
                 logits = self._apply_language_bias(logits, language_targets)
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
                 weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
@@ -907,11 +951,22 @@ class Linear(nn.Module, ColaLayer):
                         entropy = float((-router_probs * torch.log(router_probs + 1e-8)).sum(dim=-1).mean().item())
                         weight_mean = float(weights.mean().item())
 
+                        total_assign = counts.sum()
+                        if total_assign > 0:
+                            load_frac = counts / total_assign
+                            max_frac = float(load_frac.max().item())
+                            min_frac = float(load_frac.min().item())
+                        else:
+                            max_frac = 0.0
+                            min_frac = 0.0
+
                         metrics = {
                             "expert_load_cv": load_cv,
                             "active_expert_frac": active_frac,
                             "router_entropy": entropy,
                             "topk_weight_mean": weight_mean,
+                            "expert_load_max_frac": max_frac,
+                            "expert_load_min_frac": min_frac,
                         }
                         metrics_weight = float(token_count)
                         metrics_weight = self._append_language_target_metrics(

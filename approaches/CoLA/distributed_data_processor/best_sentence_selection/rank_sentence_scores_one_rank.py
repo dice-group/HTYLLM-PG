@@ -134,6 +134,8 @@ def add_joint_score(rank_dir: Path, tokenizer, alpha, beta,
         return {"joint_score": scores}
 
     ds = ds.map(score_batch, batched=True, batch_size=1000, remove_columns=None)
+    if "text" in ds.column_names:
+        ds = ds.remove_columns(["text"])
 
     # ---------- write to a temporary location ----------
     with tempfile.TemporaryDirectory(prefix="rank_scored_") as tmp_dir:

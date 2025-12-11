@@ -107,6 +107,8 @@ class ColaConfig(PeftConfig):
     lora_dropout: float = field(default=0.0, metadata={"help": "Lora dropout"})
     num_A: int = field(default=1, metadata={"help": "Matrix A number"})
     num_B: int = field(default=1, metadata={"help": "Matrix B number"})
+    expert_num_A: Optional[List[int]] = field(default=None, metadata={"help": "Optional per-expert override for `num_A` when CoLA experts are active."})
+    expert_num_B: Optional[List[int]] = field(default=None, metadata={"help": "Optional per-expert override for `num_B` when CoLA experts are active."})
     use_cola_experts: bool = field(default=False, metadata={"help": "Enable mixture-of-experts routing for CoLA adapters."})
     cola_num_experts: int = field(default=1, metadata={"help": "Number of experts per CoLA layer when MoE is enabled."})
     cola_top_k: int = field(default=1, metadata={"help": "Number of experts to route tokens to when MoE is enabled (top-k gating)."})
@@ -179,6 +181,10 @@ class ColaConfig(PeftConfig):
         metadata={
             "help": "Additive logit bias applied in 'bias' routing mode."
         },
+    )
+    language_guidance_scope: Literal["all", "expert_only", "none"] = field(
+        default="all",
+        metadata={"help": "Whether language metadata guides all routing stages, only expert selection, or none."},
     )
     language_list: Optional[List[str]] = field(
         default=None,

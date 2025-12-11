@@ -210,7 +210,9 @@ class CustomSeq2SeqTrainer(Seq2SeqTrainer):
         if not losses:
             return None
 
-        aux = weight * sum(losses) / len(losses)
+        raw = sum(losses) / len(losses)
+        self.log({"language_prior_loss_raw": raw.detach()})
+        aux = weight * raw
         self.log({"language_prior_loss": aux.detach()})
         return aux
 

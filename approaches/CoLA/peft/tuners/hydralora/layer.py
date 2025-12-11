@@ -74,6 +74,7 @@ class HydraLoraLayer(BaseTunerLayer):
         self._caches: dict[str, Any] = {}
         self.ephemeral_gpu_offload: bool = ephemeral_gpu_offload
         setattr(self, "_active_adapters", [])
+        expert_lora_nums_override = kwargs.pop("hydralora_expert_lora_nums", None)
         self.kwargs = kwargs
 
         base_layer = self.get_base_layer()
@@ -121,12 +122,18 @@ class HydraLoraLayer(BaseTunerLayer):
         self.language_router_mode = kwargs.pop("language_router_mode", "learned")
         self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
         self.language_column = kwargs.pop("language_column", None)
+        self.language_guidance_scope = kwargs.pop("language_guidance_scope", "all")
+        if self.language_guidance_scope not in {"all", "expert_only", "none"}:
+            raise ValueError(f"Unknown language_guidance_scope '{self.language_guidance_scope}'.")
         self._language_to_idx = {lang: idx for idx, lang in enumerate(self.language_list)} if self.language_list else {}
-        language_expert_mapping = (
-            torch.arange(len(self.language_list), dtype=torch.long) if self.language_list else torch.empty(0,
-                                                                                                           dtype=torch.long)
-        )
-        self.register_buffer("language_id_to_expert", language_expert_mapping, persistent=False)
+        if self.language_list:
+            if self.language_to_family_ids is not None:
+                expert_mapping = torch.tensor(self.language_to_family_ids, dtype=torch.long)
+            else:
+                expert_mapping = torch.arange(len(self.language_list), dtype=torch.long)
+        else:
+            expert_mapping = torch.empty(0, dtype=torch.long)
+        self.register_buffer("language_id_to_expert", expert_mapping, persistent=False)
         family_mapping = (
             torch.tensor(self.language_to_family_ids, dtype=torch.long)
             if self.language_to_family_ids is not None
@@ -135,10 +142,12 @@ class HydraLoraLayer(BaseTunerLayer):
         self.register_buffer("language_id_to_family", family_mapping, persistent=False)
 
         if self.use_hydralora_experts:
-            if self.language_list:
+            if self.family_list:
+                self.num_experts = len(self.family_list)
+            elif self.language_list:
                 self.num_experts = len(self.language_list)
-                if self.top_k > self.num_experts:
-                    self.top_k = self.num_experts
+            if self.top_k > self.num_experts:
+                self.top_k = self.num_experts
             self.router = nn.Linear(self.in_features, self.num_experts, bias=False)
             self._move_router_to_device_of_base_layer()
             if self.hydralora_debug:
@@ -147,6 +156,7 @@ class HydraLoraLayer(BaseTunerLayer):
                     f"(in={self.in_features}, experts={self.num_experts}, top_k={self.top_k})"
                 )
         self._missing_language_warning_emitted: set[str] = set()
+        self._expert_lora_nums = self._normalize_expert_counts(expert_lora_nums_override)
 
     def update_layer(
             self, adapter_name, r, lora_alpha, lora_dropout, lora_num, init_lora_weights
@@ -161,16 +171,17 @@ class HydraLoraLayer(BaseTunerLayer):
                 adapter_children.append(name)
                 self._hydra_expert_parent[name] = adapter_name
 
+                expert_lora_num = self._expert_lora_nums[e] if self._expert_lora_nums else lora_num
                 self.r[name] = r
                 self.lora_alpha[name] = lora_alpha
-                self.lora_num[name] = lora_num
+                self.lora_num[name] = expert_lora_num
                 self.lora_dropout[name] = nn.Dropout(lora_dropout) if lora_dropout > 0 else nn.Identity()
                 # Core Hydra concept: one A, multiple B per expert
                 self.lora_A[name] = nn.Linear(self.in_features, r, bias=False)
                 self.lora_B[name] = nn.ModuleList(
-                    [nn.Linear(r, self.out_features, bias=False) for _ in range(lora_num)]
+                    [nn.Linear(r, self.out_features, bias=False) for _ in range(expert_lora_num)]
                 )
-                self.lora_route[name] = nn.Linear(self.in_features, lora_num, bias=False)
+                self.lora_route[name] = nn.Linear(self.in_features, expert_lora_num, bias=False)
                 self.scaling[name] = lora_alpha / r
 
                 self.reset_lora_parameters(name, init_lora_weights)
@@ -399,17 +410,29 @@ class HydraLoraLayer(BaseTunerLayer):
                 f"route.shape={tuple(route.weight.shape)}, "
                 f"scale={scale:.4f}"
             )
-            debug(
-                f"    stats: A(mean={a_mean:.4e}, std={a_std:.4e}), "
-                f"B(mean={b_mean:.4e}, std={b_std:.4e}), "
-                f"route(mean={route_mean:.4e}, std={route_std:.4e})"
-            )
+        debug(
+            f"    stats: A(mean={a_mean:.4e}, std={a_std:.4e}), "
+            f"B(mean={b_mean:.4e}, std={b_std:.4e}), "
+            f"route(mean={route_mean:.4e}, std={route_std:.4e})"
+        )
         debug("[HYDRA DEBUG] Expert verification complete\n" + "=" * 60)
+
+    def _normalize_expert_counts(self, counts: Optional[list[int]]) -> Optional[list[int]]:
+        if not self.use_hydralora_experts or counts is None:
+            return None
+        values = list(counts)
+        if not values:
+            return None
+        if len(values) != self.num_experts:
+            raise ValueError(f"hydralora_expert_lora_nums must provide {self.num_experts} entries, got {len(values)}.")
+        if any(v <= 0 for v in values):
+            raise ValueError("hydralora_expert_lora_nums entries must be positive integers.")
+        return values
 
     def _language_head_targets(
             self, language_ids: Optional[torch.Tensor], adapter_name: str
     ) -> Optional[torch.Tensor]:
-        if language_ids is None or self.language_list is None:
+        if (language_ids is None or self.language_list is None or self.language_guidance_scope != "all"):
             return None
         head_count = self.lora_num.get(adapter_name)
         if not head_count:
@@ -422,7 +445,7 @@ class HydraLoraLayer(BaseTunerLayer):
         return head_ids
 
     def _language_expert_targets(self, language_ids: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
-        if language_ids is None or self.language_id_to_expert.numel() == 0:
+        if (language_ids is None or self.language_id_to_expert.numel() == 0 or self.language_guidance_scope == "none"):
             return None
         mapping = self.language_id_to_expert.to(language_ids.device)
         expert_ids = torch.full_like(language_ids, LANGUAGE_PAD_ID)
@@ -468,10 +491,12 @@ class HydraLoraLayer(BaseTunerLayer):
                     target_tensor[valid_batch].view(-1, 1, 1).expand(-1, seq_len, 1),
                 ).squeeze(-1)
                 valid_tokens = target_probs.numel()
+                target_entropy = float((-torch.log(target_probs + 1e-8)).mean().item())
                 metrics.update(
                     {
                         f"{prefix}_target_hit_rate": float(target_hits.mean().item()),
                         f"{prefix}_target_prob_mean": float(target_probs.mean().item()),
+                        f"{prefix}_target_neglogp": target_entropy,
                         f"{prefix}_target_token_frac": float(
                             valid_tokens / max(seq_len * valid_batch.sum().item(), 1)
                         ),
@@ -483,6 +508,7 @@ class HydraLoraLayer(BaseTunerLayer):
                 {
                     f"{prefix}_target_hit_rate": 0.0,
                     f"{prefix}_target_prob_mean": 0.0,
+                    f"{prefix}_target_neglogp": 0.0,
                     f"{prefix}_target_token_frac": 0.0,
                 }
             )
@@ -495,6 +521,7 @@ class HydraLoraLayer(BaseTunerLayer):
                 {
                     f"{prefix}_target_hit_rate": 0.0,
                     f"{prefix}_target_prob_mean": 0.0,
+                    f"{prefix}_target_neglogp": 0.0,
                     f"{prefix}_target_token_frac": 0.0,
                 }
             )
@@ -647,10 +674,10 @@ class Linear(nn.Module, HydraLoraLayer):
 
                     x = x.to(lora_A.weight.dtype)
                     route_logits = lora_route(x.to(torch.float32)).to(result.dtype)
-                    head_targets = self._language_head_targets(language_ids, active_adapter)
-                    self._cache_router_state(
-                        route_logits, language_ids, f"hydra_head_{active_adapter}", head_targets
-                    )
+                    use_head_guidance = self.language_guidance_scope == "all"
+                    head_targets = (self._language_head_targets(language_ids, active_adapter) if use_head_guidance else None)
+                    if use_head_guidance:
+                        self._cache_router_state(route_logits, language_ids, f"hydra_head_{active_adapter}", head_targets)
                     route_logits = self._apply_language_bias_heads(route_logits, head_targets)
                     route_weight = nn.functional.softmax(route_logits, dim=-1, dtype=torch.float32).to(result.dtype)
                     route_weight = self._enforce_language_heads(route_weight, head_targets)
@@ -674,10 +701,20 @@ class Linear(nn.Module, HydraLoraLayer):
                             head_entropy = float(
                                 (-route_weight * torch.log(route_weight + 1e-8)).sum(dim=-1).mean().item()
                             )
+                            total_head_assign = head_counts.sum()
+                            if total_head_assign > 0:
+                                head_frac = head_counts / total_head_assign
+                                head_max = float(head_frac.max().item())
+                                head_min = float(head_frac.min().item())
+                            else:
+                                head_max = 0.0
+                                head_min = 0.0
                             metrics = {
                                 "head_load_cv": head_cv,
                                 "head_active_frac": head_active,
                                 "head_router_entropy": head_entropy,
+                                "head_load_max_frac": head_max,
+                                "head_load_min_frac": head_min,
                             }
                             metrics_weight = float(token_count)
                             metrics_weight = self._append_target_metrics(
@@ -688,7 +725,7 @@ class Linear(nn.Module, HydraLoraLayer):
                                 selection=head_assign.squeeze(-1),
                                 probs=route_weight,
                                 language_ids=language_ids,
-                                expect_targets=self.language_list is not None,
+                                expect_targets=use_head_guidance and self.language_list is not None,
                             )
                             record_hydralora_metrics(metrics, weight=metrics_weight)
 
@@ -701,8 +738,10 @@ class Linear(nn.Module, HydraLoraLayer):
                 router_dtype = getattr(self.router.weight, "dtype", torch.float32)
                 logits = self.router(x.to(router_dtype)).to(x.dtype)
                 
-                expert_targets = self._language_expert_targets(language_ids)
-                self._cache_router_state(logits, language_ids, "hydra_expert", expert_targets)
+                use_expert_guidance = self.language_guidance_scope in {"all", "expert_only"}
+                expert_targets = (self._language_expert_targets(language_ids) if use_expert_guidance else None)
+                if use_expert_guidance:
+                    self._cache_router_state(logits, language_ids, "hydra_expert", expert_targets)
                 logits = self._apply_language_bias_experts(logits, expert_targets)
                 
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
@@ -741,6 +780,14 @@ class Linear(nn.Module, HydraLoraLayer):
                             "expert_router_entropy": entropy,
                             "expert_topk_weight_mean": weight_mean,
                         }
+                        total_assign = counts.sum()
+                        if total_assign > 0:
+                            frac = counts / total_assign
+                            metrics["expert_load_max_frac"] = float(frac.max().item())
+                            metrics["expert_load_min_frac"] = float(frac.min().item())
+                        else:
+                            metrics["expert_load_max_frac"] = 0.0
+                            metrics["expert_load_min_frac"] = 0.0
                         metrics_weight = float(token_count)
                         metrics_weight = self._append_target_metrics(
                             metrics=metrics,
@@ -750,7 +797,7 @@ class Linear(nn.Module, HydraLoraLayer):
                             selection=topi[:, :, 0],
                             probs=router_probs,
                             language_ids=language_ids,
-                            expect_targets=self.language_list is not None,
+                            expect_targets=use_expert_guidance and self.language_list is not None,
                         )
                         record_hydralora_metrics(metrics, weight=metrics_weight)
 

@@ -106,6 +106,7 @@ class HydraLoraConfig(PeftConfig):
     lora_alpha: int = field(default=8, metadata={"help": "Lora alpha"})
     lora_dropout: float = field(default=0.0, metadata={"help": "Lora dropout"})
     lora_num: int = field(default=1, metadata={"help": "Lora number"})
+    expert_lora_nums: Optional[List[int]] = field(default=None, metadata={"help": "Optional per-expert override for `lora_num` when HydraLoRA experts are enabled."})
 
     # Hierarchical HydraLoRA specific parameters
     use_hydralora_experts: bool = field(
@@ -174,6 +175,12 @@ class HydraLoraConfig(PeftConfig):
     language_bias_value: float = field(
         default=5.0,
         metadata={"help": "Additive logit bonus applied in 'bias' routing mode."},
+    )
+    language_guidance_scope: Literal["all", "expert_only", "none"] = field(
+        default="all",
+        metadata={
+            "help": "Which routing stages are guided by language metadata: 'all'=experts+heads, 'expert_only', or 'none'."
+        },
     )
     language_list: Optional[List[str]] = field(
         default=None,

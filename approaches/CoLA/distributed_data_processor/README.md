@@ -11,19 +11,28 @@ Tools for two simple steps: (1) load each sharded language file and tokenize it,
 
 Each tokenized example keeps a `language` column (derived from the source shard) and a deterministic `split` label. During merging we build a `DatasetDict(train, validation)` where the validation slice contains roughly 5 % of every language (configurable via `merge_tokenized_ranks.py --split_fraction`). Point any training job at the merged path and both splits are already present.
 
+## Pipeline overview
+
+```mermaid
+flowchart LR
+    A["Sharded JSONL (.gz) per language"]
+    B["tokenize_and_merge_pipeline.sh<br>writes rank_* datasets"]
+    C["count_ranks.sh<br>per-rank word/subword counts"]
+    D["merge_ranks.sh<br>global word/subword counts"]
+    E["run_rank_scores.sh<br>add joint_score to each rank"]
+    F["merge_tokenized_ranks.py<br>DatasetDict train/validation<br>Final HF dataset @ &lt;output&gt;/"]
+    G1["create_topk_ranked_datasets.py<br>Top-K per language HF datasets"]
+    G2["select_top_ranked.py<br>JSONL corpus for CPT"]
+
+    A --> B --> C --> D --> E --> F
+    F --> G1
+    F --> G2
+
+    classDef optional fill:#fff9e6,stroke-dasharray:5 5,color:#6b4e00
+    class C,D,E,G1,G2 optional
 ```
-Sharded JSONL(.gz) per language
-          │
-          ▼
-tokenize_and_merge_pipeline.sh
-          │
-          ├── Tokenization array → <output>_ranks/rank_*
-          ▼
-  merge_tokenized_ranks.py
-          │
-          ▼
- Final HF dataset @ <output>/ (DatasetDict with train + validation)
-```
+
+Required stages (A → B → F) mirror the original tokenization/merge pipeline. Optional stages (dashed nodes) enrich the rank datasets with `joint_score`, spawn filtered datasets, and produce ready-to-train JSONL corpora (training happens outside this pipeline).
 
 ## What you need
 
@@ -88,6 +97,25 @@ This submits the tokenization array and its merge job. Check `logs/smoke_llama32
 `bash main.sh` launches every tokenizer/subset combo and writes to:
 
 See the `language_subsets.py` lists for the exact language mixes per subset.
+
+### CoLA Tier Tokenization (12 & 72 languages)
+
+When you already have curated sharded corpora for the CoLA Tier‑12 and Tier‑72 mixes (e.g., under `/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_{12,72}_tier_samples/samples/`) and want to tokenize them with both the stock Llama‑3.1‑8B tokenizer and the tier-specific extended tokenizers, run:
+
+```bash
+cd distributed_data_processor
+bash tokenize_cola_tiers.sh
+```
+
+The script submits four jobs (Tier‑12/Tier‑72 × original/extended tokenizer) via `tokenize_and_merge_pipeline.sh`. Key details:
+
+- Default paths match the locations shared on the cluster (sample dirs plus `/scratch/.../tokenized/hierarchical_adapter` outputs). Override any of them by exporting `COLA_TIER{1,2}_SAMPLE_DIR`, `COLA_TIER{1,2}_EXT_TOKENIZER`, `BASE_TOKENIZER_NAME`, or `OUTPUT_BASE` before running the script.
+- The script consumes every shard under each tier directory—no subset filtering or top‑K selection is enabled—so you get one merged dataset per tokenizer per tier.
+- Tokenization array sizes default to 10 ranks for Tier‑12 and 50 ranks for Tier‑72, with the Hugging Face `map` workers per rank defaulting to 4 (override via `COLA_TIER{1,2}_NUM_RANKS` and `COLA_TIER{1,2}_NUM_PROC`). Other resource knobs such as `CPUS_PER_TASK` and `MERGE_CPUS` are also overridable via environment variables before invocation.
+
+### Lang2Vec-driven subset
+
+`language_subsets.py` now exposes `lang2vec_auto_best_languages`, a 12-language mix built from the Lang2Vec clustering pipeline (`data_prep/lang_cluster_analysis/run_lang2vec_best_clusters.sh`). The loader automatically prefers the fresh artifact at `data_prep/processed_artifacts/clusters_lang2vec_genetic_auto_best4x3.json` and falls back to the checked-in preset under `data_prep/lang_cluster_analysis/presets/`. To swap in a new cluster selection, rerun the Lang2Vec script and point the pipeline at the resulting JSON via `export LANG2VEC_CLUSTER_SELECTION=/path/to/your_best4x3.json` before invoking `tokenize_and_merge_pipeline.sh --language-subset lang2vec_auto_best_languages`.
 
 ## Resources
 

@@ -16,7 +16,7 @@
 
 
 import re
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Sequence, Union
 
 import torch
 
@@ -50,6 +50,21 @@ def _build_language_metadata(language_map: Optional[dict[str, str]]):
     family_to_idx = {family: idx for idx, family in enumerate(families)}
     language_to_family_ids = [family_to_idx[language_map[lang]] for lang in languages]
     return languages, families, language_to_family_ids
+
+
+def _parse_optional_int_list(value: Optional[Union[str, Sequence[int]]]) -> Optional[list[int]]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        items = [item.strip() for item in value.split(",") if item.strip()]
+    else:
+        items = list(value)
+    if not items:
+        return None
+    parsed = []
+    for item in items:
+        parsed.append(int(item))
+    return parsed
 
 
 def _setup_full_tuning(
@@ -383,10 +398,14 @@ def _setup_cola_tuning(
             # "expert_num": finetuning_args.expert_num,
             "modules_to_save": finetuning_args.additional_target,
         }
+        expert_num_A = _parse_optional_int_list(finetuning_args.cola_expert_num_A)
+        expert_num_B = _parse_optional_int_list(finetuning_args.cola_expert_num_B)
         language_map = load_language_map(finetuning_args.language_map)
         language_list, family_list, language_to_family = _build_language_metadata(language_map)
         peft_kwargs.update(
             {
+                "expert_num_A": expert_num_A,
+                "expert_num_B": expert_num_B,
                 "language_map": language_map,
                 "language_list": language_list,
                 "family_list": family_list,
@@ -395,6 +414,7 @@ def _setup_cola_tuning(
                 "language_router_mode": finetuning_args.language_router_mode,
                 "language_prior_weight": finetuning_args.language_prior_weight,
                 "language_bias_value": finetuning_args.language_bias_value,
+                "language_guidance_scope": finetuning_args.language_guidance_scope,
             }
         )
         init_lora_weights = finetuning_args.cola_init_lora_weights
@@ -778,10 +798,12 @@ def _setup_hydralora_tuning(
 
             "modules_to_save": finetuning_args.additional_target,
         }
+        hydra_expert_lora_nums = _parse_optional_int_list(finetuning_args.hydralora_expert_lora_nums)
         language_map = load_language_map(finetuning_args.language_map)
         language_list, family_list, language_to_family = _build_language_metadata(language_map)
         peft_kwargs.update(
             {
+                "expert_lora_nums": hydra_expert_lora_nums,
                 "language_map": language_map,
                 "language_list": language_list,
                 "family_list": family_list,
@@ -790,6 +812,7 @@ def _setup_hydralora_tuning(
                 "language_router_mode": finetuning_args.language_router_mode,
                 "language_prior_weight": finetuning_args.language_prior_weight,
                 "language_bias_value": finetuning_args.language_bias_value,
+                "language_guidance_scope": finetuning_args.language_guidance_scope,
             }
         )
 

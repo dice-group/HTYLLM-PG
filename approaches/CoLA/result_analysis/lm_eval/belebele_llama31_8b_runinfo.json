@@ -1,0 +1,12 @@
+{
+  "run_id": "dmyeg7zg",
+  "run_name": "lm_eval_belebele_llama31_8b",
+  "project": "llama3.1_8b_multilingual_eval",
+  "entity": "dice-nlp",
+  "created_at": "2025-11-30T23:27:37Z",
+  "updated_at": "",
+  "sweep_id": "",
+  "summary_metrics_count": 615,
+  "source_summary_path": "result_analysis/lm_eval/belebele_llama31_8b_accuracy.csv",
+  "details from joel": "just ran llama 3.1 8b on belebele using limit 250 to get base results"
+}

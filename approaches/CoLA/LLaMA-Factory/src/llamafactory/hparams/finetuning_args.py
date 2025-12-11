@@ -400,6 +400,8 @@ class FinetuningArguments(
     lora_num: int = field(default=1, metadata={"help": "Lora number"})
     num_A: int = field(default=1, metadata={"help": "Matrix A number"})
     num_B: int = field(default=1, metadata={"help": "Matrix B number"})
+    cola_expert_num_A: Optional[str] = field(default=None, metadata={"help": "Optional comma-separated list overriding `num_A` per CoLA expert when using MoE."})
+    cola_expert_num_B: Optional[str] = field(default=None, metadata={"help": "Optional comma-separated list overriding `num_B` per CoLA expert when using MoE."})
     use_cola_experts: bool = field(default=False, metadata={"help": "Enable mixture-of-experts routing for CoLA adapters."})
     cola_num_experts: int = field(default=1, metadata={"help": "Number of experts per CoLA layer when mixture-of-experts is enabled."})
     cola_top_k: int = field(default=1, metadata={"help": "Top-k experts to select per token when mixture-of-experts is enabled."})
@@ -427,6 +429,10 @@ class FinetuningArguments(
     hydralora_num_experts: int = field(default=1, metadata={"help": "Number of experts per HydraLoRA layer when mixture-of-experts is enabled."})
     hydralora_top_k: int = field(default=1, metadata={"help": "Top-k experts to select per token when mixture-of-experts is enabled."})
     hydralora_debug: bool = field(default=False, metadata={"help": "Enable verbose HydraLoRA debugging output."})
+    hydralora_expert_lora_nums: Optional[str] = field(
+        default=None,
+        metadata={"help": "Optional comma-separated list overriding `lora_num` per HydraLoRA expert when MoE mode is enabled."},
+    )
     language_column: Optional[str] = field(
         default=None,
         init=False,
@@ -440,6 +446,12 @@ class FinetuningArguments(
     language_router_mode: Literal["learned", "bias", "hard"] = field(
         default="learned",
         metadata={"help": "Language routing mode: 'learned'=no intervention, 'bias'=fixed logit bonus, 'hard'=one-hot."},
+    )
+    language_guidance_scope: Literal["all", "expert_only", "none"] = field(
+        default="all",
+        metadata={
+            "help": "Which routing stages receive language guidance: 'all'=experts+B heads, 'expert_only'=only experts, 'none'=no metadata."
+        },
     )
     language_prior_weight: float = field(
         default=0.0,
@@ -467,6 +479,12 @@ class FinetuningArguments(
             self.cola_init_lora_weights = self.cola_init_lora_weights.strip()
             if len(self.cola_init_lora_weights) == 0:
                 self.cola_init_lora_weights = None
+        if isinstance(self.cola_expert_num_A, str):
+            self.cola_expert_num_A = self.cola_expert_num_A.strip() or None
+        if isinstance(self.cola_expert_num_B, str):
+            self.cola_expert_num_B = self.cola_expert_num_B.strip() or None
+        if isinstance(self.hydralora_expert_lora_nums, str):
+            self.hydralora_expert_lora_nums = self.hydralora_expert_lora_nums.strip() or None
 
         assert self.finetuning_type in ["lora", "freeze", "full", "cola", "hydralora", "prompt_tuning", "ia3", "p_tuning"], "Invalid fine-tuning method."
         assert self.ref_model_quantization_bit in [None, 8, 4], "We only accept 4-bit or 8-bit quantization."
