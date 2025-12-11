@@ -10,10 +10,10 @@
 
 # This script can run either via `sbatch checkpoint_listener.sh ...`
 # (using the header above) or directly with `bash checkpoint_listener.sh ...`.
-set -euo pipefail
 
-# Minimal env setup - just need sbatch in PATH
-source ~/.bashrc 2>/dev/null || true
+# Note: Don't source ~/.bashrc here - it can interfere with set -e
+# sbatch should already be in PATH on SLURM systems
+set -euo pipefail
 
 usage() {
 cat <<EOF
@@ -107,7 +107,8 @@ submit() {
 echo "[INFO] Watching $WATCH"
 
 while true; do
-  mapfile -t CKPTS < <(find "$WATCH" -maxdepth 1 -type d -name 'checkpoint-*' | sort -V)
+  # Look for both checkpoint-* and step_* patterns (DeepSpeed uses step_N format)
+  mapfile -t CKPTS < <(find "$WATCH" -maxdepth 1 -type d \( -name 'checkpoint-*' -o -name 'step_*' \) | sort -V)
 
   for ckpt in "${CKPTS[@]}"; do
     processed "$ckpt" || submit "$ckpt"
