@@ -1,7 +1,5 @@
 import argparse
 import numpy as np
-
-from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 from typing import Dict, Iterable, List
@@ -66,7 +64,17 @@ def main() -> None:
     if not sizes:
         raise RuntimeError("Provide at least one positive integer via --sizes.")
 
-    ds_dict: DatasetDict = load_from_disk(str(args.merged_root))
+    data = load_from_disk(str(args.merged_root))
+    if isinstance(data, DatasetDict):
+        ds_dict = data
+    else:
+        if "split" in data.column_names:
+            ds_dict = DatasetDict(
+                train=data.filter(lambda x: x.get("split") != "validation"),
+                validation=data.filter(lambda x: x.get("split") == "validation"),
+            )
+        else:
+            ds_dict = DatasetDict(train=data)
     if args.train_split not in ds_dict:
         raise RuntimeError(f"Split '{args.train_split}' was not found in {args.merged_root}.")
     train_ds = ds_dict[args.train_split]

@@ -18,12 +18,9 @@ TIME_LIMIT=02:00:00
 MERGE_CPUS=4
 MERGE_MEM=64G
 MERGE_TIME=04:00:00
-MERGE_WORKERS=""
 TRANSFORMERS_OFFLINE=1
 EVAL_FRACTION=0.05
 EVAL_SEED=42
-MERGE_SPLIT_FRACTION=0.05
-MERGE_SPLIT_SEED=42
 ENABLE_RANKING=0
 RANK_ALPHA=0.5
 RANK_BETA=0.5
@@ -57,12 +54,9 @@ Options (propagated to tokenize_and_merge_pipeline.sh):
   --merge-cpus INT      CPUs for merge job (default: ${MERGE_CPUS}).
   --merge-mem MEM       Memory for merge job (default: ${MERGE_MEM}).
   --merge-time HH:MM:SS Time limit for merge job (default: ${MERGE_TIME}).
-  --merge-workers INT   --max_workers for merge_tokenized_ranks.py (default: match --merge-cpus).
   --trans-offline {0,1} Set TRANSFORMERS_OFFLINE flag (default: ${TRANSFORMERS_OFFLINE}).
   --eval-fraction FLOAT Validation fraction per language during tokenization (default: ${EVAL_FRACTION}).
   --eval-seed INT       Seed for eval hashing (default: ${EVAL_SEED}).
-  --merge-split-fraction FLOAT Validation fraction reserved during merge (default: ${MERGE_SPLIT_FRACTION}).
-  --merge-split-seed INT Seed used if merge falls back to random split (default: ${MERGE_SPLIT_SEED}).
   --enable-ranking      Run the ranking pipeline (counts + scores) before merging.
   --rank-alpha FLOAT    Local-popularity weight α (default: ${RANK_ALPHA}).
   --rank-beta FLOAT     Global-importance weight β (default: ${RANK_BETA}).
@@ -99,13 +93,10 @@ while [[ $# -gt 0 ]]; do
     --merge-cpus) MERGE_CPUS="$2"; shift 2 ;;
     --merge-mem) MERGE_MEM="$2"; shift 2 ;;
     --merge-time) MERGE_TIME="$2"; shift 2 ;;
-    --merge-workers) MERGE_WORKERS="$2"; shift 2 ;;
     --trans-offline) TRANSFORMERS_OFFLINE="$2"; shift 2 ;;
     --job-prefix) JOB_PREFIX_BASE="$2"; shift 2 ;;
     --eval-fraction) EVAL_FRACTION="$2"; shift 2 ;;
     --eval-seed) EVAL_SEED="$2"; shift 2 ;;
-    --merge-split-fraction) MERGE_SPLIT_FRACTION="$2"; shift 2 ;;
-    --merge-split-seed) MERGE_SPLIT_SEED="$2"; shift 2 ;;
     --enable-ranking) ENABLE_RANKING=1; shift ;;
     --rank-alpha) RANK_ALPHA="$2"; shift 2 ;;
     --rank-beta) RANK_BETA="$2"; shift 2 ;;
@@ -131,8 +122,6 @@ if [[ -z "${SHARD_DIR}" || -z "${OUTPUT_BASE}" ]]; then
   usage
   exit 1
 fi
-
-MERGE_WORKERS="${MERGE_WORKERS:-${MERGE_CPUS}}"
 
 TOKENIZERS=(
   "llama-3.1-8B_tokenizer|meta-llama/Llama-3.1-8B"
@@ -176,11 +165,8 @@ for tok_entry in "${TOKENIZERS[@]}"; do
       --merge-cpus "${MERGE_CPUS}"
       --merge-mem "${MERGE_MEM}"
       --merge-time "${MERGE_TIME}"
-      --merge-workers "${MERGE_WORKERS}"
       --eval-fraction "${EVAL_FRACTION}"
       --eval-seed "${EVAL_SEED}"
-      --merge-split-fraction "${MERGE_SPLIT_FRACTION}"
-      --merge-split-seed "${MERGE_SPLIT_SEED}"
       --job-prefix "${job_prefix}"
       --output-root "${output_dir}"
     )

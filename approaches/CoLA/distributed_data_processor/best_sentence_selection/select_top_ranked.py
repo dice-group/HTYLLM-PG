@@ -43,8 +43,8 @@ def select_top(
     Parameters
     ----------
     merged_path: Path
-        Directory that contains the merged tokenized DatasetDict
-        (the output of ``merge_tokenized_ranks.py``).
+        Directory that contains the merged tokenized dataset
+        (fast merge output or DatasetDict).
     output_path: Path
         Destination ``.jsonl`` file that will hold the CPT corpus.
     size: int, optional
@@ -54,13 +54,12 @@ def select_top(
         of a fixed ``size`` (mutually exclusive with ``size``).
     """
     # Load the merged dataset
-    ds_dict: DatasetDict = load_from_disk(str(merged_path))
-    # We usually fine‑tune on the *train* split; if none exists we fall back
-    # to the whole dataset.
-    if "train" in ds_dict:
-        ds = ds_dict["train"]
+    data = load_from_disk(str(merged_path))
+    if isinstance(data, DatasetDict):
+        ds_dict = data
+        ds = ds_dict["train"] if "train" in ds_dict else (ds_dict["dataset"] if "dataset" in ds_dict else list(ds_dict.values())[0])
     else:
-        ds = ds_dict["dataset"] if "dataset" in ds_dict else list(ds_dict.values())[0]
+        ds = data
 
     # Pull the joint rank scores (Rj) that were computed in
     # Algorithm 2 of the CPT paper.

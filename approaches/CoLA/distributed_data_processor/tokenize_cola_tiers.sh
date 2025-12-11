@@ -32,11 +32,8 @@ TIME_LIMIT=${TIME_LIMIT:-04:00:00}
 MERGE_CPUS=${MERGE_CPUS:-8}
 MERGE_MEM=${MERGE_MEM:-96G}
 MERGE_TIME=${MERGE_TIME:-06:00:00}
-MERGE_WORKERS=${MERGE_WORKERS:-${MERGE_CPUS}}
 EVAL_FRACTION=${EVAL_FRACTION:-0.05}
 EVAL_SEED=${EVAL_SEED:-42}
-MERGE_SPLIT_FRACTION=${MERGE_SPLIT_FRACTION:-0.05}
-MERGE_SPLIT_SEED=${MERGE_SPLIT_SEED:-42}
 JOB_PREFIX_BASE=${JOB_PREFIX_BASE:-cola_tier_tok}
 
 # Tier-specific parallelism defaults (override with COLA_TIER{1,2}_NUM_RANKS).
@@ -93,11 +90,8 @@ submit_pipeline() {
     --merge-cpus "${MERGE_CPUS}"
     --merge-mem "${MERGE_MEM}"
     --merge-time "${MERGE_TIME}"
-    --merge-workers "${MERGE_WORKERS}"
     --eval-fraction "${EVAL_FRACTION}"
     --eval-seed "${EVAL_SEED}"
-    --merge-split-fraction "${MERGE_SPLIT_FRACTION}"
-    --merge-split-seed "${MERGE_SPLIT_SEED}"
     --job-prefix "${job_prefix}"
   )
 

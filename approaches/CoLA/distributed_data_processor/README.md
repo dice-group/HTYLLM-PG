@@ -9,7 +9,7 @@ Tools for two simple steps: (1) load each sharded language file and tokenize it,
 └── llama-3.2-3B_tokenizer/{...}
 ```
 
-Each tokenized example keeps a `language` column (derived from the source shard) and a deterministic `split` label. During merging we build a `DatasetDict(train, validation)` where the validation slice contains roughly 5 % of every language (configurable via `merge_tokenized_ranks.py --split_fraction`). Point any training job at the merged path and both splits are already present.
+Each tokenized example keeps a `language` column (derived from the source shard) and a deterministic per‑language `split` label. The merge step is now metadata‑only: `merge_tokenized_ranks.py` symlinks all `rank_*` shards into one Hugging Face dataset without rewriting Arrow. LLaMA‑Factory will build `train/validation` from the `split` column at load time.
 
 ## Pipeline overview
 
@@ -20,7 +20,7 @@ flowchart LR
     C["count_ranks.sh<br>per-rank word/subword counts"]
     D["merge_ranks.sh<br>global word/subword counts"]
     E["run_rank_scores.sh<br>add joint_score to each rank"]
-    F["merge_tokenized_ranks.py<br>DatasetDict train/validation<br>Final HF dataset @ &lt;output&gt;/"]
+    F["merge_tokenized_ranks.py<br>fast metadata merge<br>Final HF dataset @ &lt;output&gt;/"]
     G1["create_topk_ranked_datasets.py<br>Top-K per language HF datasets"]
     G2["select_top_ranked.py<br>JSONL corpus for CPT"]
 
@@ -84,7 +84,6 @@ bash tokenize_and_merge_pipeline.sh \
   --merge-cpus 6 \
   --merge-mem 96G \
   --merge-time 03:00:00 \
-  --merge-workers 4 \
   --output-root /scratch/.../tokenized/hierarchical_adapter/llama-3.2-1B_tokenizer/5_langs_smoke \
   --log-root logs/smoke_llama32b \
   --job-prefix smoke_llama32b
@@ -112,6 +111,7 @@ The script submits four jobs (Tier‑12/Tier‑72 × original/extended tokenizer
 - Default paths match the locations shared on the cluster (sample dirs plus `/scratch/.../tokenized/hierarchical_adapter` outputs). Override any of them by exporting `COLA_TIER{1,2}_SAMPLE_DIR`, `COLA_TIER{1,2}_EXT_TOKENIZER`, `BASE_TOKENIZER_NAME`, or `OUTPUT_BASE` before running the script.
 - The script consumes every shard under each tier directory—no subset filtering or top‑K selection is enabled—so you get one merged dataset per tokenizer per tier.
 - Tokenization array sizes default to 10 ranks for Tier‑12 and 50 ranks for Tier‑72, with the Hugging Face `map` workers per rank defaulting to 4 (override via `COLA_TIER{1,2}_NUM_RANKS` and `COLA_TIER{1,2}_NUM_PROC`). Other resource knobs such as `CPUS_PER_TASK` and `MERGE_CPUS` are also overridable via environment variables before invocation.
+- `tokenize_cola_tiers.sh` uses the fast metadata merge by default, so Tier‑12/72 tokenization finishes in minutes even with many ranks.
 
 ### Lang2Vec-driven subset
 
@@ -153,7 +153,7 @@ The script scans every `<tokenizer>/<subset>` dataset, gathers sample/token coun
 
 - `tokenize_and_merge_pipeline.sh` — runs one tokenizer/subset job.
 - `tokenize_all_tokenizers.sh` — loops over all combos.
-- `merge_tokenized_ranks.py` — merges `rank_*` datasets with progress logs.
+- `merge_tokenized_ranks.py` — fast metadata merge of `rank_*` shards.
 - `main.sh` — runs the full sweep.
 
 ---
