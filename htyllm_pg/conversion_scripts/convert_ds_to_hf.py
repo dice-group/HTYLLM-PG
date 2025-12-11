@@ -133,6 +133,16 @@ def convert(args):
     # (token_embedding and output_projection share the same tensor)
     hf_model.save_pretrained(args.output_dir, safe_serialization=False)
     
+    # 5b. Copy tokenizer files from project root
+    import shutil
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    tokenizer_files = ["tokenizer.json", "tokenizer_config.json", "special_tokens_map.json"]
+    for tf in tokenizer_files:
+        src = os.path.join(project_root, tf)
+        if os.path.exists(src):
+            shutil.copy(src, os.path.join(args.output_dir, tf))
+            print(f"Copied {tf} to output directory")
+    
     # We read model_builder.py and append our wrapper classes
     model_builder_path = os.path.join(os.path.dirname(__file__), "../model_builder.py")
     with open(model_builder_path, "r") as f:
