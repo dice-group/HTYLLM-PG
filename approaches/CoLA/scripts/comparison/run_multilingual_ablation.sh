@@ -51,16 +51,11 @@ if [[ "${WANDB_RUN_GROUP}" == "${default_wandb_group}" ]]; then
   WANDB_RUN_GROUP="${WANDB_RUN_GROUP}-${timestamp}"
 fi
 
-# Model entries: <tokenizer_dir>|<model_name_or_path>
-MODEL_VARIANTS=(
-  "llama-3.1-8B_tokenizer|meta-llama/Llama-3.1-8B"
-)
-
-# Language tiers: <tier_id>|<language_count>|<language_map_path>|<tokenized_suffix>
+# Language tiers: <tier_id>|<language_count>|<language_map_path>|<tokenized_suffix>|<tokenizer_dir>|<model_path>
 LANGUAGE_TIERS=(
-  "tier12|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|12_langs"
-  "tier72|72|${REPO_ROOT}/tools/two_stage_clustering/72_tier_language_groupings.json|72_langs"
-  # "tier200|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|200_langs"
+  "tier12|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|12_langs|cola_tier1|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier1/merged_model"
+  "tier72|72|${REPO_ROOT}/tools/two_stage_clustering/72_tier_language_groupings.json|72_langs|cola_tier2|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier2/merged_model"
+  # "tier200|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|200_langs|cola_tier3|/path/to/cola_tier3/merged_model"
 )
 
 # Hydra variants: <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>
@@ -93,6 +88,7 @@ declare -A MODEL_GPU_TYPE_MAP=(
 declare -A MODEL_PARTITION_MAP=(
   ["meta-llama_Llama-3.1-8B"]="${DEFAULT_PARTITION}"
 )
+MODEL_RESOURCE_KEY="meta-llama_Llama-3.1-8B"
 
 declare -A TIER_WALLTIME_MAP=(
   ["tier12"]="12:00:00"
@@ -103,7 +99,14 @@ declare -A TIER_WALLTIME_MAP=(
 ENABLE_LM_EVAL_LISTENER=${ENABLE_LM_EVAL_LISTENER:-false}
 CHECKPOINT_LISTENER_SCRIPT=${CHECKPOINT_LISTENER_SCRIPT:-${REPO_ROOT}/scripts/checkpoint_listener.sh}
 LM_EVAL_SCRIPT=${LM_EVAL_SCRIPT:-${REPO_ROOT}/scripts/lm_eval_checkpoint.sh}
-LM_EVAL_TASKS=${LM_EVAL_TASKS:-"belebele,flores200,arc_challenge,mmlu,hellaswag"}
+LM_EVAL_TASK_FILE=${LM_EVAL_TASK_FILE:-${REPO_ROOT}/configs/lm_eval_tasks.txt}
+if [[ -z "${LM_EVAL_TASKS:-}" ]]; then
+  if [[ -f "${LM_EVAL_TASK_FILE}" ]]; then
+    LM_EVAL_TASKS=$(paste -sd, "${LM_EVAL_TASK_FILE}")
+  else
+    LM_EVAL_TASKS="belebele,flores200,arc_challenge,mmlu,hellaswag"
+  fi
+fi
 LM_EVAL_BATCH_SIZE=${LM_EVAL_BATCH_SIZE:-auto}
 LM_EVAL_POLL_INTERVAL=${LM_EVAL_POLL_INTERVAL:-300}
 LM_EVAL_WANDB_PROJECT=${LM_EVAL_WANDB_PROJECT:-llama31_multilingual_eval_belebele}
@@ -223,101 +226,100 @@ sanitize() {
 declare -A JOB_IDS=()
 declare -A LISTENER_JOB_IDS=()
 
-for model_spec in "${MODEL_VARIANTS[@]}"; do
-  IFS='|' read -r tokenizer_dir model_path <<<"${model_spec}"
-  model_slug="$(sanitize "${model_path}")"
+for tier_spec in "${LANGUAGE_TIERS[@]}"; do
+  IFS='|' read -r tier_id lang_count tier_map tier_path tokenizer_dir model_path <<<"${tier_spec}"
+  tier_slug="$(sanitize "${tier_id}")"
+  tokenized_path="${TOKENIZED_BASE_DIR}/${tokenizer_dir}/${tier_path}"
 
-  for tier_spec in "${LANGUAGE_TIERS[@]}"; do
-    IFS='|' read -r tier_id lang_count tier_map tier_path <<<"${tier_spec}"
-    tier_slug="$(sanitize "${tier_id}")"
-    tokenized_path="${TOKENIZED_BASE_DIR}/${tokenizer_dir}/${tier_path}"
+  if [[ ! -d "${tokenized_path}" ]]; then
+    echo "[ERROR] Tokenized path ${tokenized_path} not found for ${tier_id} (${tokenizer_dir})" >&2
+    exit 1
+  fi
+  if [[ ! -d "${model_path}" ]]; then
+    echo "[ERROR] Model path ${model_path} not found for ${tier_id}" >&2
+    exit 1
+  fi
 
-    if [[ ! -d "${tokenized_path}" ]]; then
-      echo "[ERROR] Tokenized path ${tokenized_path} not found for ${model_path} / ${tier_id}" >&2
-      exit 1
+  # Hydra/LoRA runs
+  for variant_spec in "${HYDRA_VARIANTS[@]}"; do
+    IFS='|' read -r label use_experts lora_num router_mode prior_weight bias_value top_k guidance_scope <<<"${variant_spec}"
+    variant_slug="$(sanitize "${label}")"
+    if [[ "${use_experts}" == "True" ]]; then
+      hydra_num_experts="${lang_count}"
+    else
+      hydra_num_experts=1
     fi
+    declare -a hydra_sbatch=()
+    select_resources hydra_sbatch "${MODEL_RESOURCE_KEY}" "${tier_id}"
 
-    # Hydra/LoRA runs
-    for variant_spec in "${HYDRA_VARIANTS[@]}"; do
-      IFS='|' read -r label use_experts lora_num router_mode prior_weight bias_value top_k guidance_scope <<<"${variant_spec}"
-      variant_slug="$(sanitize "${label}")"
-      if [[ "${use_experts}" == "True" ]]; then
-        hydra_num_experts="${lang_count}"
-      else
-        hydra_num_experts=1
-      fi
-      declare -a hydra_sbatch=()
-      select_resources hydra_sbatch "${model_slug}" "${tier_id}"
+    hydra_output="${OUTPUT_ROOT}/${tier_slug}/hydra_${variant_slug}_${timestamp}"
+    hydra_wandb="${label}-${tier_id}-${timestamp}"
+    hydra_log="hydra_${tier_slug}_${variant_slug}"
 
-      hydra_output="${OUTPUT_ROOT}/${model_slug}/${tier_slug}/hydra_${variant_slug}_${timestamp}"
-      hydra_wandb="${label}-${model_slug}-${tier_id}-${timestamp}"
-      hydra_log="hydra_${model_slug}_${tier_slug}_${variant_slug}"
+    hydra_env=(
+      "OUTPUT_DIR=${hydra_output}"
+      "WANDB_NAME=${hydra_wandb}"
+      "MODEL_NAME_OR_PATH=${model_path}"
+      "TOKENIZED_PATH=${tokenized_path}"
+      "LANGUAGE_MAP=${tier_map}"
+      "LANGUAGE_ROUTER_MODE=${router_mode}"
+      "LANGUAGE_PRIOR_WEIGHT=${prior_weight}"
+      "LANGUAGE_BIAS_VALUE=${bias_value}"
+      "LANGUAGE_GUIDANCE_SCOPE=${guidance_scope}"
+      "USE_HYDRALORA_EXPERTS=${use_experts}"
+      "HYDRALORA_NUM_EXPERTS=${hydra_num_experts}"
+      "HYDRALORA_TOP_K=${top_k}"
+      "LORA_NUM=${lora_num}"
+      "MODEL_VARIANT=${tier_id}"
+      "LANGUAGE_TIER=${tier_id}"
+    )
 
-      hydra_env=(
-        "OUTPUT_DIR=${hydra_output}"
-        "WANDB_NAME=${hydra_wandb}"
-        "MODEL_NAME_OR_PATH=${model_path}"
-        "TOKENIZED_PATH=${tokenized_path}"
-        "LANGUAGE_MAP=${tier_map}"
-        "LANGUAGE_ROUTER_MODE=${router_mode}"
-        "LANGUAGE_PRIOR_WEIGHT=${prior_weight}"
-        "LANGUAGE_BIAS_VALUE=${bias_value}"
-        "LANGUAGE_GUIDANCE_SCOPE=${guidance_scope}"
-        "USE_HYDRALORA_EXPERTS=${use_experts}"
-        "HYDRALORA_NUM_EXPERTS=${hydra_num_experts}"
-        "HYDRALORA_TOP_K=${top_k}"
-        "LORA_NUM=${lora_num}"
-        "MODEL_VARIANT=${model_slug}"
-        "LANGUAGE_TIER=${tier_id}"
-      )
+    hydra_job=$(submit_job "Hydra-${label}-${tier_id}" \
+      "${COMPARISON_DIR}/hydralora_lpr_job.sh" "${hydra_log}" hydra_env hydra_sbatch)
+    JOB_IDS["hydra-${label}-${tier_id}"]="${hydra_job}"
+    submit_listener_job "hydra-${label}-${tier_id}" "${hydra_output}" "${model_path}"
+  done
 
-      hydra_job=$(submit_job "Hydra-${label}-${model_slug}-${tier_id}" \
-        "${COMPARISON_DIR}/hydralora_lpr_job.sh" "${hydra_log}" hydra_env hydra_sbatch)
-      JOB_IDS["hydra-${label}-${model_slug}-${tier_id}"]="${hydra_job}"
-      submit_listener_job "hydra-${label}-${model_slug}-${tier_id}" "${hydra_output}" "${model_path}"
-    done
+  # CoLA runs
+  for variant_spec in "${COLA_VARIANTS[@]}"; do
+    IFS='|' read -r label use_experts num_A num_B strategy router_mode prior_weight bias_value top_k guidance_scope <<<"${variant_spec}"
+    variant_slug="$(sanitize "${label}")"
+    if [[ "${use_experts}" == "True" ]]; then
+      cola_num_experts="${lang_count}"
+    else
+      cola_num_experts=1
+    fi
+    declare -a cola_sbatch=()
+    select_resources cola_sbatch "${MODEL_RESOURCE_KEY}" "${tier_id}"
 
-    # CoLA runs
-    for variant_spec in "${COLA_VARIANTS[@]}"; do
-      IFS='|' read -r label use_experts num_A num_B strategy router_mode prior_weight bias_value top_k guidance_scope <<<"${variant_spec}"
-      variant_slug="$(sanitize "${label}")"
-      if [[ "${use_experts}" == "True" ]]; then
-        cola_num_experts="${lang_count}"
-      else
-        cola_num_experts=1
-      fi
-      declare -a cola_sbatch=()
-      select_resources cola_sbatch "${model_slug}" "${tier_id}"
+    cola_output="${OUTPUT_ROOT}/${tier_slug}/cola_${variant_slug}_${timestamp}"
+    cola_wandb="${label}-${tier_id}-${timestamp}"
+    cola_log="cola_${tier_slug}_${variant_slug}"
 
-      cola_output="${OUTPUT_ROOT}/${model_slug}/${tier_slug}/cola_${variant_slug}_${timestamp}"
-      cola_wandb="${label}-${model_slug}-${tier_id}-${timestamp}"
-      cola_log="cola_${model_slug}_${tier_slug}_${variant_slug}"
+    cola_env=(
+      "OUTPUT_DIR=${cola_output}"
+      "WANDB_NAME=${cola_wandb}"
+      "MODEL_NAME_OR_PATH=${model_path}"
+      "TOKENIZED_PATH=${tokenized_path}"
+      "LANGUAGE_MAP=${tier_map}"
+      "LANGUAGE_ROUTER_MODE=${router_mode}"
+      "LANGUAGE_PRIOR_WEIGHT=${prior_weight}"
+      "LANGUAGE_BIAS_VALUE=${bias_value}"
+      "LANGUAGE_GUIDANCE_SCOPE=${guidance_scope}"
+      "USE_COLA_EXPERTS=${use_experts}"
+      "COLA_NUM_EXPERTS=${cola_num_experts}"
+      "COLA_NUM_A=${num_A}"
+      "COLA_NUM_B=${num_B}"
+      "COLA_STRATEGY=${strategy}"
+      "COLA_TOP_K=${top_k}"
+      "MODEL_VARIANT=${tier_id}"
+      "LANGUAGE_TIER=${tier_id}"
+    )
 
-      cola_env=(
-        "OUTPUT_DIR=${cola_output}"
-        "WANDB_NAME=${cola_wandb}"
-        "MODEL_NAME_OR_PATH=${model_path}"
-        "TOKENIZED_PATH=${tokenized_path}"
-        "LANGUAGE_MAP=${tier_map}"
-        "LANGUAGE_ROUTER_MODE=${router_mode}"
-        "LANGUAGE_PRIOR_WEIGHT=${prior_weight}"
-        "LANGUAGE_BIAS_VALUE=${bias_value}"
-        "LANGUAGE_GUIDANCE_SCOPE=${guidance_scope}"
-        "USE_COLA_EXPERTS=${use_experts}"
-        "COLA_NUM_EXPERTS=${cola_num_experts}"
-        "COLA_NUM_A=${num_A}"
-        "COLA_NUM_B=${num_B}"
-        "COLA_STRATEGY=${strategy}"
-        "COLA_TOP_K=${top_k}"
-        "MODEL_VARIANT=${model_slug}"
-        "LANGUAGE_TIER=${tier_id}"
-      )
-
-      cola_job=$(submit_job "CoLA-${label}-${model_slug}-${tier_id}" \
-        "${COMPARISON_DIR}/cola_lpr_job.sh" "${cola_log}" cola_env cola_sbatch)
-      JOB_IDS["cola-${label}-${model_slug}-${tier_id}"]="${cola_job}"
-      submit_listener_job "cola-${label}-${model_slug}-${tier_id}" "${cola_output}" "${model_path}"
-    done
+    cola_job=$(submit_job "CoLA-${label}-${tier_id}" \
+      "${COMPARISON_DIR}/cola_lpr_job.sh" "${cola_log}" cola_env cola_sbatch)
+    JOB_IDS["cola-${label}-${tier_id}"]="${cola_job}"
+    submit_listener_job "cola-${label}-${tier_id}" "${cola_output}" "${model_path}"
   done
 done
 
