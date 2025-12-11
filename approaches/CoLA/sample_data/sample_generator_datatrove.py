@@ -9,7 +9,6 @@ from typing import Iterable, List, Sequence, Tuple
 
 import pandas as pd
 from datatrove.executor import LocalPipelineExecutor
-from datatrove.pipeline.base import DocumentsPipeline, PipelineStep
 from datatrove.pipeline.readers import ParquetReader
 from datatrove.pipeline.writers import JsonlWriter
 
@@ -29,38 +28,6 @@ def parse_args():
     parser.add_argument("--shard-index", type=int, help="Index of this shard when splitting the CSV across array jobs.")
     parser.add_argument("--num-shards", type=int, help="Total number of shards. Defaults to Slurm array size or 1.")
     return parser.parse_args()
-
-METADATA_FIELDS: Tuple[str, ...] = (
-    "dump",
-    "url",
-    "date",
-    "file_path",
-    "language",
-    "language_score",
-    "language_script",
-    "minhash_cluster_size",
-    "top_langs",
-    "wordlist_ratio",
-    "token_count",
-)
-
-
-class MetadataNormalizer(PipelineStep):
-    """Ensure every document exposes the full metadata schema expected downstream."""
-
-    name = "metadata_normalizer"
-    type = "Processor"
-
-    def __init__(self, fields: Sequence[str] = METADATA_FIELDS):
-        super().__init__()
-        self.fields = tuple(fields)
-
-    def run(self, data: DocumentsPipeline, rank: int = 0, world_size: int = 1) -> DocumentsPipeline:
-        for doc in data:
-            metadata = doc.metadata or {}
-            normalized = {field: metadata.get(field) for field in self.fields}
-            doc.metadata = normalized
-            yield doc
 
 def _resolve_shard(args) -> Tuple[int, int]:
     shard_idx = args.shard_index if args.shard_index is not None else int(os.environ.get("SLURM_ARRAY_TASK_ID", 0))
@@ -107,8 +74,7 @@ def _build_executor(root_dir: Path, subset: str, sample_size: int) -> LocalPipel
     out_dir.mkdir(parents=True, exist_ok=True)
     writer = JsonlWriter(str(out_dir))
     reader = ParquetReader(dataset, limit=sample_size, file_progress=True, doc_progress=True)
-    normalizer = MetadataNormalizer()
-    return LocalPipelineExecutor(pipeline=[reader, normalizer, writer], tasks=1)
+    return LocalPipelineExecutor(pipeline=[reader, writer], tasks=1)
 
 
 def _append_manifest(root_dir: Path, entries):
