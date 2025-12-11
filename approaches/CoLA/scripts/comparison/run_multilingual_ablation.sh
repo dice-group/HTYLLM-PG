@@ -270,8 +270,9 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     declare -a hydra_sbatch=()
     select_resources hydra_sbatch "${tier_id}"
 
+    hydra_descriptor="${tier_id}_${label}_${router_mode}_g${prior_weight}"
     hydra_output="${OUTPUT_ROOT}/${tier_slug}/hydra_${variant_slug}_${timestamp}"
-    hydra_wandb="${label}-${tier_id}-${timestamp}"
+    hydra_wandb="${hydra_descriptor}_${timestamp}"
     hydra_log="hydra_${tier_slug}_${variant_slug}"
 
     hydra_env=(
@@ -290,6 +291,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "LORA_NUM=${lora_num}"
       "MODEL_VARIANT=${tier_id}"
       "LANGUAGE_TIER=${tier_id}"
+      "WANDB_TAGS=adapter:hydra,variant:${label},tier:${tier_id},mode:${router_mode},gamma:${prior_weight}"
     )
 
     hydra_job=$(submit_job "Hydra-${label}-${tier_id}" \
@@ -313,8 +315,9 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     declare -a cola_sbatch=()
     select_resources cola_sbatch "${tier_id}"
 
+    cola_descriptor="${tier_id}_${label}_${router_mode}_g${prior_weight}"
     cola_output="${OUTPUT_ROOT}/${tier_slug}/cola_${variant_slug}_${timestamp}"
-    cola_wandb="${label}-${tier_id}-${timestamp}"
+    cola_wandb="${cola_descriptor}_${timestamp}"
     cola_log="cola_${tier_slug}_${variant_slug}"
 
     cola_env=(
@@ -335,6 +338,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "COLA_TOP_K=${top_k}"
       "MODEL_VARIANT=${tier_id}"
       "LANGUAGE_TIER=${tier_id}"
+      "WANDB_TAGS=adapter:cola,variant:${label},tier:${tier_id},mode:${router_mode},gamma:${prior_weight}"
     )
 
     cola_job=$(submit_job "CoLA-${label}-${tier_id}" \

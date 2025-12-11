@@ -24,7 +24,7 @@ export WANDB_PROJECT="${WANDB_PROJECT:-htyllm-adapter-lpr}"
 export WANDB_ENTITY="${WANDB_ENTITY:-}"
 export WANDB_RUN_GROUP="${WANDB_RUN_GROUP:-lpr-ablation}"
 export WANDB_NAME="${WANDB_NAME:-cola-lpr}"
-export WANDB_TAGS="comparison,cola,lpr"
+export WANDB_TAGS="${WANDB_TAGS:-comparison,cola,lpr}"
 export PYTHONUNBUFFERED=1
 
 OUTPUT_DIR="${OUTPUT_DIR:?OUTPUT_DIR not set}"
