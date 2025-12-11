@@ -16,7 +16,7 @@ MODULE_INIT=${MODULE_INIT:-module purge && module load toolchain/foss/2024a syst
 DATASET_NAME=${DATASET_NAME:-c4}
 DATASET_DIR=${DATASET_DIR:-./LLaMA-Factory/data}
 LANGUAGE_COLUMN=${LANGUAGE_COLUMN:-language}
-TOKENIZED_BASE_DIR=${TOKENIZED_BASE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/tokenized/hierarchical_adapter}
+TOKENIZED_BASE_DIR=${TOKENIZED_BASE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_tiers_tokenized}
 
 OUTPUT_ROOT=${OUTPUT_ROOT:-/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation}
 WANDB_PROJECT=${WANDB_PROJECT:-htyllm-adapter-lpr}
@@ -51,11 +51,12 @@ if [[ "${WANDB_RUN_GROUP}" == "${default_wandb_group}" ]]; then
   WANDB_RUN_GROUP="${WANDB_RUN_GROUP}-${timestamp}"
 fi
 
-# Language tiers: <tier_id>|<language_count>|<language_map_path>|<tokenized_suffix>|<tokenizer_dir>|<model_path>
+# Language tiers: <tier_id>|<language_count>|<language_map_path>|<tokenized_path>|<model_path>
 LANGUAGE_TIERS=(
-  "tier12|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|12_langs|cola_tier1|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier1/merged_model"
-  "tier72|72|${REPO_ROOT}/tools/two_stage_clustering/72_tier_language_groupings.json|72_langs|cola_tier2|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier2/merged_model"
-  # "tier200|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|200_langs|cola_tier3|/path/to/cola_tier3/merged_model"
+  "tier12|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier1_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier1/merged_model"
+  "tier12_base|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier1|meta-llama/Llama-3.1-8B"      # i hope this will sparately show the effect of the extended tokenizer and weight initialization
+  "tier72|72|${REPO_ROOT}/tools/two_stage_clustering/72_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier2_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier2/merged_model"
+  # "tier200|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier3_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier3/merged_model"
 )
 
 # Hydra variants: <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>
@@ -77,23 +78,32 @@ DEFAULT_GPU_COUNT=${DEFAULT_GPU_COUNT:-1}
 DEFAULT_WALLTIME=${DEFAULT_WALLTIME:-12:00:00}
 DEFAULT_PARTITION=${DEFAULT_PARTITION:-gpu}
 
-declare -A MODEL_GPU_MAP=(
-  ["meta-llama_Llama-3.1-8B"]=4
-)
-
-declare -A MODEL_GPU_TYPE_MAP=(
-  ["meta-llama_Llama-3.1-8B"]="${DEFAULT_GPU_TYPE}"
-)
-
-declare -A MODEL_PARTITION_MAP=(
-  ["meta-llama_Llama-3.1-8B"]="${DEFAULT_PARTITION}"
-)
-MODEL_RESOURCE_KEY="meta-llama_Llama-3.1-8B"
-
 declare -A TIER_WALLTIME_MAP=(
   ["tier12"]="12:00:00"
+  ["tier12_base"]="12:00:00"
   ["tier72"]="18:00:00"
   ["tier200"]="24:00:00"
+)
+
+declare -A TIER_GPU_COUNT_MAP=(
+  ["tier12"]=2
+  ["tier12_base"]=2
+  ["tier72"]=4
+  ["tier200"]=8
+)
+
+declare -A TIER_GPU_TYPE_MAP=(
+  ["tier12"]="${DEFAULT_GPU_TYPE}"
+  ["tier12_base"]="${DEFAULT_GPU_TYPE}"
+  ["tier72"]="${DEFAULT_GPU_TYPE}"
+  ["tier200"]="${DEFAULT_GPU_TYPE}"
+)
+
+declare -A TIER_PARTITION_MAP=(
+  ["tier12"]="${DEFAULT_PARTITION}"
+  ["tier12_base"]="${DEFAULT_PARTITION}"
+  ["tier72"]="${DEFAULT_PARTITION}"
+  ["tier200"]="${DEFAULT_PARTITION}"
 )
 
 ENABLE_LM_EVAL_LISTENER=${ENABLE_LM_EVAL_LISTENER:-false}
@@ -116,11 +126,10 @@ LISTENER_SBATCH_ARGS=${LISTENER_SBATCH_ARGS:-}
 
 select_resources() {
   local -n out_ref=$1
-  local model_slug=$2
-  local tier_id=$3
-  local gpu_type=${MODEL_GPU_TYPE_MAP[$model_slug]:-${DEFAULT_GPU_TYPE}}
-  local gpu_count=${MODEL_GPU_MAP[$model_slug]:-${DEFAULT_GPU_COUNT}}
-  local partition=${MODEL_PARTITION_MAP[$model_slug]:-${DEFAULT_PARTITION}}
+  local tier_id=$2
+  local gpu_type=${TIER_GPU_TYPE_MAP[$tier_id]:-${DEFAULT_GPU_TYPE}}
+  local gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
+  local partition=${TIER_PARTITION_MAP[$tier_id]:-${DEFAULT_PARTITION}}
   local walltime=${TIER_WALLTIME_MAP[$tier_id]:-${DEFAULT_WALLTIME}}
   out_ref=(
     "--partition=${partition}"
@@ -227,12 +236,13 @@ declare -A JOB_IDS=()
 declare -A LISTENER_JOB_IDS=()
 
 for tier_spec in "${LANGUAGE_TIERS[@]}"; do
-  IFS='|' read -r tier_id lang_count tier_map tier_path tokenizer_dir model_path <<<"${tier_spec}"
+  IFS='|' read -r tier_id lang_count tier_map tokenized_path model_path <<<"${tier_spec}"
   tier_slug="$(sanitize "${tier_id}")"
-  tokenized_path="${TOKENIZED_BASE_DIR}/${tokenizer_dir}/${tier_path}"
-
+  if [[ "${tokenized_path}" != /* ]]; then
+    tokenized_path="${TOKENIZED_BASE_DIR}/${tokenized_path}"
+  fi
   if [[ ! -d "${tokenized_path}" ]]; then
-    echo "[ERROR] Tokenized path ${tokenized_path} not found for ${tier_id} (${tokenizer_dir})" >&2
+    echo "[ERROR] Tokenized path ${tokenized_path} not found for ${tier_id}" >&2
     exit 1
   fi
   if [[ ! -d "${model_path}" ]]; then
@@ -240,17 +250,25 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     exit 1
   fi
 
+  run_lora_only=false
+  if [[ "${tier_id}" == "tier12_base" ]]; then
+    run_lora_only=true
+  fi
+
   # Hydra/LoRA runs
   for variant_spec in "${HYDRA_VARIANTS[@]}"; do
     IFS='|' read -r label use_experts lora_num router_mode prior_weight bias_value top_k guidance_scope <<<"${variant_spec}"
     variant_slug="$(sanitize "${label}")"
+    if [[ "${run_lora_only}" == "true" && "${label}" != "hydra-lora" ]]; then
+      continue
+    fi
     if [[ "${use_experts}" == "True" ]]; then
       hydra_num_experts="${lang_count}"
     else
       hydra_num_experts=1
     fi
     declare -a hydra_sbatch=()
-    select_resources hydra_sbatch "${MODEL_RESOURCE_KEY}" "${tier_id}"
+    select_resources hydra_sbatch "${tier_id}"
 
     hydra_output="${OUTPUT_ROOT}/${tier_slug}/hydra_${variant_slug}_${timestamp}"
     hydra_wandb="${label}-${tier_id}-${timestamp}"
@@ -281,6 +299,9 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
   done
 
   # CoLA runs
+  if [[ "${run_lora_only}" == "true" ]]; then
+    continue
+  fi
   for variant_spec in "${COLA_VARIANTS[@]}"; do
     IFS='|' read -r label use_experts num_A num_B strategy router_mode prior_weight bias_value top_k guidance_scope <<<"${variant_spec}"
     variant_slug="$(sanitize "${label}")"
@@ -290,7 +311,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       cola_num_experts=1
     fi
     declare -a cola_sbatch=()
-    select_resources cola_sbatch "${MODEL_RESOURCE_KEY}" "${tier_id}"
+    select_resources cola_sbatch "${tier_id}"
 
     cola_output="${OUTPUT_ROOT}/${tier_slug}/cola_${variant_slug}_${timestamp}"
     cola_wandb="${label}-${tier_id}-${timestamp}"
