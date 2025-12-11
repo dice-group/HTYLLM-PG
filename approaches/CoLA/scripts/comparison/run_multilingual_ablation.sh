@@ -67,13 +67,13 @@ LANGUAGE_TIERS=(
 HYDRA_VARIANTS=(
   "hydra-lora|False|1|learned|0.0|0.0|1|none"
   "hydra-flat|False|3|learned|0.0|0.0|1|none"
-  "hydra-exp-bias|True|3|bias|0.1|5.0|1|all"
+  "hydra-exp-lpr|True|3|learned|0.1|0.0|1|all"
 )
 
 # CoLA variants: <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>
 COLA_VARIANTS=(
   "colaflat|False|1|3|fully|learned|0.0|0.0|1|none"
-  "colaexp-bias|True|1|3|fully|bias|0.1|5.0|1|all"
+  "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|1|all"
 )
 
 # Resource mappings
