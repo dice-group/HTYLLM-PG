@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Optional
 
-from datasets import load_dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
@@ -32,12 +31,11 @@ def train_tokenizer(config: TrainingConfig) -> TrainingResult:
     if not config.data_dir.is_dir():
         raise ValueError(f"Data directory not found: {config.data_dir}")
 
-    shard_paths = [str(path) for _, path in find_language_shards(config.data_dir)]
+    shard_paths = [path for _, path in find_language_shards(config.data_dir)]
     if not shard_paths:
         raise ValueError(f"No shard files found under {config.data_dir}")
-    dataset = load_dataset("json", data_files=shard_paths, split="train")
 
-    iterator = _TextIterator(dataset, config.text_key, config.max_samples)
+    iterator = _TextIterator(shard_paths, config.text_key, config.max_samples)
     tokenizer = AutoTokenizer.from_pretrained(config.base_model, use_fast=True)
     print(f"[training] training multilingual tokenizer based on {config.base_model} architecture "
           f"on data from {config.data_dir} "
@@ -64,17 +62,24 @@ def train_tokenizer(config: TrainingConfig) -> TrainingResult:
 
 
 class _TextIterator:
-    def __init__(self, dataset, text_key: str, max_samples: Optional[int]):
-        self.dataset = dataset
+    def __init__(self, shard_paths, text_key: str, max_samples: Optional[int]):
+        self.shard_paths = shard_paths
         self.text_key = text_key
         self.max_samples = max_samples
         self.count = 0
 
     def __iter__(self) -> Iterator[str]:
-        for row in self.dataset:
-            text = row.get(self.text_key)
-            if text:
-                yield text
-                self.count += 1
-                if self.max_samples is not None and self.count >= self.max_samples:
-                    break
+        import gzip, json
+        for path in self.shard_paths:
+            with gzip.open(path, "rt", encoding="utf-8", errors="ignore") as handle:
+                for line in handle:
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    text = row.get(self.text_key)
+                    if text:
+                        yield text
+                        self.count += 1
+                        if self.max_samples is not None and self.count >= self.max_samples:
+                            return
