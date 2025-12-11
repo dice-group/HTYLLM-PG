@@ -19,7 +19,7 @@ LANGUAGE_COLUMN=${LANGUAGE_COLUMN:-language}
 TOKENIZED_BASE_DIR=${TOKENIZED_BASE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_tiers_tokenized}
 
 OUTPUT_ROOT=${OUTPUT_ROOT:-/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation}
-WANDB_PROJECT=${WANDB_PROJECT:-htyllm-adapter-lpr}
+WANDB_PROJECT=${WANDB_PROJECT:-htyllm-adapter-lpr-12_72_lang_tier}
 WANDB_ENTITY=${WANDB_ENTITY:-}
 default_wandb_group="multilingual-ablation"
 if [[ -z "${WANDB_RUN_GROUP+x}" ]]; then
