@@ -5,8 +5,8 @@
 #SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=256G
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
 #SBATCH --gres=gpu:h100:1
 #SBATCH --partition=gpu
 
@@ -53,10 +53,10 @@ CHECKPOINT="/scratch/hpc-prf-merlin/project_data/moe_study/saves/cola_moe_llama3
 ADAPTER_TYPE="cola"
 VALIDATION_DATA="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/samples"
 LANGUAGES="en,es,hi,ru,fi"
-NUM_SEQUENCES="10000"
+NUM_SEQUENCES="100"
 NUM_LAYERS="32"
 NUM_EXPERTS="4"
-BATCH_SIZE="8"
+BATCH_SIZE="16"
 
 # Derived paths
 CHECKPOINT_NAME=$(basename "$CHECKPOINT")

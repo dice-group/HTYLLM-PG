@@ -137,24 +137,37 @@ class RoutingCollector:
         def hook(module, input, output):
             """Forward hook to capture routing decisions."""
             try:
-                # Try to extract routing information from the module
-                # This assumes the layer stores routing info during forward pass
+                # CoLA stores routing data in _caches dict during forward pass
+                # Check for cached routing state (set by _cache_router_state)
+                router_logits = None
+                if hasattr(module, '_caches') and isinstance(module._caches, dict):
+                    router_logits = module._caches.get('cola_router_logits', None)
                 
-                if hasattr(module, '_last_routing_probs'):
-                    router_probs = module._last_routing_probs
-                elif hasattr(module, 'router_probs'):
-                    router_probs = module.router_probs
+                # If no cache, try legacy attribute names
+                if router_logits is None:
+                    if hasattr(module, '_last_routing_probs'):
+                        router_probs = module._last_routing_probs
+                    elif hasattr(module, 'router_probs'):
+                        router_probs = module.router_probs
+                    else:
+                        # No routing info available
+                        return
+                    
+                    if hasattr(module, '_last_expert_indices'):
+                        expert_indices = module._last_expert_indices
+                    elif hasattr(module, 'expert_indices'):
+                        expert_indices = module.expert_indices
+                    else:
+                        expert_indices = torch.argmax(router_probs, dim=-1)
                 else:
-                    # No routing info available, skip
-                    return
-                
-                if hasattr(module, '_last_expert_indices'):
-                    expert_indices = module._last_expert_indices
-                elif hasattr(module, 'expert_indices'):
-                    expert_indices = module.expert_indices
-                else:
-                    # Infer from probabilities (top-1)
-                    expert_indices = torch.argmax(router_probs, dim=-1)
+                    # Extract from cache - logits are raw router outputs
+                    # Compute probabilities and top-k indices
+                    router_probs = torch.softmax(router_logits.to(torch.float32), dim=-1)
+                    
+                    # Get top-k indices (CoLA uses top_k, default 1)
+                    top_k = getattr(module, 'top_k', 1)
+                    topv, topi = torch.topk(router_logits, top_k, dim=-1)
+                    expert_indices = topi[..., 0]  # Take first expert for statistics
                 
                 # Store routing decision
                 if self.current_language is not None:
@@ -165,7 +178,8 @@ class RoutingCollector:
                     })
             
             except Exception as e:
-                # Silently ignore errors in hook (don't break forward pass)
+                # Log errors for debugging but don't break forward pass
+                logger.debug(f"Hook error in {layer_name}: {e}")
                 pass
         
         return hook
@@ -317,12 +331,25 @@ def create_routing_matrix(
         stats = all_language_stats[lang]
         
         for layer_name, layer_stats in stats.items():
-            # Extract layer index from name (e.g., "model.layers.15" -> 15)
+            # Extract layer index from name (e.g., "base_model.model.model.layers.15.self_attn.q_proj" -> 15)
+            # Look for "layers.X" pattern in the full path
             try:
-                layer_idx = int(layer_name.split('.')[-1])
-                if layer_idx >= num_layers:
+                parts = layer_name.split('.')
+                layer_idx = None
+                for i, part in enumerate(parts):
+                    if part == 'layers' and i + 1 < len(parts):
+                        layer_idx = int(parts[i + 1])
+                        break
+                
+                if layer_idx is None:
+                    logger.debug(f"Could not extract layer index from: {layer_name}")
                     continue
-            except (ValueError, IndexError):
+                    
+                if layer_idx >= num_layers:
+                    logger.debug(f"Layer index {layer_idx} >= num_layers {num_layers}, skipping")
+                    continue
+            except (ValueError, IndexError) as e:
+                logger.debug(f"Error parsing layer name '{layer_name}': {e}")
                 continue
             
             # Fill in expert counts

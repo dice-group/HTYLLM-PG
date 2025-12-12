@@ -135,17 +135,84 @@ def create_tsne_clustering(
     # Replace NaN with 0
     routing_matrix_flat = np.nan_to_num(routing_matrix_flat, nan=0.0)
     
+    # Validate data before t-SNE
+    n_samples = len(routing_matrix_flat)
+    
+    # Check for all zeros
+    if np.allclose(routing_matrix_flat, 0):
+        logger.error("Routing matrix is all zeros - cannot perform t-SNE")
+        logger.error("This suggests no routing data was collected. Check that:")
+        logger.error("  1. Your model has MoE/routing layers")
+        logger.error("  2. Forward hooks attached correctly")
+        logger.error("  3. Inference ran successfully")
+        # Create empty plot with error message
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, 
+                'ERROR: No routing data available\n(all values are zero)',
+                ha='center', va='center', fontsize=14, color='red',
+                transform=ax.transAxes)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis('off')
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.close()
+        return
+    
+    # Check for constant values (no variance)
+    if np.std(routing_matrix_flat) < 1e-10:
+        logger.error("Routing matrix has no variance - cannot perform t-SNE")
+        logger.error("All routing values are identical")
+        # Create empty plot with error message
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, 
+                'ERROR: No variance in routing data\n(all values are identical)',
+                ha='center', va='center', fontsize=14, color='red',
+                transform=ax.transAxes)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis('off')
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.close()
+        return
+    
+    # Adaptive perplexity based on number of samples
+    # t-SNE requires perplexity < n_samples
+    perplexity = min(30.0, max(2.0, n_samples - 1))
+    
+    if n_samples < 5:
+        logger.warning(f"Very few samples ({n_samples}), t-SNE may not be meaningful")
+    
+    logger.info(f"Using perplexity={perplexity} for {n_samples} languages")
+    logger.info(f"Data range: [{routing_matrix_flat.min():.4f}, {routing_matrix_flat.max():.4f}]")
+    logger.info(f"Data std: {routing_matrix_flat.std():.4f}")
+    
     # t-SNE parameters
     logger.info("Running t-SNE (this may take a minute)...")
-    tsne = TSNE(
-        n_components=2,
-        learning_rate=250.0,  # Higher than default 200 for better convergence
-        init='pca',            # PCA initialization for stability
-        perplexity=30.0,       # Standard perplexity value
-        random_state=42        # For reproducibility
-    )
-    
-    embedded = tsne.fit_transform(routing_matrix_flat.astype(np.float32))
+    try:
+        tsne = TSNE(
+            n_components=2,
+            learning_rate=250.0,
+            init='pca',
+            perplexity=perplexity,
+            random_state=42,
+            n_iter=1000  # Limit iterations to prevent hanging
+        )
+        
+        embedded = tsne.fit_transform(routing_matrix_flat.astype(np.float32))
+    except Exception as e:
+        logger.error(f"t-SNE failed: {e}")
+        # Create error plot
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, 
+                f'ERROR: t-SNE computation failed\n{str(e)}',
+                ha='center', va='center', fontsize=12, color='red',
+                transform=ax.transAxes)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis('off')
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.close()
+        return
     
     # Get language family info
     lang_family_map = language_families.get('languages', {})
