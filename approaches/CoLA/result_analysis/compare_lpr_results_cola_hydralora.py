@@ -102,6 +102,7 @@ METRIC_ALIASES: Dict[str, List[str]] = {
 RUN_TYPES = {
     "cola_experts": {
         "prefix": "colaexp-",
+        "prefix_aliases": [],
         "required_metrics": [
             "train/loss",
             "train/cola/language_target_hit_rate",
@@ -118,6 +119,7 @@ RUN_TYPES = {
     },
     "cola_flat": {
         "prefix": "colaflat-",
+        "prefix_aliases": [],
         "required_metrics": [
             "train/loss",
         ],
@@ -128,7 +130,9 @@ RUN_TYPES = {
         ],
     },
     "hydralora": {
+        # Some runs are named hydra-lora-* and often prefixed by tierXX_/base_.
         "prefix": "hydra-",
+        "prefix_aliases": ["hydra-lora-"],
         "required_metrics": [
             "train/loss",
             "train/hydralora/head_target_hit_rate",
@@ -338,11 +342,36 @@ def gather_runs(project_path: str, group: str, max_points: int) -> Dict[str, Dic
 
     for run in runs:
         run_name = run.name or run.id
+        normalized_name = run_name
+        # Strip tierXX_ prefix if present (e.g., tier12_foo -> foo).
+        if normalized_name.startswith("tier") and "_" in normalized_name:
+            maybe_tier, rest = normalized_name.split("_", 1)
+            if len(maybe_tier) > 4 and maybe_tier[4:].isdigit():
+                normalized_name = rest
+        # Strip optional base_ prefix after tier removal.
+        if normalized_name.startswith("base_"):
+            normalized_name = normalized_name[len("base_") :]
+        candidate_names = [run_name, normalized_name]
+
         for run_type, definition in RUN_TYPES.items():
             prefix = definition["prefix"]
-            if not run_name.startswith(prefix):
+            prefixes = [prefix] + definition.get("prefix_aliases", [])
+
+            matched_prefix = None
+            matched_name = None
+            for candidate in candidate_names:
+                for candidate_prefix in prefixes:
+                    if candidate.startswith(candidate_prefix):
+                        matched_prefix = candidate_prefix
+                        matched_name = candidate
+                        break
+                if matched_prefix:
+                    break
+
+            if not matched_prefix:
                 continue
-            label = extract_label(run_name, prefix)
+
+            label = extract_label(matched_name, matched_prefix)
             # Keep most recent run per label/type (runs are already returned sorted newest-first).
             if label in snapshots[run_type]:
                 continue
