@@ -208,7 +208,10 @@ class HydraLoraModel(BaseTuner):
             "language_list": lora_config.language_list,
             "family_list": lora_config.family_list,
             "language_to_family_ids": lora_config.language_to_family_ids,
+            "language_column": lora_config.language_column,
             "language_router_mode": lora_config.language_router_mode,
+            "language_guidance_scope": lora_config.language_guidance_scope,
+            "language_prior_weight": lora_config.language_prior_weight,
             "language_bias_value": lora_config.language_bias_value,
         }
 
