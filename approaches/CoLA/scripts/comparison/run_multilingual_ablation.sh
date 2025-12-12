@@ -65,16 +65,17 @@ LANGUAGE_TIERS=(
 )
 
 # Hydra variants: <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>
+# Hydra variants: <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>|<train_bs>
 HYDRA_VARIANTS=(
-  "hydra-lora|False|1|learned|0.0|0.0|1|none"           # baseline LoRA-compatible Hydra
-  "hydra-flat|False|3|learned|0.0|0.0|1|none"          # Hydra flat, 3 heads
-  "hydra-exp-lpr|True|3|learned|0.1|0.0|1|all"         # Hydra experts, subgroup heads, LPR
+  "hydra-lora|False|1|learned|0.0|0.0|1|none|16"           # baseline LoRA-compatible Hydra
+  "hydra-flat|False|3|learned|0.0|0.0|1|none|12"          # Hydra flat, 3 heads
+  "hydra-exp-lpr|True|3|learned|0.1|0.0|1|all|6"         # Hydra experts, subgroup heads, LPR
 )
 
-# CoLA variants: <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>
+# CoLA variants: <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>|<train_bs>
 COLA_VARIANTS=(
-  "colaflat|False|1|3|fully|learned|0.0|0.0|1|none"    # CoLA flat
-  "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|1|all"   # CoLA experts, subgroup B, LPR
+  "colaflat|False|1|3|fully|learned|0.0|0.0|1|none|12"    # CoLA flat
+  "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|1|all|6"   # CoLA experts, subgroup B, LPR
 )
 
 # Resource mappings
@@ -246,6 +247,11 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
   if [[ "${tokenized_path}" != /* ]]; then
     tokenized_path="${TOKENIZED_BASE_DIR}/${tokenized_path}"
   fi
+  # Train embeddings when using extended tokenizer/models (non-*base tiers).
+  additional_target=""
+  if [[ "${tier_id}" != *"base"* ]]; then
+    additional_target="embed_tokens,lm_head"
+  fi
   if [[ ! -d "${tokenized_path}" ]]; then
     echo "[ERROR] Tokenized path ${tokenized_path} not found for ${tier_id}" >&2
     exit 1
@@ -266,7 +272,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
 
   # Hydra/LoRA runs
   for variant_spec in "${HYDRA_VARIANTS[@]}"; do
-    IFS='|' read -r label use_experts lora_num router_mode prior_weight bias_value top_k guidance_scope <<<"${variant_spec}"
+    IFS='|' read -r label use_experts lora_num router_mode prior_weight bias_value top_k guidance_scope train_bs <<<"${variant_spec}"
     variant_slug="$(sanitize "${label}")"
     if [[ "${run_lora_only}" == "true" && "${label}" != "hydra-lora" ]]; then
       continue
@@ -293,7 +299,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     hydra_wandb="${hydra_descriptor}_tokenizer:$([[ \"${tier_id}\" == *base* ]] && echo base || echo ext)_${timestamp}"
     hydra_log="hydra_${tier_slug}_${variant_slug}"
 
-  hydra_env=(
+    hydra_env=(
       "REPO_ROOT=${REPO_ROOT}"
       "OUTPUT_DIR=${hydra_output}"
       "WANDB_NAME=${hydra_wandb}"
@@ -304,6 +310,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "LANGUAGE_PRIOR_WEIGHT=${prior_weight}"
       "LANGUAGE_BIAS_VALUE=${bias_value}"
       "LANGUAGE_GUIDANCE_SCOPE=${guidance_scope}"
+      "ADDITIONAL_TARGET=${additional_target}"
       "USE_HYDRALORA_EXPERTS=${use_experts}"
       "HYDRALORA_NUM_EXPERTS=${hydra_num_experts}"
       "HYDRALORA_TOP_K=${top_k}"
@@ -312,6 +319,9 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "LANGUAGE_TIER=${tier_id}"
       "WANDB_TAGS=adapter:hydra,variant:${label},tier:${tier_id},mode:${router_mode},gamma:${prior_weight}"
     )
+    if [[ -n "${train_bs}" ]]; then
+      hydra_env+=("PER_DEVICE_TRAIN_BATCH_SIZE=${train_bs}" "PER_DEVICE_EVAL_BATCH_SIZE=${train_bs}")
+    fi
     if [[ -n "${accelerate_config}" ]]; then
       hydra_env+=("ACCELERATE_CONFIG_FILE=${accelerate_config}")
     fi
@@ -327,7 +337,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     continue
   fi
   for variant_spec in "${COLA_VARIANTS[@]}"; do
-    IFS='|' read -r label use_experts num_A num_B strategy router_mode prior_weight bias_value top_k guidance_scope <<<"${variant_spec}"
+    IFS='|' read -r label use_experts num_A num_B strategy router_mode prior_weight bias_value top_k guidance_scope train_bs <<<"${variant_spec}"
     variant_slug="$(sanitize "${label}")"
     if [[ "${use_experts}" == "True" ]]; then
       cola_num_experts="${lang_count}"
@@ -362,6 +372,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "LANGUAGE_PRIOR_WEIGHT=${prior_weight}"
       "LANGUAGE_BIAS_VALUE=${bias_value}"
       "LANGUAGE_GUIDANCE_SCOPE=${guidance_scope}"
+      "ADDITIONAL_TARGET=${additional_target}"
       "USE_COLA_EXPERTS=${use_experts}"
       "COLA_NUM_EXPERTS=${cola_num_experts}"
       "COLA_NUM_A=${num_A}"
@@ -372,6 +383,9 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "LANGUAGE_TIER=${tier_id}"
       "WANDB_TAGS=adapter:cola,variant:${label},tier:${tier_id},mode:${router_mode},gamma:${prior_weight}"
     )
+    if [[ -n "${train_bs}" ]]; then
+      cola_env+=("PER_DEVICE_TRAIN_BATCH_SIZE=${train_bs}" "PER_DEVICE_EVAL_BATCH_SIZE=${train_bs}")
+    fi
     if [[ -n "${accelerate_config}" ]]; then
       cola_env+=("ACCELERATE_CONFIG_FILE=${accelerate_config}")
     fi

@@ -56,6 +56,7 @@ NUM_EXPERTS="${COLA_NUM_EXPERTS:-4}"
 TOP_K="${COLA_TOP_K:-2}"
 NUM_A="${COLA_NUM_A:-2}"
 NUM_B="${COLA_NUM_B:-3}"
+ADDITIONAL_TARGET="${ADDITIONAL_TARGET:-}"
 LORA_R="${LORA_R:-16}"
 LORA_ALPHA="${LORA_ALPHA:-32}"
 LORA_DROPOUT="${LORA_DROPOUT:-0.05}"
@@ -144,6 +145,7 @@ fi
   --language_prior_weight "${LANGUAGE_PRIOR_WEIGHT}" \
   --language_bias_value "${LANGUAGE_BIAS_VALUE}" \
   --language_guidance_scope "${LANGUAGE_GUIDANCE_SCOPE}" \
+  ${ADDITIONAL_TARGET:+--additional_target "${ADDITIONAL_TARGET}"} \
   --report_to wandb \
   --include_effective_tokens_per_second true \
   --include_num_input_tokens_seen true

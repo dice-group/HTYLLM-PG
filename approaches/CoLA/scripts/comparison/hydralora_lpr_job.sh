@@ -60,6 +60,7 @@ LORA_R="${LORA_R:-16}"
 LORA_ALPHA="${LORA_ALPHA:-32}"
 LORA_DROPOUT="${LORA_DROPOUT:-0.05}"
 LORA_NUM="${LORA_NUM:-4}"
+ADDITIONAL_TARGET="${ADDITIONAL_TARGET:-}"
 PREPROCESSING_NUM_WORKERS="${PREPROCESSING_NUM_WORKERS:-${SLURM_CPUS_PER_TASK:-8}}"
 PREPROCESSING_BATCH_SIZE="${PREPROCESSING_BATCH_SIZE:-100000}"
 
@@ -141,6 +142,7 @@ fi
   --use_hydralora_experts "${USE_HYDRALORA_EXPERTS}" \
   --hydralora_num_experts "${HYDRALORA_NUM_EXPERTS}" \
   --hydralora_top_k "${HYDRALORA_TOP_K}" \
+  ${ADDITIONAL_TARGET:+--additional_target "${ADDITIONAL_TARGET}"} \
   --report_to wandb \
   --include_effective_tokens_per_second true \
   --include_num_input_tokens_seen true
