@@ -91,7 +91,13 @@ if [[ -n "${ACCELERATE_CONFIG_FILE}" ]]; then
   ACCELERATE_CMD=(accelerate launch --config_file "${ACCELERATE_CONFIG_FILE}")
 fi
 
-"${ACCELERATE_CMD[@]}" llamafactory-cli train \
+LLAMAFATORY_CLI="$(command -v llamafactory-cli || true)"
+if [[ -z "${LLAMAFATORY_CLI}" ]]; then
+  echo "[ERROR] llamafactory-cli not found in PATH" >&2
+  exit 1
+fi
+
+"${ACCELERATE_CMD[@]}" "${LLAMAFATORY_CLI}" train \
   --stage sft \
   --do_train \
   --model_name_or_path "${MODEL_NAME_OR_PATH}" \

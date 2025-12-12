@@ -66,15 +66,15 @@ LANGUAGE_TIERS=(
 
 # Hydra variants: <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>
 HYDRA_VARIANTS=(
-  "hydra-lora|False|1|learned|0.0|0.0|1|none"
-  "hydra-flat|False|3|learned|0.0|0.0|1|none"
-  "hydra-exp-lpr|True|3|learned|0.1|0.0|1|all"
+  "hydra-lora|False|1|learned|0.0|0.0|1|none"           # baseline LoRA-compatible Hydra
+  "hydra-flat|False|3|learned|0.0|0.0|1|none"          # Hydra flat, 3 heads
+  "hydra-exp-lpr|True|3|learned|0.1|0.0|1|all"         # Hydra experts, subgroup heads, LPR
 )
 
 # CoLA variants: <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>
 COLA_VARIANTS=(
-  "colaflat|False|1|3|fully|learned|0.0|0.0|1|none"
-  "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|1|all"
+  "colaflat|False|1|3|fully|learned|0.0|0.0|1|none"    # CoLA flat
+  "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|1|all"   # CoLA experts, subgroup B, LPR
 )
 
 # Resource mappings
@@ -250,8 +250,12 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     echo "[ERROR] Tokenized path ${tokenized_path} not found for ${tier_id}" >&2
     exit 1
   fi
-  if [[ ! -d "${model_path}" ]]; then
-    echo "[ERROR] Model path ${model_path} not found for ${tier_id}" >&2
+  if [[ -d "${model_path}" ]]; then
+    : # local path exists
+  elif [[ "${model_path}" =~ ^[^/]+/[^/]+$ ]]; then
+    : # assume a remote hub id like meta-llama/Llama-3.1-8B
+  else
+    echo "[ERROR] Model path ${model_path} not found for ${tier_id} and does not look like a hub id" >&2
     exit 1
   fi
 
@@ -286,7 +290,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
 
     hydra_descriptor="${tier_id}_${label}_${router_mode}_g${prior_weight}"
     hydra_output="${OUTPUT_ROOT}/${tier_slug}/hydra_${variant_slug}_${timestamp}"
-    hydra_wandb="${hydra_descriptor}_${timestamp}"
+    hydra_wandb="${hydra_descriptor}_tokenizer:$([[ \"${tier_id}\" == *base* ]] && echo base || echo ext)_${timestamp}"
     hydra_log="hydra_${tier_slug}_${variant_slug}"
 
   hydra_env=(
@@ -344,7 +348,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
 
     cola_descriptor="${tier_id}_${label}_${router_mode}_g${prior_weight}"
     cola_output="${OUTPUT_ROOT}/${tier_slug}/cola_${variant_slug}_${timestamp}"
-    cola_wandb="${cola_descriptor}_${timestamp}"
+    cola_wandb="${cola_descriptor}_tokenizer:$([[ \"${tier_id}\" == *base* ]] && echo base || echo ext)_${timestamp}"
     cola_log="cola_${tier_slug}_${variant_slug}"
 
     cola_env=(
