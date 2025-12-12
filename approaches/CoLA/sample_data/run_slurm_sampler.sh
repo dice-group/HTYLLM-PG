@@ -21,8 +21,6 @@ MAX_SAMPLE="${MAX_SAMPLE:-}"
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p "logs"
 
-cd "${REPO_ROOT}"
-
 CLI_ARGS=( "${PLAN_CSV}" "${OUTPUT_DIR}" )
 [[ -n "${MAX_SAMPLE}" ]] && CLI_ARGS+=( "--max-sample" "${MAX_SAMPLE}" )
 [[ -n "${TOKENIZER_FLAG}" ]] && CLI_ARGS+=( "--tokenizer-training" )
@@ -32,4 +30,4 @@ echo "Output directory: ${OUTPUT_DIR}"
 [[ -n "${MAX_SAMPLE}" ]] && echo "Max sample per language: ${MAX_SAMPLE}"
 [[ -n "${TOKENIZER_FLAG}" ]] && echo "Tokenizer training mode: enabled"
 
-srun python sample_generator_datatrove.py "${CLI_ARGS[@]}"
+srun python "${SCRIPT_DIR}/sample_generator_datatrove.py" "${CLI_ARGS[@]}"
