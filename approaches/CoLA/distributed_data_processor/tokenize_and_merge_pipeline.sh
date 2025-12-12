@@ -39,6 +39,7 @@ Usage: $0 --shard-dir PATH --tokenizer NAME --output-root PATH [options]
 Key options:
   --language-subset NAME    Use a subset from language_subsets.py.
   --languages "L1 L2"       Explicit language directories (mutually exclusive).
+  --language-map PATH       Optional language->family map (used to emit language_ids/family_ids).
   --num-ranks INT           SLURM array size (overrides subset defaults below).
   --num-proc INT            Workers passed to tokenize_slurm.py --num_proc.
   --cpus-per-task INT       CPUs per tokenization task.
@@ -67,6 +68,7 @@ TOKENIZER=""
 OUTPUT_ROOT=""
 LANGUAGE_SUBSET=""
 LANGUAGES=""
+LANGUAGE_MAP=""
 LOG_ROOT=""
 
 while [[ $# -gt 0 ]]; do
@@ -76,6 +78,7 @@ while [[ $# -gt 0 ]]; do
     --output-root) OUTPUT_ROOT="$2"; shift 2 ;;
     --language-subset) LANGUAGE_SUBSET="$2"; shift 2 ;;
     --languages) LANGUAGES="$2"; shift 2 ;;
+    --language-map) LANGUAGE_MAP="$2"; shift 2 ;;
     --num-ranks) NUM_RANKS="$2"; shift 2 ;;
     --num-proc) NUM_PROC="$2"; shift 2 ;;
     --cpus-per-task) CPUS_PER_TASK="$2"; shift 2 ;;
@@ -178,6 +181,11 @@ if [[ "${NUM_RANKS}" -lt 1 ]]; then
   exit 1
 fi
 
+if [[ -n "${LANGUAGE_MAP}" && ! -f "${LANGUAGE_MAP}" ]]; then
+  echo "[ERROR] language map ${LANGUAGE_MAP} not found." >&2
+  exit 1
+fi
+
 LOG_ROOT="${LOG_ROOT:-logs/${JOB_PREFIX}}"
 RANK_OUTPUT_DIR="${OUTPUT_ROOT}_ranks"
 mkdir -p "${LOG_ROOT}" "${RANK_OUTPUT_DIR}"
@@ -189,6 +197,11 @@ if [[ -n "${LANGUAGE_SUBSET}" ]]; then
   printf -v TOKEN_CMD '%s --language_subset %q' "${TOKEN_CMD}" "${LANGUAGE_SUBSET}"
 elif [[ -n "${LANGUAGES}" ]]; then
   TOKEN_CMD+=" --languages ${LANGUAGES}"
+fi
+
+if [[ -n "${LANGUAGE_MAP}" ]]; then
+  map_arg=$(printf '%q' "${LANGUAGE_MAP}")
+  TOKEN_CMD+=" --language-map ${map_arg}"
 fi
 
 if [[ "${RANKING_ENABLED}" -eq 1 ]]; then
