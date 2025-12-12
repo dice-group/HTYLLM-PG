@@ -33,6 +33,25 @@ PREF=${PREF:-cola_moe_acc}
 [[ -z "$CKPT" || -z "$OUTDIR" ]] && { echo "--checkpoint and --output-dir required"; exit 1; }
 [[ ! -d "$CKPT" ]] && { echo "Checkpoint not found: $CKPT"; exit 1; }
 
+MODEL_ARGS="pretrained=$CKPT,tokenizer=$TOK"
+if [[ -f "$CKPT/adapter_config.json" ]]; then
+  BASE=${TOK}
+  if [[ -z "$BASE" || "$BASE" == "$CKPT" ]]; then
+    BASE=$(python - <<'PY' "$CKPT/adapter_config.json"
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+print(cfg.get("base_model_name_or_path", ""))
+PY
+)
+  fi
+  [[ -z "$BASE" ]] && { echo "Base model not found for adapter checkpoint: $CKPT"; exit 1; }
+  TOK_USE=$TOK
+  if [[ -z "$TOK_USE" || "$TOK_USE" == "$CKPT" ]]; then
+    TOK_USE=$BASE
+  fi
+  MODEL_ARGS="pretrained=$BASE,peft=$CKPT,tokenizer=$TOK_USE"
+fi
+
 mkdir -p "$OUTDIR" logs
 module purge
 module load toolchain/foss/2024a system/CUDA/12.6.0 lib/NCCL/2.22.3-GCCcore-13.3.0-CUDA-12.6.0
@@ -49,7 +68,7 @@ WANDB_NAME="${PREF}_${LABEL}"
 echo "Running lm-eval on $LABEL..."
 lm_eval \
   --model hf \
-  --model_args "pretrained=$CKPT,tokenizer=$TOK" \
+  --model_args "$MODEL_ARGS" \
   --tasks "$TASKS" \
   --batch_size "$BS" \
   --output_path "$OUTFILE" \
