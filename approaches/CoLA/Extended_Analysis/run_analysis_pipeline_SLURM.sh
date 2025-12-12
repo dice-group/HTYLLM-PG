@@ -5,9 +5,9 @@
 #SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=256G
+#SBATCH --gres=gpu:h100:1
 #SBATCH --partition=gpu
 
 # Expert Routing Analysis - Slurm Version
@@ -49,7 +49,7 @@ python -c "import torch; print('CUDA available:', torch.cuda.is_available()); pr
 
 # Configuration from command line or defaults
 BASE_MODEL="meta-llama/Llama-3.1-8B"
-CHECKPOINT="/scratch/hpc-prf-merlin/sashreek/moe_study/saves/hydralora_moe_llama31_8b_acc"
+CHECKPOINT="/scratch/hpc-prf-merlin/project_data/moe_study/saves/cola_moe_llama31_8b_acc/pissa/checkpoint-6000"
 ADAPTER_TYPE="hydralora"
 VALIDATION_DATA="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/samples"
 LANGUAGES="en,es,hi,ru,fi"
@@ -135,7 +135,7 @@ srun python tool/generate_analysis_report.py \
 echo ""
 
 echo "========================================="
-echo "✓ Analysis Complete!"
+echo "Analysis Complete!"
 echo "========================================="
 echo "Finished at: $(date)"
 echo ""
