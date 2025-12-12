@@ -12,6 +12,12 @@ TOKENIZE_SCRIPT="${REPO_ROOT}/distributed_data_processor/tokenize_cola_tiers.sh"
 
 PLAN_DIR="${REPO_ROOT}/sample_data/generate_sample_plan"
 TOKENIZER_EXTENSION_ROOT="/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension"
+TOKENIZED_OUTPUT_BASE="/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_tiers_tokenized"
+BASE_TOKENIZER_SLUG="llama-3.1-8B_tokenizer"
+declare -A EXT_TOKENIZER_SLUGS=(
+  ["cola_tier1"]="cola_tier1_extended_tokenizer"
+  ["cola_tier2"]="cola_tier2_extended_tokenizer"
+)
 
 SAMPLE_CONFIGS=(
   "tier1|${PLAN_DIR}/sampling_plan_tier1_12langs.csv|normal|/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_12_tier_samples"
@@ -23,15 +29,15 @@ SAMPLE_CONFIGS=(
 )
 
 EXTENSION_CONFIGS=(
-  "tier1|${REPO_ROOT}/data_prep/tokenizer_extension/configs/cola_tier1_12langs.yaml|4:00:00"
-  "tier2|${REPO_ROOT}/data_prep/tokenizer_extension/configs/cola_tier2_72langs.yaml|8:00:00"
-  "tier3|${REPO_ROOT}/data_prep/tokenizer_extension/configs/cola_tier3_200langs.yaml|12:00:00"
+  "tier1|cola_tier1|${REPO_ROOT}/data_prep/tokenizer_extension/configs/cola_tier1_12langs.yaml|4:00:00"
+  "tier2|cola_tier2|${REPO_ROOT}/data_prep/tokenizer_extension/configs/cola_tier2_72langs.yaml|8:00:00"
+  "tier3|cola_tier3|${REPO_ROOT}/data_prep/tokenizer_extension/configs/cola_tier3_200langs.yaml|12:00:00"
 )
 
 MERGE_TIERS=(
-  "tier1|${TOKENIZER_EXTENSION_ROOT}/cola_tier1"
-  "tier2|${TOKENIZER_EXTENSION_ROOT}/cola_tier2"
-  "tier3|${TOKENIZER_EXTENSION_ROOT}/cola_tier3"
+  "tier1|cola_tier1"
+  "tier2|cola_tier2"
+  "tier3|cola_tier3"
 )
 
 ensure_command() {
@@ -39,6 +45,37 @@ ensure_command() {
     echo "[ERROR] Required command '$1' is not available." >&2
     exit 1
   fi
+}
+
+prepare_output_dir() {
+  local raw_path="$1"
+  local dir
+  dir="$(realpath -m "${raw_path}")"
+  if [[ -z "${dir}" || "${dir}" == "/" || "${dir}" == "." || "${dir}" == ".." ]]; then
+    echo "[ERROR] Unsafe path for prepare_output_dir: ${raw_path}" >&2
+    exit 1
+  fi
+  if [[ -d "${dir}" ]]; then
+    rm -rf "${dir}"
+  fi
+  mkdir -p "${dir}"
+  echo "[pipeline] Prepared clean directory ${dir}"
+}
+
+prepare_tokenized_outputs() {
+  local tier
+  for tier in "${!EXT_TOKENIZER_SLUGS[@]}"; do
+    local base_dir="${TOKENIZED_OUTPUT_BASE}/${BASE_TOKENIZER_SLUG}/${tier}"
+    local base_ranks="${base_dir}_ranks"
+    prepare_output_dir "${base_dir}"
+    prepare_output_dir "${base_ranks}"
+
+    local ext_slug="${EXT_TOKENIZER_SLUGS[${tier}]}"
+    local ext_dir="${TOKENIZED_OUTPUT_BASE}/${ext_slug}"
+    local ext_ranks="${ext_dir}_ranks"
+    prepare_output_dir "${ext_dir}"
+    prepare_output_dir "${ext_ranks}"
+  done
 }
 
 wait_for_jobs() {
@@ -125,7 +162,8 @@ submit_tokenization_job() {
   local dependency="$1"
   local job_name="cola_tier_tokenization"
   local log_path="${LOG_ROOT}/cola_tier_tokenize_%j.log"
-  local cmd=(sbatch --parsable --job-name "${job_name}" --output "${log_path}")
+  local env_export="ALL,OUTPUT_BASE=${TOKENIZED_OUTPUT_BASE},BASE_TOKENIZER_SLUG=${BASE_TOKENIZER_SLUG}"
+  local cmd=(sbatch --parsable --job-name "${job_name}" --output "${log_path}" --export "${env_export}")
   if [[ -n "${dependency}" ]]; then
     cmd+=(--dependency "afterok:${dependency}")
   fi
@@ -135,6 +173,7 @@ submit_tokenization_job() {
 
 main() {
   ensure_command sbatch
+  ensure_command realpath
   ensure_command rsync
   local prev_job=""
   local sample_jobs=()
@@ -144,6 +183,7 @@ main() {
       echo "[pipeline] sample plan not found: ${plan}" >&2
       exit 1
     fi
+    prepare_output_dir "${outdir}"
     local job_id
     job_id=$(submit_sample_job "${tier}" "${plan}" "${mode}" "${outdir}" "${prev_job}")
     sample_jobs+=("${job_id}")
@@ -157,11 +197,12 @@ main() {
   local last_sample_job="${sample_jobs[$(( ${#sample_jobs[@]} - 1 ))]}"
   prev_job="${last_sample_job}"
   for entry in "${EXTENSION_CONFIGS[@]}"; do
-    IFS='|' read -r tier config time_limit <<<"${entry}"
+    IFS='|' read -r tier slug config time_limit <<<"${entry}"
     if [[ ! -f "${config}" ]]; then
       echo "[pipeline] extension config not found: ${config}" >&2
       exit 1
     fi
+    prepare_output_dir "${TOKENIZER_EXTENSION_ROOT}/${slug}"
     local job_id
     job_id=$(submit_extension_job "${tier}" "${config}" "${time_limit}" "${prev_job}")
     extension_jobs+=("${job_id}")
@@ -174,10 +215,11 @@ main() {
   local last_extension_job="${extension_jobs[$(( ${#extension_jobs[@]} - 1 ))]}"
 
   for entry in "${MERGE_TIERS[@]}"; do
-    IFS='|' read -r tier tier_dir <<<"${entry}"
-    merge_model_and_tokenizer "${tier}" "${tier_dir}"
+    IFS='|' read -r tier slug <<<"${entry}"
+    merge_model_and_tokenizer "${tier}" "${TOKENIZER_EXTENSION_ROOT}/${slug}"
   done
 
+  prepare_tokenized_outputs
   local tokenize_job
   tokenize_job=$(submit_tokenization_job "${last_extension_job}")
   echo "[pipeline] submitted tokenization wrapper job ${tokenize_job}"
