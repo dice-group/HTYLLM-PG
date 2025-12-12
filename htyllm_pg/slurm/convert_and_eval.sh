@@ -295,7 +295,7 @@ run = wandb.init(
         "checkpoint_dir": checkpoint_parent,
         **model_config
     },
-    tags=["eval", "${MODEL_VARIANT}", "${TASKS}"]
+    tags=["eval", "${MODEL_VARIANT}"]
 )
 
 # Define step metric for proper x-axis (line plot!)
