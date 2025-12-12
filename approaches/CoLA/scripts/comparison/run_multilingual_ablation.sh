@@ -25,7 +25,7 @@ default_wandb_group="multilingual-ablation"
 if [[ -z "${WANDB_RUN_GROUP+x}" ]]; then
   WANDB_RUN_GROUP="${default_wandb_group}"
 fi
-SBATCH_ARGS=${SBATCH_ARGS:-}
+SBATCH_ARGS=${SBATCH_ARGS:---cpus-per-task=32}
 
 required_paths=(
   DATASET_DIR
@@ -45,6 +45,11 @@ export CONDA_BASE CONDA_ENV MODULE_INIT
 export DATASET_NAME DATASET_DIR
 export LANGUAGE_COLUMN
 export WANDB_PROJECT WANDB_ENTITY WANDB_RUN_GROUP
+
+# Speed up split-column filtering on tokenized datasets.
+PREPROCESSING_NUM_WORKERS=${PREPROCESSING_NUM_WORKERS:-32}
+PREPROCESSING_BATCH_SIZE=${PREPROCESSING_BATCH_SIZE:-100000}
+export PREPROCESSING_NUM_WORKERS PREPROCESSING_BATCH_SIZE
 
 timestamp="$(date +%Y%m%d_%H%M%S)"
 if [[ "${WANDB_RUN_GROUP}" == "${default_wandb_group}" ]]; then
@@ -79,10 +84,10 @@ DEFAULT_WALLTIME=${DEFAULT_WALLTIME:-12:00:00}
 DEFAULT_PARTITION=${DEFAULT_PARTITION:-gpu}
 
 declare -A TIER_WALLTIME_MAP=(
-  ["tier12"]="12:00:00"
-  ["tier12_base"]="12:00:00"
-  ["tier72"]="18:00:00"
-  ["tier200"]="24:00:00"
+  ["tier12"]="48:00:00"
+  ["tier12_base"]="48:00:00"
+  ["tier72"]="96:00:00"
+  ["tier200"]="120:00:00"
 )
 
 declare -A TIER_GPU_COUNT_MAP=(

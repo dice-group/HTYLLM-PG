@@ -58,6 +58,8 @@ LORA_R="${LORA_R:-16}"
 LORA_ALPHA="${LORA_ALPHA:-32}"
 LORA_DROPOUT="${LORA_DROPOUT:-0.05}"
 LORA_NUM="${LORA_NUM:-4}"
+PREPROCESSING_NUM_WORKERS="${PREPROCESSING_NUM_WORKERS:-${SLURM_CPUS_PER_TASK:-8}}"
+PREPROCESSING_BATCH_SIZE="${PREPROCESSING_BATCH_SIZE:-100000}"
 
 RANDOM_ID=$(printf "%04d" $((RANDOM % 10000)))
 RUN_NAME="${WANDB_NAME}_ep${TRAIN_EPOCHS}_bs${TRAIN_BS}x${GRAD_ACC}_lr${TRAIN_LR}_heads${LORA_NUM}_${RANDOM_ID}"
@@ -114,6 +116,8 @@ fi
   --fp16 "${FP16:-True}" \
   --seed "${SEED:-42}" \
   --tokenized_path "${TOKENIZED_PATH}" \
+  --preprocessing_num_workers "${PREPROCESSING_NUM_WORKERS}" \
+  --preprocessing_batch_size "${PREPROCESSING_BATCH_SIZE}" \
   --lora_rank "${LORA_R}" \
   --lora_alpha "${LORA_ALPHA}" \
   --lora_dropout "${LORA_DROPOUT}" \
