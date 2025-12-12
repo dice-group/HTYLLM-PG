@@ -11,11 +11,12 @@
 # This takes all large files (>512 MB)
 # and separates them for efficient tokenization.
 # Takes ~10 min for 90 GB of compressed data with the compute resources above
+# i had problems using this one time with slurm, then just run it on normal logic node
 
 echo "Running Python-based parallel split with timing..."
 
-INPUT_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/initial_samples_datatrove"
-OUTPUT_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/shareded_initial_samples_datatrove"
+INPUT_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_12_tier_samples/samples"
+OUTPUT_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_12_tier_samples/sharded_samples"
 
 time python -u shard_python.py \
   --input "$INPUT_DIR" \

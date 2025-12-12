@@ -78,7 +78,8 @@ declare -A TIER_LANGUAGE_MAPS=(
   ["cola_tier2"]="${LANGUAGE_MAP_DIR}/72_tier_language_groupings.json"
   ["cola_tier3"]="${LANGUAGE_MAP_DIR}/200_tier_language_groupings.json"
 )
-declare -a TIER_ORDER=("cola_tier1" "cola_tier2" "cola_tier3")
+#declare -a TIER_ORDER=("cola_tier1" "cola_tier2" "cola_tier3")
+declare -a TIER_ORDER=("cola_tier1")
 
 submit_pipeline() {
   local shard_dir=$1

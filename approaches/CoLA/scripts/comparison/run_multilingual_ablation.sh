@@ -289,7 +289,8 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     hydra_wandb="${hydra_descriptor}_${timestamp}"
     hydra_log="hydra_${tier_slug}_${variant_slug}"
 
-    hydra_env=(
+  hydra_env=(
+      "REPO_ROOT=${REPO_ROOT}"
       "OUTPUT_DIR=${hydra_output}"
       "WANDB_NAME=${hydra_wandb}"
       "MODEL_NAME_OR_PATH=${model_path}"
@@ -347,6 +348,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     cola_log="cola_${tier_slug}_${variant_slug}"
 
     cola_env=(
+      "REPO_ROOT=${REPO_ROOT}"
       "OUTPUT_DIR=${cola_output}"
       "WANDB_NAME=${cola_wandb}"
       "MODEL_NAME_OR_PATH=${model_path}"
