@@ -231,32 +231,37 @@ step_match = re.search(r'step_(\d+)', checkpoint_name)
 step = int(step_match.group(1)) if step_match else 0
 
 # Load results
-result_file = "${RESULT_FILE}"
+result_path = "${RESULT_FILE}"
+
+# lm_eval creates a nested directory structure. Recursively find the results JSON.
+def find_results_json(path):
+    """Recursively find results*.json file in lm_eval output directory."""
+    if os.path.isfile(path) and path.endswith('.json'):
+        return path
+    if os.path.isdir(path):
+        for root, dirs, files in os.walk(path):
+            for f in files:
+                if f.startswith('results') and f.endswith('.json'):
+                    return os.path.join(root, f)
+        # Fallback: any .json file
+        for root, dirs, files in os.walk(path):
+            for f in files:
+                if f.endswith('.json'):
+                    return os.path.join(root, f)
+    return None
+
+result_file = find_results_json(result_path)
+if result_file is None:
+    print(f"No results JSON found in: {result_path}")
+    exit(1)
+
+print(f"Found results file: {result_file}")
+
 try:
-    if os.path.isdir(result_file):
-        # lm_eval 0.4.x+ creates a directory if output_path is provided
-        # Find the json file inside
-        json_files = [f for f in os.listdir(result_file) if f.endswith('.json')]
-        if not json_files:
-            raise FileNotFoundError(f"No JSON files found in {result_file}")
-        
-        # Prioritize 'results.json' if it exists, otherwise take the first one
-        if 'results.json' in json_files:
-            actual_file = os.path.join(result_file, 'results.json')
-        else:
-            actual_file = os.path.join(result_file, json_files[0])
-            
-        print(f"Loading results from: {actual_file}")
-        with open(actual_file, 'r') as f:
-            results = json.load(f)
-            
-        # Update result_file var for artifact logging later
-        result_file = actual_file
-    else:
-        with open(result_file, 'r') as f:
-            results = json.load(f)
-except Exception as e:
-    print(f"Error loading results from {result_file}: {e}")
+    with open(result_file, 'r') as f:
+        results = json.load(f)
+except FileNotFoundError:
+    print(f"Results file not found: {result_file}")
     exit(1)
 
 # Load model config for logging
@@ -319,6 +324,7 @@ artifact = wandb.Artifact(
     type="eval_results",
     description=f"lm_eval results for {checkpoint_name}"
 )
+# Add the actual results file (not the directory path)
 artifact.add_file(result_file)
 run.log_artifact(artifact)
 
