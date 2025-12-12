@@ -106,6 +106,7 @@ mkdir -p /scratch/hpc-prf-merlin/luke/.triton/autotune
 export TORCH_EXTENSIONS_DIR="/scratch/hpc-prf-merlin/luke/.cache/torch_extensions"
 export TRITON_CACHE_DIR="/scratch/hpc-prf-merlin/luke/.triton/autotune"
 export XDG_CACHE_HOME="/scratch/hpc-prf-merlin/luke/.cache"
+export CUDA_LAUNCH_BLOCKING=1
 
 # ---------- Derive paths ----------
 CHECKPOINT_PARENT=$(dirname "$CHECKPOINT")
@@ -177,10 +178,9 @@ fi
 echo "[INFO] Running lm_eval..."
 
 # Build lm_eval command
-# max_length=2048 to prevent sequences exceeding model's positional embedding limit
 LM_EVAL_CMD="lm_eval \
   --model hf \
-  --model_args pretrained=${HF_MODEL_PATH},trust_remote_code=True,max_length=2048 \
+  --model_args pretrained=${HF_MODEL_PATH},trust_remote_code=True \
   --tasks ${TASKS} \
   --batch_size ${BS} \
   --num_fewshot ${NUM_FEWSHOT} \
