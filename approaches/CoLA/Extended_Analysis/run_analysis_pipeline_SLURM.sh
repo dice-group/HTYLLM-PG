@@ -50,7 +50,7 @@ python -c "import torch; print('CUDA available:', torch.cuda.is_available()); pr
 # Configuration from command line or defaults
 BASE_MODEL="meta-llama/Llama-3.1-8B"
 CHECKPOINT="/scratch/hpc-prf-merlin/project_data/moe_study/saves/cola_moe_llama31_8b_acc/pissa/checkpoint-6000"
-ADAPTER_TYPE="hydralora"
+ADAPTER_TYPE="cola"
 VALIDATION_DATA="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/samples"
 LANGUAGES="en,es,hi,ru,fi"
 NUM_SEQUENCES="10000"

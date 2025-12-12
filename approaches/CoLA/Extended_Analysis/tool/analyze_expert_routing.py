@@ -100,21 +100,28 @@ class RoutingCollector:
         
         hook_count = 0
         for name, module in model.named_modules():
-            # Check if this is a CoLA or HydraLoRA layer
+            # Check module's class hierarchy for CoLA or HydraLoRA
+            module_classes = [cls.__name__ for cls in module.__class__.__mro__]
+            
             if self.adapter_type == 'cola':
-                if 'ColaLayer' in module.__class__.__name__:
+                # CoLA uses ColaLayer base class, actual modules are Linear/Embedding/Conv2d
+                if 'ColaLayer' in module_classes:
                     hook = module.register_forward_hook(
                         self._make_hook(name)
                     )
                     self.hooks.append(hook)
                     hook_count += 1
+                    logger.debug(f"Attached hook to CoLA layer: {name} ({module.__class__.__name__})")
+            
             elif self.adapter_type == 'hydralora':
-                if 'HydraLoRALayer' in module.__class__.__name__:
+                # HydraLoRA uses HydraLoraLayer (note: 'Lora' not 'LoRA')
+                if 'HydraLoraLayer' in module_classes:
                     hook = module.register_forward_hook(
                         self._make_hook(name)
                     )
                     self.hooks.append(hook)
                     hook_count += 1
+                    logger.debug(f"Attached hook to HydraLoRA layer: {name} ({module.__class__.__name__})")
         
         logger.info(f"Attached {hook_count} routing hooks")
         
