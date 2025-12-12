@@ -3,7 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=12:00:00
+#SBATCH --time=02:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:h100:1
 #SBATCH --mem=64GB
@@ -177,9 +177,10 @@ fi
 echo "[INFO] Running lm_eval..."
 
 # Build lm_eval command
+# max_length=2048 to prevent sequences exceeding model's positional embedding limit
 LM_EVAL_CMD="lm_eval \
   --model hf \
-  --model_args pretrained=${HF_MODEL_PATH},trust_remote_code=True \
+  --model_args pretrained=${HF_MODEL_PATH},trust_remote_code=True,max_length=2048 \
   --tasks ${TASKS} \
   --batch_size ${BS} \
   --num_fewshot ${NUM_FEWSHOT} \

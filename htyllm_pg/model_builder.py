@@ -195,13 +195,6 @@ class Transformer(nn.Module):
         l_aux = 0.0
         expert_counts = {}
         
-        # Prepare used_token mask for MoE layers
-        # DeepSpeed MoE expects shape (batch*seq,) with True for valid tokens
-        if attention_mask is not None:
-            used_token = attention_mask.view(-1).bool()
-        else:
-            used_token = None
-        
         for i, (attn, ff) in enumerate(self.layers):
             # Use gradient checkpointing for attention during training
             if self.use_gradient_checkpointing and self.training:
@@ -210,9 +203,8 @@ class Transformer(nn.Module):
                 x = attn(x, attention_mask=attention_mask) + x
 
             if i in self.moe_layers:
-                # MoE layers: Pass used_token mask for proper handling of padded sequences
-                # Can't use checkpoint due to multiple return values
-                output, moe_loss, exp_counts = ff(x, used_token)
+                # MoE layers: Can't use checkpoint due to multiple return values
+                output, moe_loss, exp_counts = ff(x)
                 l_aux += moe_loss
                 x = x + output
                 expert_counts[f"layer_{i}"] = exp_counts
