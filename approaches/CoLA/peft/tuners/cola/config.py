@@ -198,6 +198,10 @@ class ColaConfig(PeftConfig):
         default=None,
         metadata={"help": "For each language in `language_list`, the index of its family in `family_list`."},
     )
+    language_to_subgroup_ids: Optional[List[int]] = field(
+        default=None,
+        metadata={"help": "Optional subgroup index per language (aligned with `language_list`) for subgroup-aware routing."},
+    )
     layers_to_transform: Optional[Union[list[int], int]] = field(
         default=None,
         metadata={
@@ -314,6 +318,9 @@ class ColaConfig(PeftConfig):
             max_idx = len(self.family_list) - 1
             if any(idx < 0 or idx > max_idx for idx in self.language_to_family_ids):
                 raise ValueError("Entries in `language_to_family_ids` must index into `family_list`.")
+        if self.language_to_subgroup_ids is not None and self.language_list is not None:
+            if len(self.language_list) != len(self.language_to_subgroup_ids):
+                raise ValueError("`language_to_subgroup_ids` must align with `language_list` length.")
 
     def _register_custom_module(self, mapping: dict[type[nn.Mmodule], type[nn.Module]]) -> None:
         """

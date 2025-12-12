@@ -119,6 +119,7 @@ class HydraLoraLayer(BaseTunerLayer):
         self.language_list = kwargs.pop("language_list", None)
         self.family_list = kwargs.pop("family_list", None)
         self.language_to_family_ids = kwargs.pop("language_to_family_ids", None)
+        self.language_to_subgroup_ids = kwargs.pop("language_to_subgroup_ids", None)
         self.language_router_mode = kwargs.pop("language_router_mode", "learned")
         self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
         self.language_column = kwargs.pop("language_column", None)
@@ -140,6 +141,12 @@ class HydraLoraLayer(BaseTunerLayer):
             else torch.empty(0, dtype=torch.long)
         )
         self.register_buffer("language_id_to_family", family_mapping, persistent=False)
+        subgroup_mapping = (
+            torch.tensor(self.language_to_subgroup_ids, dtype=torch.long)
+            if self.language_list is not None and self.language_to_subgroup_ids is not None
+            else torch.empty(0, dtype=torch.long)
+        )
+        self.register_buffer("language_id_to_subgroup", subgroup_mapping, persistent=False)
 
         if self.use_hydralora_experts:
             if self.family_list:
@@ -437,7 +444,18 @@ class HydraLoraLayer(BaseTunerLayer):
         head_count = self.lora_num.get(adapter_name)
         if not head_count:
             return None
-
+        mapping = getattr(self, "language_id_to_subgroup", None)
+        if mapping is not None and torch.is_tensor(mapping) and mapping.numel() > 0:
+            mapping = mapping.to(language_ids.device)
+            head_ids = torch.full_like(language_ids, LANGUAGE_PAD_ID)
+            valid = (language_ids >= 0) & (language_ids < mapping.numel())
+            if valid.any():
+                candidate = mapping[language_ids[valid]]
+                # Guard against malformed mappings that exceed available heads
+                candidate = torch.where(candidate < head_count, candidate, torch.full_like(candidate, LANGUAGE_PAD_ID))
+                head_ids[valid] = candidate
+            return head_ids
+        # Fallback: simple modulo by head count
         head_ids = torch.full_like(language_ids, LANGUAGE_PAD_ID)
         valid = (language_ids >= 0) & (language_ids < len(self.language_list))
         if valid.any():

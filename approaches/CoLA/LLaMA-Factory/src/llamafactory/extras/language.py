@@ -56,6 +56,80 @@ def load_language_map(spec: Optional[str]) -> Optional[Dict[str, str]]:
     raise ValueError("language_map must decode to language->family or groupings JSON.")
 
 
+def load_language_groupings(
+    spec: Optional[str],
+) -> tuple[Optional[Dict[str, str]], Optional[list[str]], Optional[list[int]], Optional[Dict[str, int]]]:
+    """
+    Parse a language grouping JSON (tier files) and return:
+      - language_map: lang -> group label (family)
+      - families: sorted list of group labels
+      - subgroup_sizes: list of subgroup counts per family (aligned with `families`)
+      - language_to_subgroup: mapping lang -> subgroup index within its family
+
+    Falls back to the flat language_map parsing when the payload is not a grouping.
+    """
+    if spec is None:
+        return None, None, None, None
+
+    path = Path(spec)
+    try:
+        if path.exists():
+            with path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = json.loads(spec)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Failed to parse language_map '{spec}': {exc}") from exc
+
+    if not isinstance(data, dict):
+        raise ValueError("language_map must decode to a dict mapping language -> family or grouping entries.")
+
+    if all(isinstance(value, str) or value is None for value in data.values()):
+        language_map = load_language_map(spec)
+        if language_map is None:
+            return None, None, None, None
+        families = sorted(set(language_map.values()))
+        subgroup_sizes = [0 for _ in families]
+        return language_map, families, subgroup_sizes, None
+
+    language_map: Dict[str, str] = {}
+    subgroup_sizes: Dict[str, int] = {}
+    language_to_subgroup: Dict[str, int] = {}
+
+    for group_id, entry in sorted(data.items(), key=lambda kv: str(kv[0])):
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get("group") or group_id)
+        languages = set(entry.get("languages") or entry.get("language") or [])
+        subgroups = entry.get("subgroups") or {}
+
+        subgroup_count = 0
+        if isinstance(subgroups, dict) and subgroups:
+            for idx, (_, members) in enumerate(sorted(subgroups.items(), key=lambda kv: kv[0])):
+                if not isinstance(members, list):
+                    continue
+                subgroup_count += 1
+                for lang in members:
+                    languages.add(lang)
+                    language_to_subgroup[str(lang)] = idx
+        subgroup_sizes[label] = subgroup_count
+
+        metadata = entry.get("metadata") or {}
+        if isinstance(metadata, dict):
+            languages.update(metadata.keys())
+
+        for lang in languages:
+            lang_key = str(lang)
+            language_map.setdefault(lang_key, label)
+
+    if not language_map:
+        return None, None, None, None
+
+    families = sorted(set(language_map.values()))
+    subgroup_sizes_aligned = [subgroup_sizes.get(fam, 0) for fam in families]
+    return language_map, families, subgroup_sizes_aligned, language_to_subgroup
+
+
 def _flatten_groupings_payload(payload: Dict[str, Any]) -> Dict[str, str]:
     normalized: Dict[str, str] = {}
     for group_id, entry in payload.items():

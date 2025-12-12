@@ -127,6 +127,7 @@ class ColaLayer(BaseTunerLayer):
         self.language_list = kwargs.pop("language_list", None)
         self.family_list = kwargs.pop("family_list", None)
         self.language_to_family_ids = kwargs.pop("language_to_family_ids", None)
+        self.language_to_subgroup_ids = kwargs.pop("language_to_subgroup_ids", None)
         self.language_router_mode = kwargs.pop("language_router_mode", "learned")
         self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
         self.language_column = kwargs.pop("language_column", None)

@@ -42,14 +42,25 @@ if TYPE_CHECKING:
 logger = logging.get_logger(__name__)
 
 
-def _build_language_metadata(language_map: Optional[dict[str, str]]):
+def _build_language_metadata(language_map_spec: Optional[str]):
+    from ..extras.language import load_language_groupings
+
+    language_map, families, subgroup_sizes, language_to_subgroup = load_language_groupings(language_map_spec)
     if not language_map:
-        return None, None, None
+        return None, None, None, None, None
+
     languages = sorted(language_map.keys())
-    families = sorted(set(language_map.values()))
+    if families is None:
+        families = sorted(set(language_map.values()))
     family_to_idx = {family: idx for idx, family in enumerate(families)}
     language_to_family_ids = [family_to_idx[language_map[lang]] for lang in languages]
-    return languages, families, language_to_family_ids
+
+    if language_to_subgroup is None:
+        language_to_subgroup_ids = None
+    else:
+        language_to_subgroup_ids = [language_to_subgroup.get(lang, -1) for lang in languages]
+
+    return languages, families, language_to_family_ids, subgroup_sizes, language_to_subgroup_ids
 
 
 def _parse_optional_int_list(value: Optional[Union[str, Sequence[int]]]) -> Optional[list[int]]:
@@ -400,16 +411,19 @@ def _setup_cola_tuning(
         }
         expert_num_A = _parse_optional_int_list(finetuning_args.cola_expert_num_A)
         expert_num_B = _parse_optional_int_list(finetuning_args.cola_expert_num_B)
+        language_list, family_list, language_to_family, subgroup_sizes, language_to_subgroup = _build_language_metadata(
+            finetuning_args.language_map
+        )
         language_map = load_language_map(finetuning_args.language_map)
-        language_list, family_list, language_to_family = _build_language_metadata(language_map)
         peft_kwargs.update(
             {
                 "expert_num_A": expert_num_A,
-                "expert_num_B": expert_num_B,
+                "expert_num_B": expert_num_B if expert_num_B else subgroup_sizes,
                 "language_map": language_map,
                 "language_list": language_list,
                 "family_list": family_list,
                 "language_to_family_ids": language_to_family,
+                "language_to_subgroup_ids": language_to_subgroup,
                 "language_column": finetuning_args.language_column,
                 "language_router_mode": finetuning_args.language_router_mode,
                 "language_prior_weight": finetuning_args.language_prior_weight,
@@ -799,8 +813,10 @@ def _setup_hydralora_tuning(
             "modules_to_save": finetuning_args.additional_target,
         }
         hydra_expert_lora_nums = _parse_optional_int_list(finetuning_args.hydralora_expert_lora_nums)
+        language_list, family_list, language_to_family, subgroup_sizes, language_to_subgroup = _build_language_metadata(
+            finetuning_args.language_map
+        )
         language_map = load_language_map(finetuning_args.language_map)
-        language_list, family_list, language_to_family = _build_language_metadata(language_map)
         peft_kwargs.update(
             {
                 "expert_lora_nums": hydra_expert_lora_nums,
@@ -808,6 +824,7 @@ def _setup_hydralora_tuning(
                 "language_list": language_list,
                 "family_list": family_list,
                 "language_to_family_ids": language_to_family,
+                "language_to_subgroup_ids": language_to_subgroup,
                 "language_column": finetuning_args.language_column,
                 "language_router_mode": finetuning_args.language_router_mode,
                 "language_prior_weight": finetuning_args.language_prior_weight,
@@ -815,6 +832,8 @@ def _setup_hydralora_tuning(
                 "language_guidance_scope": finetuning_args.language_guidance_scope,
             }
         )
+        if finetuning_args.use_hydralora_experts and subgroup_sizes and not hydra_expert_lora_nums:
+            peft_kwargs["expert_lora_nums"] = subgroup_sizes
 
         if model_args.use_unsloth:
             model = get_unsloth_peft_model(model, model_args, peft_kwargs)

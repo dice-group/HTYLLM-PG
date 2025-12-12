@@ -194,6 +194,10 @@ class HydraLoraConfig(PeftConfig):
         default=None,
         metadata={"help": "Per-language indices into `family_list` indicating membership."},
     )
+    language_to_subgroup_ids: Optional[List[int]] = field(
+        default=None,
+        metadata={"help": "Optional subgroup indices aligned to `language_list` for subgroup-aware head routing."},
+    )
     layers_to_transform: Optional[Union[list[int], int]] = field(
         default=None,
         metadata={
@@ -310,6 +314,9 @@ class HydraLoraConfig(PeftConfig):
             max_idx = len(self.family_list) - 1
             if any(idx < 0 or idx > max_idx for idx in self.language_to_family_ids):
                 raise ValueError("`language_to_family_ids` entries must index into `family_list`.")
+        if self.language_to_subgroup_ids is not None and self.language_list is not None:
+            if len(self.language_list) != len(self.language_to_subgroup_ids):
+                raise ValueError("`language_to_subgroup_ids` must align with `language_list` length.")
 
     def _register_custom_module(self, mapping: dict[type[nn.Mmodule], type[nn.Module]]) -> None:
         """
