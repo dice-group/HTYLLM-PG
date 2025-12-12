@@ -11,6 +11,7 @@ from datasets import Dataset
 from transformers import AutoTokenizer
 
 from language_subsets import LANGUAGE_SUBSET_MAP
+from distributed_data_processor.validation import ValidationError, verify_tokenized_dataset
 
 LANGUAGE_PAD_ID = -1
 
@@ -274,6 +275,14 @@ def main(args):
             remove_columns=None if getattr(args, "keep_text", False) else ["text"],
             num_proc=args.num_proc,
         )
+
+        try:
+            verify_tokenized_dataset(
+                tokenized_dataset,
+                require_language_metadata=language_metadata is not None,
+            )
+        except ValidationError as exc:
+            raise RuntimeError("Tokenized dataset validation failed") from exc
 
         output_dir = Path(args.save_tokenized_data_dir)
         if world_size > 1:

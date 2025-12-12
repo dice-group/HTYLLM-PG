@@ -11,6 +11,8 @@
 
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 if [[ -n "${MODULE_INIT:-}" ]]; then
   eval "${MODULE_INIT}"
 fi
@@ -81,6 +83,8 @@ EOF
 )
 
 echo "[INFO] Running HydraLoRA LPR training into ${OUTPUT_DIR}"
+
+python "${REPO_ROOT}/scripts/comparison/router_setup.py" --type hydra
 
 ACCELERATE_CMD=()
 if [[ -n "${ACCELERATE_CONFIG_FILE}" ]]; then
