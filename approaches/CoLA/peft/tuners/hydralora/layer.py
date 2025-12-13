@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import math
+import os
 import warnings
 import logging
 
@@ -39,6 +40,8 @@ import sys
 
 def debug(msg: str):
     print(f"[DEBUG] {msg}", file=sys.stderr, flush=True)
+
+_GLOBAL_DEBUG_ROUTING_EVERY = int(os.environ.get("HYDRA_DEBUG_ROUTING_EVERY", "0") or 0)
 
 
 LANGUAGE_PAD_ID = -1
@@ -164,6 +167,39 @@ class HydraLoraLayer(BaseTunerLayer):
                 )
         self._missing_language_warning_emitted: set[str] = set()
         self._expert_lora_nums = self._normalize_expert_counts(expert_lora_nums_override)
+        self._debug_forward_calls = 0
+
+    def _should_debug_routing(self) -> bool:
+        if not getattr(self, "hydralora_debug", False):
+            return False
+        every = _GLOBAL_DEBUG_ROUTING_EVERY
+        if every <= 0:
+            return True
+        self._debug_forward_calls += 1
+        return (self._debug_forward_calls % every) == 0
+
+    def _debug_print_hydra_setup(self, parent: str) -> None:
+        if not getattr(self, "hydralora_debug", False):
+            return
+        if not getattr(self, "use_hydralora_experts", False):
+            return
+        debug(f"[HYDRA DEBUG] Setup(parent='{parent}'): experts={self.num_experts}, top_k={self.top_k}")
+        for e in range(self.num_experts):
+            name = f"expert_{e}"
+            head_cnt = int(self.lora_num.get(name, 0) or 0)
+            langs: list[str] = []
+            if self.language_list:
+                if self.family_list and self.language_to_family_ids is not None:
+                    for lang_idx, fam_idx in enumerate(self.language_to_family_ids):
+                        if int(fam_idx) == e and lang_idx < len(self.language_list):
+                            langs.append(self.language_list[lang_idx])
+                else:
+                    if e < len(self.language_list):
+                        langs.append(self.language_list[e])
+            lang_preview = ",".join(langs[:5])
+            suffix = f", langs=[{lang_preview}{'...' if len(langs) > 5 else ''}]" if langs else ""
+            debug(f"[HYDRA DEBUG]   {name}: lora_num={head_cnt}{suffix}")
+        debug("=" * 60)
 
     def update_layer(
             self, adapter_name, r, lora_alpha, lora_dropout, lora_num, init_lora_weights
@@ -203,6 +239,7 @@ class HydraLoraLayer(BaseTunerLayer):
                     f"[HYDRA DEBUG] Created {self.num_experts} HydraLoRA experts for parent '{adapter_name}' "
                     f"(r={r}, lora_num={lora_num}, top_k={self.top_k})"
                 )
+                self._debug_print_hydra_setup(adapter_name)
                 self._verify_hydralora_expert_init()
 
             # Use the *parent* name for external API; children are stored in _hydra_parent_children
@@ -766,17 +803,46 @@ class Linear(nn.Module, HydraLoraLayer):
                 weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
                 topi, weights = self._enforce_language_experts(topi, weights, expert_targets)
 
-                if getattr(self, "hydralora_debug", False):
+                if self._should_debug_routing():
                     with torch.no_grad():
                         debug(
                             f"[HYDRA DEBUG] Router in {self.__class__.__name__}: "
                             f"logits_mean={logits.mean().item():.4e}, "
                             f"logits_std={logits.std().item():.4e}"
                         )
-                        # Show a single token’s top-k routing as a sample
-                        sample_w = weights[0, 0].detach().cpu().tolist()
-                        sample_i = topi[0, 0].detach().cpu().tolist()
-                        debug(f"[HYDRA DEBUG] Sample routing: indices={sample_i}, weights={sample_w}")
+                        sample_b, sample_t = 0, 0
+                        lang_id = int(language_ids[sample_b].item()) if language_ids is not None else LANGUAGE_PAD_ID
+                        tgt_ex = (
+                            int(expert_targets[sample_b].item())
+                            if expert_targets is not None and torch.is_tensor(expert_targets)
+                            else LANGUAGE_PAD_ID
+                        )
+                        sample_w = weights[sample_b, sample_t].detach().cpu().tolist()
+                        sample_i = topi[sample_b, sample_t].detach().cpu().tolist()
+                        debug(
+                            f"[HYDRA DEBUG] Sample(b={sample_b},t={sample_t}) lang_id={lang_id} "
+                            f"expert_target={tgt_ex} top_experts={sample_i}, weights={sample_w}"
+                        )
+                        if tgt_ex >= 0:
+                            ex_name = f"expert_{tgt_ex}"
+                            head_router = self.lora_route.get(ex_name)
+                            head_count = int(self.lora_num.get(ex_name, 0) or 0)
+                            if head_router is not None and head_count > 1:
+                                head_logits = head_router(x.to(torch.float32)).to(x.dtype)
+                                head_targets = (
+                                    self._language_head_targets(language_ids, ex_name)
+                                    if self.language_guidance_scope == "all"
+                                    else None
+                                )
+                                head_logits = self._apply_language_bias_heads(head_logits, head_targets)
+                                head_probs = torch.softmax(head_logits.to(torch.float32), dim=-1)
+                                head_probs_tok = head_probs[sample_b, sample_t].detach().cpu()
+                                top_h = torch.topk(head_probs_tok, k=min(3, head_count), dim=-1)
+                                debug(
+                                    f"[HYDRA DEBUG]   head_target="
+                                    f"{int(head_targets[sample_b].item()) if head_targets is not None else LANGUAGE_PAD_ID} "
+                                    f"top_heads={top_h.indices.tolist()} probs={top_h.values.tolist()}"
+                                )
 
                 with torch.no_grad():
                     token_count = topi.numel()

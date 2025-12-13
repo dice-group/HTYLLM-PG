@@ -44,6 +44,7 @@ except ImportError:
 
 _GLOBAL_DEBUG = os.environ.get("COLA_DEBUG", "").lower() in {"1", "true", "yes", "on"}
 _GLOBAL_DEBUG_SUPPRESS = os.environ.get("COLA_SUPPRESS_DEBUG", "").lower() in {"1", "true", "yes", "on"}
+_GLOBAL_DEBUG_ROUTING_EVERY = int(os.environ.get("COLA_DEBUG_ROUTING_EVERY", "0") or 0)
 
 
 def debug(msg: str, enabled: bool = False):
@@ -159,6 +160,12 @@ class ColaLayer(BaseTunerLayer):
             else torch.empty(0, dtype=torch.long)
         )
         self.register_buffer("language_id_to_family", family_mapping, persistent=False)
+        subgroup_mapping = (
+            torch.tensor(self.language_to_subgroup_ids, dtype=torch.long)
+            if self.language_list is not None and self.language_to_subgroup_ids is not None
+            else torch.empty(0, dtype=torch.long)
+        )
+        self.register_buffer("language_id_to_subgroup", subgroup_mapping, persistent=False)
 
         if self.use_cola_experts:
             if self.family_list:
@@ -172,6 +179,7 @@ class ColaLayer(BaseTunerLayer):
         self._missing_language_warning_emitted = False
         self._expert_num_A = self._normalize_expert_counts(expert_num_A_override, "expert_num_A")
         self._expert_num_B = self._normalize_expert_counts(expert_num_B_override, "expert_num_B")
+        self._debug_forward_calls = 0
 
 
     def _fsdp_summon_is_active(self) -> bool:
@@ -309,6 +317,7 @@ class ColaLayer(BaseTunerLayer):
                 f"[MoE-COLA] Created {self.num_experts} CoLA experts (r={r}, num_A={num_A}, num_B={num_B})",
                 enabled=self.cola_debug,
             )
+            self._debug_print_cola_setup()
             return
 
         # This code works for linear layers, override for other layer types
@@ -646,6 +655,39 @@ class ColaLayer(BaseTunerLayer):
             )
         debug("=" * 60, enabled=self.cola_debug)
 
+    def _debug_print_cola_setup(self) -> None:
+        if not getattr(self, "cola_debug", False):
+            return
+        if not getattr(self, "use_cola_experts", False):
+            return
+        debug(f"[COLA DEBUG] Setup: experts={self.num_experts}, top_k={self.top_k}", enabled=self.cola_debug)
+        for e in range(self.num_experts):
+            name = f"expert_{e}"
+            a_cnt = len(self.lora_A.get(name, []))
+            b_cnt = len(self.lora_B.get(name, []))
+            langs: list[str] = []
+            if self.language_list:
+                if self.family_list and self.language_to_family_ids is not None:
+                    for lang_idx, fam_idx in enumerate(self.language_to_family_ids):
+                        if int(fam_idx) == e and lang_idx < len(self.language_list):
+                            langs.append(self.language_list[lang_idx])
+                else:
+                    if e < len(self.language_list):
+                        langs.append(self.language_list[e])
+            lang_preview = ",".join(langs[:5])
+            suffix = f", langs=[{lang_preview}{'...' if len(langs) > 5 else ''}]" if langs else ""
+            debug(f"[COLA DEBUG]   {name}: num_A={a_cnt}, num_B={b_cnt}{suffix}", enabled=self.cola_debug)
+        debug("=" * 60, enabled=self.cola_debug)
+
+    def _should_debug_routing(self) -> bool:
+        if not getattr(self, "cola_debug", False):
+            return False
+        every = _GLOBAL_DEBUG_ROUTING_EVERY
+        if every <= 0:
+            return False
+        self._debug_forward_calls += 1
+        return (self._debug_forward_calls % every) == 0
+
     def _normalize_expert_counts(self, counts: Optional[list[int]], label: str) -> Optional[list[int]]:
         if not self.use_cola_experts or counts is None:
             return None
@@ -669,6 +711,57 @@ class ColaLayer(BaseTunerLayer):
         if valid.any():
             expert_ids[valid] = mapping[language_ids[valid]]
         return expert_ids
+
+    def _language_head_targets(self, language_ids: Optional[torch.Tensor], adapter_name: str) -> Optional[torch.Tensor]:
+        if (language_ids is None or self.language_list is None or self.language_guidance_scope != "all"):
+            return None
+        if not torch.is_tensor(language_ids):
+            return None
+        head_count = self.num_B.get(adapter_name)
+        if not head_count:
+            return None
+        mapping = getattr(self, "language_id_to_subgroup", None)
+        if mapping is not None and torch.is_tensor(mapping) and mapping.numel() > 0:
+            mapping = mapping.to(language_ids.device)
+            head_ids = torch.full_like(language_ids, LANGUAGE_PAD_ID)
+            valid = (language_ids >= 0) & (language_ids < mapping.numel())
+            if valid.any():
+                candidate = mapping[language_ids[valid]]
+                candidate = torch.where(candidate < head_count, candidate, torch.full_like(candidate, LANGUAGE_PAD_ID))
+                head_ids[valid] = candidate
+            return head_ids
+
+        head_ids = torch.full_like(language_ids, LANGUAGE_PAD_ID)
+        valid = (language_ids >= 0) & (language_ids < len(self.language_list))
+        if valid.any():
+            head_ids[valid] = language_ids[valid] % head_count
+        return head_ids
+
+    def _language_head_weights(
+        self, head_ids: Optional[torch.Tensor], head_count: int, *, device: torch.device, dtype: torch.dtype
+    ) -> Optional[torch.Tensor]:
+        if head_ids is None or head_count <= 0:
+            return None
+        if not torch.is_tensor(head_ids):
+            return None
+        batch = head_ids.size(0)
+        valid = (head_ids >= 0) & (head_ids < head_count)
+
+        if self.language_router_mode == "hard":
+            weights = torch.full((batch, head_count), 0.0, device=device, dtype=dtype)
+            if valid.any():
+                weights[valid, head_ids[valid]] = 1.0
+            if (~valid).any():
+                weights[~valid] = 1.0 / head_count
+            return weights
+
+        if self.language_router_mode == "bias":
+            logits = torch.zeros((batch, head_count), device=device, dtype=torch.float32)
+            if valid.any():
+                logits[valid, head_ids[valid]] = float(self.language_bias_value)
+            return torch.softmax(logits, dim=-1).to(dtype)
+
+        return torch.full((batch, head_count), 1.0 / head_count, device=device, dtype=dtype)
 
     def _log_missing_language_metadata(self, reason: str) -> None:
         if self._missing_language_warning_emitted:
@@ -936,6 +1029,37 @@ class Linear(nn.Module, ColaLayer):
                 topv, topi = torch.topk(logits, self.top_k, dim=-1)
                 weights = torch.softmax(topv.to(torch.float32), dim=-1).to(x.dtype)
                 topi, weights = self._enforce_language_routing(topi, weights, language_targets)
+                if self._should_debug_routing():
+                    with torch.no_grad():
+                        sample_b, sample_t = 0, 0
+                        lang_id = int(language_ids[sample_b].item()) if language_ids is not None else LANGUAGE_PAD_ID
+                        tgt_ex = (
+                            int(language_targets[sample_b].item())
+                            if language_targets is not None and torch.is_tensor(language_targets)
+                            else LANGUAGE_PAD_ID
+                        )
+                        sel_ex = [int(v) for v in topi[sample_b, sample_t].detach().cpu().tolist()]
+                        sel_w = [float(v) for v in weights[sample_b, sample_t].detach().cpu().tolist()]
+                        debug(
+                            f"[COLA DEBUG] Sample(b={sample_b},t={sample_t}) lang_id={lang_id} "
+                            f"expert_target={tgt_ex} top_experts={sel_ex} weights={sel_w}",
+                            enabled=True,
+                        )
+                        if tgt_ex >= 0:
+                            expert_name = f"expert_{tgt_ex}"
+                            head_ids = self._language_head_targets(language_ids, expert_name)
+                            head_id = int(head_ids[sample_b].item()) if head_ids is not None else LANGUAGE_PAD_ID
+                            head_w = self._language_head_weights(
+                                torch.tensor([head_id], device=x.device),
+                                int(self.num_B.get(expert_name, 0) or 0),
+                                device=x.device,
+                                dtype=torch.float32,
+                            )
+                            if head_w is not None:
+                                debug(
+                                    f"[COLA DEBUG]   head_target={head_id} head_weights={head_w[0].detach().cpu().tolist()}",
+                                    enabled=True,
+                                )
                 with torch.no_grad():
                     token_count = topi.numel()
                     if token_count > 0:
@@ -980,7 +1104,16 @@ class Linear(nn.Module, ColaLayer):
                         )
                         record_cola_metrics(metrics, weight=metrics_weight)
 
-                expert_outs = [self._adapter_delta(x, f"expert_{e}") for e in range(self.num_experts)]
+                expert_outs = [
+                    self._adapter_delta(
+                        x,
+                        f"expert_{e}",
+                        language_ids=language_ids,
+                        expert_id=e,
+                        expert_targets=language_targets,
+                    )
+                    for e in range(self.num_experts)
+                ]
                 expert_outs = torch.stack(expert_outs, dim=-1)  # [B, S, D_out, E]
 
                 topi_expanded = topi.unsqueeze(2).expand(-1, -1, expert_outs.size(2), -1)
@@ -1088,7 +1221,15 @@ class Linear(nn.Module, ColaLayer):
 
         return output_tensor
 
-    def _adapter_delta(self, x: torch.Tensor, name: str) -> torch.Tensor:
+    def _adapter_delta(
+        self,
+        x: torch.Tensor,
+        name: str,
+        *,
+        language_ids: Optional[torch.Tensor] = None,
+        expert_id: Optional[int] = None,
+        expert_targets: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         A_list = self.lora_A[name]
         B_list = self.lora_B[name]
         drop = self.lora_dropout[name]
@@ -1109,9 +1250,25 @@ class Linear(nn.Module, ColaLayer):
 
         out = 0
         if strategy == "fully":
-            for a_out in a_outputs:
-                for b_layer in B_list:
-                    out = out + b_layer(a_out)
+            head_weights = None
+            head_targets = self._language_head_targets(language_ids, name)
+            if head_targets is not None and expert_targets is not None and expert_id is not None:
+                head_targets = torch.where(expert_targets == int(expert_id), head_targets, LANGUAGE_PAD_ID)
+            if head_targets is not None:
+                head_weights = self._language_head_weights(
+                    head_targets, num_b, device=intermediate.device, dtype=intermediate.dtype
+                )
+            if head_weights is None:
+                for a_out in a_outputs:
+                    for b_layer in B_list:
+                        out = out + b_layer(a_out)
+            else:
+                head_weights = head_weights.view(-1, 1, num_b)
+                for b_idx, b_layer in enumerate(B_list):
+                    b_sum = 0
+                    for a_out in a_outputs:
+                        b_sum = b_sum + b_layer(a_out)
+                    out = out + b_sum * head_weights[:, :, b_idx].to(b_sum.dtype)
         elif strategy == "random" or strategy == "random_ab":
             if num_b == 0:
                 return torch.zeros_like(a_outputs[0])
