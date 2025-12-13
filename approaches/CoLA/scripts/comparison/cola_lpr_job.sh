@@ -32,6 +32,13 @@ export PYTHONUNBUFFERED=1
 OUTPUT_DIR="${OUTPUT_DIR:?OUTPUT_DIR not set}"
 mkdir -p "${OUTPUT_DIR}"
 
+# Avoid NFS-backed caches (can cause slowdowns/hangs on some clusters).
+CACHE_ROOT="${CACHE_ROOT:-${TMPDIR:-/tmp}/${USER}}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${CACHE_ROOT}/.cache}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${CACHE_ROOT}/.triton/autotune}"
+export TORCH_EXTENSIONS_DIR="${TORCH_EXTENSIONS_DIR:-${XDG_CACHE_HOME}/torch_extensions}"
+mkdir -p "${XDG_CACHE_HOME}" "${TRITON_CACHE_DIR}" "${TORCH_EXTENSIONS_DIR}"
+
 DATASET_DIR="${DATASET_DIR:-./LLaMA-Factory/data}"
 TOKENIZED_PATH="${TOKENIZED_PATH:?TOKENIZED_PATH not set}"
 MODEL_NAME_OR_PATH="${MODEL_NAME_OR_PATH:?MODEL_NAME_OR_PATH not set}"
@@ -98,7 +105,16 @@ if [[ -n "${ACCELERATE_CONFIG_FILE}" ]]; then
     MASTER_ADDR="$(scontrol show hostnames "${SLURM_JOB_NODELIST}" | head -n 1)"
   fi
   MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
-  MASTER_PORT="${MASTER_PORT:-$((20000 + (${SLURM_JOB_ID:-0} % 20000) ))}"
+  if [[ -z "${MASTER_PORT:-}" ]]; then
+    MASTER_PORT="$(python - <<'PY'
+import socket
+s = socket.socket()
+s.bind(("", 0))
+print(s.getsockname()[1])
+s.close()
+PY
+)"
+  fi
   export MASTER_ADDR MASTER_PORT
   echo "[INFO] accelerate rendezvous MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT}"
   ACCELERATE_CMD=(
