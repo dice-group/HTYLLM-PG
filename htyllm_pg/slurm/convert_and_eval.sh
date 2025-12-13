@@ -277,8 +277,8 @@ checkpoint_parent = "${CHECKPOINT_PARENT}"
 group_name = os.path.basename(checkpoint_parent)
 
 # Create a consistent run ID for resuming (allows line plot across checkpoints)
-# Format: {group_name}_eval (e.g., "checkpoints_multilingual_eval")
-run_id = f"{group_name}_eval".replace("/", "_").replace(" ", "_")
+# Format: {group_name}_eval_v2 (v2 = new metric structure with task-level sections)
+run_id = f"{group_name}_eval_v2".replace("/", "_").replace(" ", "_")
 
 # Initialize W&B run with resume to append to the same run
 # This creates a single run with multiple log calls = line plot!
