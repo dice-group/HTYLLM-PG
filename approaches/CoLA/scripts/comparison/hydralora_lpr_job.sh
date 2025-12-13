@@ -123,8 +123,8 @@ fi
   --gradient_accumulation_steps "${GRAD_ACC}" \
   --logging_steps "${LOGGING_STEPS:-10}" \
   --evaluation_strategy "${EVAL_STRATEGY:-steps}" \
-  --eval_steps "${EVAL_STEPS:-200}" \
-  --save_steps "${SAVE_STEPS:-200}" \
+  --eval_steps "${EVAL_STEPS:-2000}" \
+  --save_steps "${SAVE_STEPS:-2000}" \
   --max_steps "${MAX_STEPS:-0}" \
   --disable_gradient_checkpointing "${DISABLE_GRADIENT_CHECKPOINTING:-True}" \
   --bf16 "${BF16:-False}" \

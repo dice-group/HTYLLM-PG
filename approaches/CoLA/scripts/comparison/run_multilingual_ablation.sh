@@ -77,9 +77,12 @@ PY
 
 # Language tiers: <tier_id>|<language_count>|<language_map_path>|<tokenized_path>|<model_path>
 LANGUAGE_TIERS=(
-  "tier12|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier1_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier1/merged_model"
-  "tier12_base|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier1|meta-llama/Llama-3.1-8B"      # i hope this will sparately show the effect of the extended tokenizer and weight initialization
-  "tier72|72|${REPO_ROOT}/tools/two_stage_clustering/72_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier2_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier2/merged_model"
+  "tier12|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier1|meta-llama/Llama-3.1-8B"
+  # Extended-tokenizer variant
+  # "tier12|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier1_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier1/merged_model"
+  "tier72|72|${REPO_ROOT}/tools/two_stage_clustering/72_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier2|meta-llama/Llama-3.1-8B"
+  # Extended-tokenizer variant
+  # "tier72|72|${REPO_ROOT}/tools/two_stage_clustering/72_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier2_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier2/merged_model"
   # "tier200|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier3_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier3/merged_model"
 )
 
@@ -107,28 +110,24 @@ DEFAULT_PARTITION=${DEFAULT_PARTITION:-gpu}
 
 declare -A TIER_WALLTIME_MAP=(
   ["tier12"]="48:00:00"
-  ["tier12_base"]="48:00:00"
   ["tier72"]="96:00:00"
   ["tier200"]="120:00:00"
 )
 
 declare -A TIER_GPU_COUNT_MAP=(
   ["tier12"]=2
-  ["tier12_base"]=2
   ["tier72"]=4
   ["tier200"]=8
 )
 
 declare -A TIER_GPU_TYPE_MAP=(
   ["tier12"]="${DEFAULT_GPU_TYPE}"
-  ["tier12_base"]="${DEFAULT_GPU_TYPE}"
   ["tier72"]="${DEFAULT_GPU_TYPE}"
   ["tier200"]="${DEFAULT_GPU_TYPE}"
 )
 
 declare -A TIER_PARTITION_MAP=(
   ["tier12"]="${DEFAULT_PARTITION}"
-  ["tier12_base"]="${DEFAULT_PARTITION}"
   ["tier72"]="${DEFAULT_PARTITION}"
   ["tier200"]="${DEFAULT_PARTITION}"
 )
@@ -268,9 +267,10 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
   if [[ "${tokenized_path}" != /* ]]; then
     tokenized_path="${TOKENIZED_BASE_DIR}/${tokenized_path}"
   fi
-  # Train embeddings when using extended tokenizer/models (non-*base tiers).
-  additional_target=""
-  if [[ "${tier_id}" != *"base"* ]]; then
+  # All runs currently use the original tokenizer; default is to not retrain embeddings.
+  # To enable embedding/lm_head training, set `TRAIN_EMBEDDINGS=true` or pass `ADDITIONAL_TARGET=embed_tokens,lm_head`.
+  additional_target="${ADDITIONAL_TARGET:-}"
+  if [[ -z "${additional_target}" && "${TRAIN_EMBEDDINGS:-false}" == "true" ]]; then
     additional_target="embed_tokens,lm_head"
   fi
   if [[ ! -d "${tokenized_path}" ]]; then
@@ -291,18 +291,10 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
   fi
   tier_num_experts="$(count_experts_from_language_map "${tier_map}")"
 
-  run_lora_only=false
-  if [[ "${tier_id}" == "tier12_base" ]]; then
-    run_lora_only=true
-  fi
-
   # Hydra/LoRA runs
   for variant_spec in "${HYDRA_VARIANTS[@]}"; do
     IFS='|' read -r label use_experts lora_num router_mode prior_weight bias_value head_router_mode head_bias_value top_k guidance_scope train_bs <<<"${variant_spec}"
     variant_slug="$(sanitize "${label}")"
-    if [[ "${run_lora_only}" == "true" && "${label}" != "hydra-lora" ]]; then
-      continue
-    fi
     if [[ -z "${head_router_mode:-}" ]]; then
       head_router_mode="${router_mode}"
     fi
@@ -335,7 +327,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     fi
     hydra_descriptor="${tier_id}_${label}_${router_mode}${hydra_head_suffix}_g${prior_weight}"
     hydra_output="${OUTPUT_ROOT}/${tier_slug}/hydra_${variant_slug}_${timestamp}"
-    hydra_wandb="${hydra_descriptor}_tokenizer:$([[ \"${tier_id}\" == *base* ]] && echo base || echo ext)_${timestamp}"
+    hydra_wandb="${hydra_descriptor}_tokenizer:base_${timestamp}"
     hydra_log="hydra_${tier_slug}_${variant_slug}"
 
     hydra_env=(
@@ -374,9 +366,6 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
   done
 
   # CoLA runs
-  if [[ "${run_lora_only}" == "true" ]]; then
-    continue
-  fi
   for variant_spec in "${COLA_VARIANTS[@]}"; do
     IFS='|' read -r label use_experts num_A num_B strategy router_mode prior_weight bias_value head_router_mode head_bias_value top_k guidance_scope train_bs <<<"${variant_spec}"
     variant_slug="$(sanitize "${label}")"
@@ -412,7 +401,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     fi
     cola_descriptor="${tier_id}_${label}_${router_mode}${cola_head_suffix}_g${prior_weight}"
     cola_output="${OUTPUT_ROOT}/${tier_slug}/cola_${variant_slug}_${timestamp}"
-    cola_wandb="${cola_descriptor}_tokenizer:$([[ \"${tier_id}\" == *base* ]] && echo base || echo ext)_${timestamp}"
+    cola_wandb="${cola_descriptor}_tokenizer:base_${timestamp}"
     cola_log="cola_${tier_slug}_${variant_slug}"
 
     cola_env=(
