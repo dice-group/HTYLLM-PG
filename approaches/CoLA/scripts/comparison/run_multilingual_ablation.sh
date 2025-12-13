@@ -56,6 +56,25 @@ if [[ "${WANDB_RUN_GROUP}" == "${default_wandb_group}" ]]; then
   WANDB_RUN_GROUP="${WANDB_RUN_GROUP}-${timestamp}"
 fi
 
+count_experts_from_language_map() {
+  local map_path=$1
+  python - "${map_path}" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r") as f:
+    data = json.load(f)
+
+if isinstance(data, dict):
+    print(len(data))
+elif isinstance(data, list):
+    print(len(data))
+else:
+    raise SystemExit(f"Unsupported language_map format: {type(data).__name__}")
+PY
+}
+
 # Language tiers: <tier_id>|<language_count>|<language_map_path>|<tokenized_path>|<model_path>
 LANGUAGE_TIERS=(
   "tier12|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier1_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier1/merged_model"
@@ -64,18 +83,20 @@ LANGUAGE_TIERS=(
   # "tier200|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier3_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier3/merged_model"
 )
 
-# Hydra variants: <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>
-# Hydra variants: <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>|<train_bs>
+# Hydra variants:
+# <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
 HYDRA_VARIANTS=(
-  "hydra-lora|False|1|learned|0.0|0.0|1|none|16"           # baseline LoRA-compatible Hydra
-  "hydra-flat|False|3|learned|0.0|0.0|1|none|12"          # Hydra flat, 3 heads
-  "hydra-exp-lpr|True|3|learned|0.1|0.0|1|all|6"         # Hydra experts, subgroup heads, LPR
+  "hydra-lora|False|1|learned|0.0|0.0|learned|0.0|1|none|16"           # baseline LoRA-compatible Hydra
+  "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|none|12"          # Hydra flat, 3 heads (paper-faithful: no LPR)
+  "hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|all|6"          # Hydra experts (2-stage), soft LPR
 )
 
-# CoLA variants: <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<top_k>|<guidance_scope>|<train_bs>
+# CoLA variants:
+# <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
 COLA_VARIANTS=(
-  "colaflat|False|1|3|fully|learned|0.0|0.0|1|none|12"    # CoLA flat
-  "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|1|all|6"   # CoLA experts, subgroup B, LPR
+  "colaflat|False|1|3|fully|learned|0.0|0.0|learned|0.0|1|none|12"           # CoLA flat (paper-faithful)
+  "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|all|6"           # C1: expert soft LPR, no head emphasis
+  "colaexp-headbias|True|1|3|fully|learned|0.1|0.0|bias|2.0|1|all|6"         # C2: expert soft LPR + head emphasis (variant A)
 )
 
 # Resource mappings
@@ -264,6 +285,11 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     echo "[ERROR] Model path ${model_path} not found for ${tier_id} and does not look like a hub id" >&2
     exit 1
   fi
+  if [[ ! -f "${tier_map}" ]]; then
+    echo "[ERROR] LANGUAGE_MAP ${tier_map} not found for ${tier_id}" >&2
+    exit 1
+  fi
+  tier_num_experts="$(count_experts_from_language_map "${tier_map}")"
 
   run_lora_only=false
   if [[ "${tier_id}" == "tier12_base" ]]; then
@@ -272,13 +298,19 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
 
   # Hydra/LoRA runs
   for variant_spec in "${HYDRA_VARIANTS[@]}"; do
-    IFS='|' read -r label use_experts lora_num router_mode prior_weight bias_value top_k guidance_scope train_bs <<<"${variant_spec}"
+    IFS='|' read -r label use_experts lora_num router_mode prior_weight bias_value head_router_mode head_bias_value top_k guidance_scope train_bs <<<"${variant_spec}"
     variant_slug="$(sanitize "${label}")"
     if [[ "${run_lora_only}" == "true" && "${label}" != "hydra-lora" ]]; then
       continue
     fi
+    if [[ -z "${head_router_mode:-}" ]]; then
+      head_router_mode="${router_mode}"
+    fi
+    if [[ -z "${head_bias_value:-}" ]]; then
+      head_bias_value="${bias_value}"
+    fi
     if [[ "${use_experts}" == "True" ]]; then
-      hydra_num_experts="${lang_count}"
+      hydra_num_experts="${tier_num_experts}"
     else
       hydra_num_experts=1
     fi
@@ -294,7 +326,14 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       fi
     fi
 
-    hydra_descriptor="${tier_id}_${label}_${router_mode}_g${prior_weight}"
+    hydra_head_suffix=""
+    if [[ "${head_router_mode}" != "${router_mode}" ]]; then
+      hydra_head_suffix="_head${head_router_mode}"
+      if [[ "${head_router_mode}" == "bias" ]]; then
+        hydra_head_suffix="${hydra_head_suffix}${head_bias_value}"
+      fi
+    fi
+    hydra_descriptor="${tier_id}_${label}_${router_mode}${hydra_head_suffix}_g${prior_weight}"
     hydra_output="${OUTPUT_ROOT}/${tier_slug}/hydra_${variant_slug}_${timestamp}"
     hydra_wandb="${hydra_descriptor}_tokenizer:$([[ \"${tier_id}\" == *base* ]] && echo base || echo ext)_${timestamp}"
     hydra_log="hydra_${tier_slug}_${variant_slug}"
@@ -307,8 +346,10 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "TOKENIZED_PATH=${tokenized_path}"
       "LANGUAGE_MAP=${tier_map}"
       "LANGUAGE_ROUTER_MODE=${router_mode}"
+      "LANGUAGE_HEAD_ROUTER_MODE=${head_router_mode}"
       "LANGUAGE_PRIOR_WEIGHT=${prior_weight}"
       "LANGUAGE_BIAS_VALUE=${bias_value}"
+      "LANGUAGE_HEAD_BIAS_VALUE=${head_bias_value}"
       "LANGUAGE_GUIDANCE_SCOPE=${guidance_scope}"
       "ADDITIONAL_TARGET=${additional_target}"
       "USE_HYDRALORA_EXPERTS=${use_experts}"
@@ -317,7 +358,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "LORA_NUM=${lora_num}"
       "MODEL_VARIANT=${tier_id}"
       "LANGUAGE_TIER=${tier_id}"
-      "WANDB_TAGS=adapter:hydra,variant:${label},tier:${tier_id},mode:${router_mode},gamma:${prior_weight}"
+      "WANDB_TAGS=adapter:hydra,variant:${label},tier:${tier_id},mode:${router_mode},head_mode:${head_router_mode},gamma:${prior_weight}"
     )
     if [[ -n "${train_bs}" ]]; then
       hydra_env+=("PER_DEVICE_TRAIN_BATCH_SIZE=${train_bs}" "PER_DEVICE_EVAL_BATCH_SIZE=${train_bs}")
@@ -337,10 +378,16 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     continue
   fi
   for variant_spec in "${COLA_VARIANTS[@]}"; do
-    IFS='|' read -r label use_experts num_A num_B strategy router_mode prior_weight bias_value top_k guidance_scope train_bs <<<"${variant_spec}"
+    IFS='|' read -r label use_experts num_A num_B strategy router_mode prior_weight bias_value head_router_mode head_bias_value top_k guidance_scope train_bs <<<"${variant_spec}"
     variant_slug="$(sanitize "${label}")"
+    if [[ -z "${head_router_mode:-}" ]]; then
+      head_router_mode="${router_mode}"
+    fi
+    if [[ -z "${head_bias_value:-}" ]]; then
+      head_bias_value="${bias_value}"
+    fi
     if [[ "${use_experts}" == "True" ]]; then
-      cola_num_experts="${lang_count}"
+      cola_num_experts="${tier_num_experts}"
     else
       cola_num_experts=1
     fi
@@ -356,7 +403,14 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       fi
     fi
 
-    cola_descriptor="${tier_id}_${label}_${router_mode}_g${prior_weight}"
+    cola_head_suffix=""
+    if [[ "${head_router_mode}" != "${router_mode}" ]]; then
+      cola_head_suffix="_head${head_router_mode}"
+      if [[ "${head_router_mode}" == "bias" ]]; then
+        cola_head_suffix="${cola_head_suffix}${head_bias_value}"
+      fi
+    fi
+    cola_descriptor="${tier_id}_${label}_${router_mode}${cola_head_suffix}_g${prior_weight}"
     cola_output="${OUTPUT_ROOT}/${tier_slug}/cola_${variant_slug}_${timestamp}"
     cola_wandb="${cola_descriptor}_tokenizer:$([[ \"${tier_id}\" == *base* ]] && echo base || echo ext)_${timestamp}"
     cola_log="cola_${tier_slug}_${variant_slug}"
@@ -369,8 +423,10 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "TOKENIZED_PATH=${tokenized_path}"
       "LANGUAGE_MAP=${tier_map}"
       "LANGUAGE_ROUTER_MODE=${router_mode}"
+      "LANGUAGE_HEAD_ROUTER_MODE=${head_router_mode}"
       "LANGUAGE_PRIOR_WEIGHT=${prior_weight}"
       "LANGUAGE_BIAS_VALUE=${bias_value}"
+      "LANGUAGE_HEAD_BIAS_VALUE=${head_bias_value}"
       "LANGUAGE_GUIDANCE_SCOPE=${guidance_scope}"
       "ADDITIONAL_TARGET=${additional_target}"
       "USE_COLA_EXPERTS=${use_experts}"
@@ -381,7 +437,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "COLA_TOP_K=${top_k}"
       "MODEL_VARIANT=${tier_id}"
       "LANGUAGE_TIER=${tier_id}"
-      "WANDB_TAGS=adapter:cola,variant:${label},tier:${tier_id},mode:${router_mode},gamma:${prior_weight}"
+      "WANDB_TAGS=adapter:cola,variant:${label},tier:${tier_id},mode:${router_mode},head_mode:${head_router_mode},gamma:${prior_weight}"
     )
     if [[ -n "${train_bs}" ]]; then
       cola_env+=("PER_DEVICE_TRAIN_BATCH_SIZE=${train_bs}" "PER_DEVICE_EVAL_BATCH_SIZE=${train_bs}")
