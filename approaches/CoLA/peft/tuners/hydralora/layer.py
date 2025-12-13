@@ -819,7 +819,16 @@ class Linear(nn.Module, HydraLoraLayer):
                         )
                         record_hydralora_metrics(metrics, weight=metrics_weight)
 
-                expert_outs = [self._adapter_delta(x, f"expert_{e}") for e in range(self.num_experts)]
+                expert_outs = [
+                    self._adapter_delta(
+                        x,
+                        f"expert_{e}",
+                        language_ids=language_ids,
+                        expert_id=e,
+                        expert_targets=expert_targets,
+                    )
+                    for e in range(self.num_experts)
+                ]
                 expert_outs = torch.stack(expert_outs, dim=-1)  # [B, S, D_out, E]
 
                 topi_expanded = topi.unsqueeze(2).expand(-1, -1, expert_outs.size(2), -1)
@@ -923,26 +932,63 @@ class Linear(nn.Module, HydraLoraLayer):
 
         return output_tensor
 
-    def _adapter_delta(self, x: torch.Tensor, name: str) -> torch.Tensor:
+    def _adapter_delta(
+        self,
+        x: torch.Tensor,
+        name: str,
+        *,
+        language_ids: Optional[torch.Tensor] = None,
+        expert_id: Optional[int] = None,
+        expert_targets: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """
         Compute the HydraLoRA delta for a single adapter/expert.
 
-        HydraLoRA layout:
-          - lora_A[name]:      nn.Linear(in_features, r)
-          - lora_B[name]:      nn.ModuleList[nn.Linear(r, out_features)]
-          - lora_dropout[name]: nn.Dropout / nn.Identity
+        - Flat Hydra: routed mixture over B heads (handled in Linear.forward, not here).
+        - Expert Hydra: we optionally apply the same head routing per expert when lora_route[name] exists.
         """
         A = self.lora_A[name]  # nn.Linear
-        B_list = self.lora_B[name]  # ModuleList of nn.Linear
+        B_list = self.lora_B[name]  # ModuleList[nn.Linear]
         drop = self.lora_dropout[name]
         scale = self.scaling[name]
 
-        # Match A's dtype to avoid mixed-precision issues
+        if not B_list:
+            return torch.zeros_like(x, dtype=self.get_base_layer().weight.dtype)
+
         intermediate = drop(x.to(A.weight.dtype))  # [B, S, D_in]
         a_dot_x = A(intermediate)  # [B, S, r]
 
-        # Sum over the multiple B heads for this adapter
-        out = sum(B(a_dot_x) for B in B_list)  # [B, S, D_out]
+        lora_route = self.lora_route.get(name)
+        if lora_route is None or len(B_list) == 1:
+            out = sum(B(a_dot_x) for B in B_list)
+            return out * scale
+
+        route_logits = lora_route(x.to(torch.float32)).to(x.dtype)  # [B, S, num_heads]
+        head_targets: Optional[torch.Tensor] = None
+        use_head_guidance = self.language_guidance_scope == "all"
+        if use_head_guidance and language_ids is not None:
+            head_targets = self._language_head_targets(language_ids, name)
+            if (
+                head_targets is not None
+                and expert_id is not None
+                and expert_targets is not None
+                and torch.is_tensor(expert_targets)
+            ):
+                mismatch = expert_targets != int(expert_id)
+                if mismatch.any():
+                    head_targets = head_targets.clone()
+                    head_targets[mismatch] = LANGUAGE_PAD_ID
+
+            self._cache_router_state(route_logits, language_ids, f"hydra_head_{name}", head_targets)
+
+        route_logits = self._apply_language_bias_heads(route_logits, head_targets)
+        route_weight = nn.functional.softmax(route_logits, dim=-1, dtype=torch.float32).to(x.dtype)  # [B, S, H]
+        route_weight = self._enforce_language_heads(route_weight, head_targets)
+
+        out = 0
+        for i, B in enumerate(B_list):
+            out = out + torch.unsqueeze(route_weight[:, :, i], -1) * B(a_dot_x)
+
         return out * scale
 
     def __repr__(self) -> str:
