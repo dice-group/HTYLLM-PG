@@ -300,21 +300,29 @@ run = wandb.init(
 
 # Define step metric for proper x-axis (line plot!)
 wandb.define_metric("step")
-wandb.define_metric("eval/*", step_metric="step")
 
 # Parse and log results
 log_dict = {"step": step}
 
 print(f"Logging eval results for step {step}...")
 print("Task Results:")
+
+# Collect all unique task names for metric definitions
+task_names = set()
 for task, metrics in results.get('results', {}).items():
+    task_names.add(task)
     print(f"  {task}:")
     for metric, value in metrics.items():
         if isinstance(value, (int, float)):
             # Clean metric name for wandb (remove special chars)
             clean_metric = metric.replace(',', '_').replace(' ', '_')
-            log_dict[f"eval/{task}/{clean_metric}"] = value
+            # Use task as top-level section (e.g., "hellaswag/acc" instead of "eval/hellaswag/acc")
+            log_dict[f"{task}/{clean_metric}"] = value
             print(f"    {metric}: {value:.4f}")
+
+# Define metrics per task section so they use step as x-axis
+for task in task_names:
+    wandb.define_metric(f"{task}/*", step_metric="step")
 
 wandb.log(log_dict)
 
