@@ -426,8 +426,10 @@ def _setup_cola_tuning(
                 "language_to_subgroup_ids": language_to_subgroup,
                 "language_column": finetuning_args.language_column,
                 "language_router_mode": finetuning_args.language_router_mode,
+                "language_head_router_mode": getattr(finetuning_args, "language_head_router_mode", None),
                 "language_prior_weight": finetuning_args.language_prior_weight,
                 "language_bias_value": finetuning_args.language_bias_value,
+                "language_head_bias_value": getattr(finetuning_args, "language_head_bias_value", None),
                 "language_guidance_scope": finetuning_args.language_guidance_scope,
             }
         )
@@ -827,8 +829,10 @@ def _setup_hydralora_tuning(
                 "language_to_subgroup_ids": language_to_subgroup,
                 "language_column": finetuning_args.language_column,
                 "language_router_mode": finetuning_args.language_router_mode,
+                "language_head_router_mode": getattr(finetuning_args, "language_head_router_mode", None),
                 "language_prior_weight": finetuning_args.language_prior_weight,
                 "language_bias_value": finetuning_args.language_bias_value,
+                "language_head_bias_value": getattr(finetuning_args, "language_head_bias_value", None),
                 "language_guidance_scope": finetuning_args.language_guidance_scope,
             }
         )

@@ -168,6 +168,15 @@ class HydraLoraConfig(PeftConfig):
         default="learned",
         metadata={"help": "Routing behavior when language metadata is present."},
     )
+    language_head_router_mode: Optional[Literal["learned", "bias", "hard"]] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Optional override for language-guided routing at the HydraLoRA head router stage (B-head selection). "
+                "If unset, falls back to `language_router_mode`."
+            )
+        },
+    )
     language_prior_weight: float = field(
         default=0.0,
         metadata={"help": "Auxiliary loss weight encouraging router alignment with metadata."},
@@ -175,6 +184,15 @@ class HydraLoraConfig(PeftConfig):
     language_bias_value: float = field(
         default=5.0,
         metadata={"help": "Additive logit bonus applied in 'bias' routing mode."},
+    )
+    language_head_bias_value: Optional[float] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Optional override for the additive logit bias applied at the HydraLoRA head router stage when "
+                "`language_head_router_mode='bias'`. If unset, falls back to `language_bias_value`."
+            )
+        },
     )
     language_guidance_scope: Literal["all", "expert_only", "none"] = field(
         default="all",

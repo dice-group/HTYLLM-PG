@@ -125,6 +125,10 @@ class HydraLoraLayer(BaseTunerLayer):
         self.language_to_subgroup_ids = kwargs.pop("language_to_subgroup_ids", None)
         self.language_router_mode = kwargs.pop("language_router_mode", "learned")
         self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
+        self.language_head_router_mode = kwargs.pop("language_head_router_mode", None) or self.language_router_mode
+        self.language_head_bias_value = kwargs.pop("language_head_bias_value", None)
+        if self.language_head_bias_value is None:
+            self.language_head_bias_value = self.language_bias_value
         self.language_column = kwargs.pop("language_column", None)
         self.language_guidance_scope = kwargs.pop("language_guidance_scope", "all")
         if self.language_guidance_scope not in {"all", "expert_only", "none"}:
@@ -592,19 +596,19 @@ class HydraLoraLayer(BaseTunerLayer):
     def _apply_language_bias_heads(
             self, logits: torch.Tensor, head_ids: Optional[torch.Tensor]
     ) -> torch.Tensor:
-        if head_ids is None or self.language_router_mode != "bias":
+        if head_ids is None or self.language_head_router_mode != "bias":
             return logits
         valid = head_ids >= 0
         if not valid.any():
             return logits
         bias = torch.zeros(logits.size(0), logits.size(-1), device=logits.device, dtype=logits.dtype)
-        bias[valid, head_ids[valid]] = self.language_bias_value
+        bias[valid, head_ids[valid]] = self.language_head_bias_value
         return logits + bias.unsqueeze(1)
 
     def _enforce_language_heads(
             self, weights: torch.Tensor, head_ids: Optional[torch.Tensor]
     ) -> torch.Tensor:
-        if head_ids is None or self.language_router_mode != "hard":
+        if head_ids is None or self.language_head_router_mode != "hard":
             return weights
         valid = head_ids >= 0
         if not valid.any():

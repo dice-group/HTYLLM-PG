@@ -15,10 +15,12 @@ class RouterConfig:
     use_experts: bool
     num_experts: Optional[int]
     router_mode: Optional[str]
+    head_router_mode: Optional[str]
     guidance_scope: Optional[str]
     language_map: Optional[str]
     prior_weight: Optional[float]
     bias_value: Optional[float]
+    head_bias_value: Optional[float]
     top_k: Optional[int]
     lora_num: Optional[int]
 
@@ -70,10 +72,12 @@ def build_router_config(kind: str, env: Mapping[str, str]) -> RouterConfig:
         use_experts=use_experts,
         num_experts=num_experts,
         router_mode=env.get("LANGUAGE_ROUTER_MODE"),
+        head_router_mode=env.get("LANGUAGE_HEAD_ROUTER_MODE"),
         guidance_scope=env.get("LANGUAGE_GUIDANCE_SCOPE"),
         language_map=env.get("LANGUAGE_MAP"),
         prior_weight=_parse_float(env.get("LANGUAGE_PRIOR_WEIGHT")),
         bias_value=_parse_float(env.get("LANGUAGE_BIAS_VALUE")),
+        head_bias_value=_parse_float(env.get("LANGUAGE_HEAD_BIAS_VALUE")),
         top_k=top_k,
         lora_num=lora_num,
     )
@@ -87,9 +91,11 @@ def describe_router_config(config: RouterConfig) -> None:
         f"use_experts={config.use_experts}",
         f"num_experts={config.num_experts or 0}",
         f"router_mode={config.router_mode or 'default'}",
+        f"head_router_mode={config.head_router_mode or 'default'}",
         f"guidance_scope={config.guidance_scope or 'default'}",
         f"language_map={config.language_map or 'NONE'}",
         f"prior_weight={config.prior_weight or 0:.3f}",
+        f"head_bias_value={config.head_bias_value or 0:.3f}",
         f"top_k={config.top_k or 0}",
     ]
     print(" ".join(parts))
@@ -112,6 +118,9 @@ def validate_router_config(config: RouterConfig) -> None:
 
     if config.router_mode not in {None, "learned", "bias", "hard"}:
         raise ValueError(f"Router mode {config.router_mode} is not supported.")
+
+    if config.head_router_mode not in {None, "", "learned", "bias", "hard"}:
+        raise ValueError(f"Head router mode {config.head_router_mode} is not supported.")
 
     print(f"[router-setup] validation passed for {config.kind} variant.")
 

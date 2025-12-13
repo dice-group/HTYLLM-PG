@@ -170,6 +170,15 @@ class ColaConfig(PeftConfig):
             "help": "Routing behavior when language metadata is available."
         },
     )
+    language_head_router_mode: Optional[Literal["learned", "bias", "hard"]] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Optional override for language-guided routing at the CoLA head/B weighting stage. "
+                "If unset, falls back to `language_router_mode`."
+            )
+        },
+    )
     language_prior_weight: float = field(
         default=0.0,
         metadata={
@@ -180,6 +189,15 @@ class ColaConfig(PeftConfig):
         default=5.0,
         metadata={
             "help": "Additive logit bias applied in 'bias' routing mode."
+        },
+    )
+    language_head_bias_value: Optional[float] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Optional override for the additive logit bias applied at the CoLA head/B weighting stage when "
+                "`language_head_router_mode='bias'`. If unset, falls back to `language_bias_value`."
+            )
         },
     )
     language_guidance_scope: Literal["all", "expert_only", "none"] = field(

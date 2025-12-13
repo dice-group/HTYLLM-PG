@@ -447,6 +447,15 @@ class FinetuningArguments(
         default="learned",
         metadata={"help": "Language routing mode: 'learned'=no intervention, 'bias'=fixed logit bonus, 'hard'=one-hot."},
     )
+    language_head_router_mode: Optional[Literal["learned", "bias", "hard"]] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Optional override for language routing at the head/B stage (HydraLoRA head router, CoLA head emphasis). "
+                "If unset, falls back to `language_router_mode`."
+            )
+        },
+    )
     language_guidance_scope: Literal["all", "expert_only", "none"] = field(
         default="all",
         metadata={
@@ -460,6 +469,15 @@ class FinetuningArguments(
     language_bias_value: float = field(
         default=5.0,
         metadata={"help": "Logit bias value applied in 'bias' routing mode."},
+    )
+    language_head_bias_value: Optional[float] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Optional override for the logit bias value at the head/B stage when "
+                "`language_head_router_mode='bias'`. If unset, falls back to `language_bias_value`."
+            )
+        },
     )
     def __post_init__(self):
         def split_arg(arg):

@@ -43,6 +43,8 @@ LANGUAGE_COLUMN="${LANGUAGE_COLUMN:-language}"
 LANGUAGE_ROUTER_MODE="${LANGUAGE_ROUTER_MODE:-learned}"
 LANGUAGE_PRIOR_WEIGHT="${LANGUAGE_PRIOR_WEIGHT:-0.0}"
 LANGUAGE_BIAS_VALUE="${LANGUAGE_BIAS_VALUE:-0.0}"
+LANGUAGE_HEAD_ROUTER_MODE="${LANGUAGE_HEAD_ROUTER_MODE:-${LANGUAGE_ROUTER_MODE}}"
+LANGUAGE_HEAD_BIAS_VALUE="${LANGUAGE_HEAD_BIAS_VALUE:-${LANGUAGE_BIAS_VALUE}}"
 LANGUAGE_GUIDANCE_SCOPE="${LANGUAGE_GUIDANCE_SCOPE:-none}"
 ACCELERATE_CONFIG_FILE="${ACCELERATE_CONFIG_FILE:-}"
 USE_COLA_EXPERTS="${USE_COLA_EXPERTS:-True}"
@@ -72,8 +74,10 @@ export WANDB_NAME="${RUN_NAME}"
 export WANDB_CONFIG_JSON=$(cat <<EOF
 {
   "language_router_mode": "${LANGUAGE_ROUTER_MODE}",
+  "language_head_router_mode": "${LANGUAGE_HEAD_ROUTER_MODE}",
   "language_prior_weight": ${LANGUAGE_PRIOR_WEIGHT},
   "language_bias_value": ${LANGUAGE_BIAS_VALUE},
+  "language_head_bias_value": ${LANGUAGE_HEAD_BIAS_VALUE},
   "language_guidance_scope": "${LANGUAGE_GUIDANCE_SCOPE}",
   "cola_strategy": "${STRATEGY}",
   "use_cola_experts": ${USE_COLA_EXPERTS},
@@ -142,8 +146,10 @@ fi
   --language_column "${LANGUAGE_COLUMN}" \
   --language_map "${LANGUAGE_MAP}" \
   --language_router_mode "${LANGUAGE_ROUTER_MODE}" \
+  --language_head_router_mode "${LANGUAGE_HEAD_ROUTER_MODE}" \
   --language_prior_weight "${LANGUAGE_PRIOR_WEIGHT}" \
   --language_bias_value "${LANGUAGE_BIAS_VALUE}" \
+  --language_head_bias_value "${LANGUAGE_HEAD_BIAS_VALUE}" \
   --language_guidance_scope "${LANGUAGE_GUIDANCE_SCOPE}" \
   ${ADDITIONAL_TARGET:+--additional_target "${ADDITIONAL_TARGET}"} \
   --report_to wandb \

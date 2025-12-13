@@ -131,6 +131,10 @@ class ColaLayer(BaseTunerLayer):
         self.language_to_subgroup_ids = kwargs.pop("language_to_subgroup_ids", None)
         self.language_router_mode = kwargs.pop("language_router_mode", "learned")
         self.language_bias_value = kwargs.pop("language_bias_value", 0.0)
+        self.language_head_router_mode = kwargs.pop("language_head_router_mode", None) or self.language_router_mode
+        self.language_head_bias_value = kwargs.pop("language_head_bias_value", None)
+        if self.language_head_bias_value is None:
+            self.language_head_bias_value = self.language_bias_value
         self.language_column = kwargs.pop("language_column", None)
         self.cola_strategy = kwargs.pop("cola_strategy", "fully")
         self.language_guidance_scope = kwargs.pop("language_guidance_scope", "all")
@@ -744,10 +748,14 @@ class ColaLayer(BaseTunerLayer):
             return None
         if not torch.is_tensor(head_ids):
             return None
+        # In "learned" mode, CoLA head weighting is disabled entirely so we preserve paper-faithful
+        # fully-collaborative summation (no implicit 1/head_count scaling).
+        if self.language_head_router_mode == "learned":
+            return None
         batch = head_ids.size(0)
         valid = (head_ids >= 0) & (head_ids < head_count)
 
-        if self.language_router_mode == "hard":
+        if self.language_head_router_mode == "hard":
             weights = torch.full((batch, head_count), 0.0, device=device, dtype=dtype)
             if valid.any():
                 weights[valid, head_ids[valid]] = 1.0
@@ -755,10 +763,10 @@ class ColaLayer(BaseTunerLayer):
                 weights[~valid] = 1.0 / head_count
             return weights
 
-        if self.language_router_mode == "bias":
+        if self.language_head_router_mode == "bias":
             logits = torch.zeros((batch, head_count), device=device, dtype=torch.float32)
             if valid.any():
-                logits[valid, head_ids[valid]] = float(self.language_bias_value)
+                logits[valid, head_ids[valid]] = float(self.language_head_bias_value)
             return torch.softmax(logits, dim=-1).to(dtype)
 
         return torch.full((batch, head_count), 1.0 / head_count, device=device, dtype=dtype)
