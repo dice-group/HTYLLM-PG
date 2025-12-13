@@ -295,7 +295,8 @@ run = wandb.init(
         "checkpoint_dir": checkpoint_parent,
         **model_config
     },
-    tags=["eval", "${MODEL_VARIANT}"]
+    tags=["eval", "${MODEL_VARIANT}"],
+    settings=wandb.Settings(init_timeout=300)  # 5 min timeout for slow HPC networks
 )
 
 # Define step metric for proper x-axis (line plot!)
