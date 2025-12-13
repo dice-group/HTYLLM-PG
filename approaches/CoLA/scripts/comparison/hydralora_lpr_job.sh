@@ -93,7 +93,20 @@ python "${REPO_ROOT}/scripts/comparison/router_setup.py" --type hydra
 
 ACCELERATE_CMD=()
 if [[ -n "${ACCELERATE_CONFIG_FILE}" ]]; then
-  ACCELERATE_CMD=(accelerate launch --config_file "${ACCELERATE_CONFIG_FILE}")
+  MASTER_ADDR="${MASTER_ADDR:-}"
+  if [[ -z "${MASTER_ADDR}" && -n "${SLURM_JOB_NODELIST:-}" ]]; then
+    MASTER_ADDR="$(scontrol show hostnames "${SLURM_JOB_NODELIST}" | head -n 1)"
+  fi
+  MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
+  MASTER_PORT="${MASTER_PORT:-$((20000 + (${SLURM_JOB_ID:-0} % 20000) ))}"
+  export MASTER_ADDR MASTER_PORT
+  echo "[INFO] accelerate rendezvous MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT}"
+  ACCELERATE_CMD=(
+    accelerate launch
+    --config_file "${ACCELERATE_CONFIG_FILE}"
+    --main_process_ip "${MASTER_ADDR}"
+    --main_process_port "${MASTER_PORT}"
+  )
 fi
 
 LLAMAFATORY_CLI="$(command -v llamafactory-cli || true)"

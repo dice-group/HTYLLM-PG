@@ -56,6 +56,12 @@ if [[ "${WANDB_RUN_GROUP}" == "${default_wandb_group}" ]]; then
   WANDB_RUN_GROUP="${WANDB_RUN_GROUP}-${timestamp}"
 fi
 
+# Debug/verification (uncomment to test)
+# export COLA_DEBUG=True
+# export COLA_DEBUG_ROUTING_EVERY=50
+# export HYDRALORA_DEBUG=True
+# export HYDRA_DEBUG_ROUTING_EVERY=50
+
 count_experts_from_language_map() {
   local map_path=$1
   python - "${map_path}" <<'PY'
