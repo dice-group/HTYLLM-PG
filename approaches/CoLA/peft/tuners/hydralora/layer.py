@@ -889,22 +889,22 @@ class Linear(nn.Module, HydraLoraLayer):
                         )
                         record_hydralora_metrics(metrics, weight=metrics_weight)
 
-                expert_outs = [
-                    self._adapter_delta(
+                # Memory-friendly mixing: avoid materializing [B, S, D_out, E] for all experts.
+                # We compute each expert delta once and only keep the final mixed output.
+                moe_out = torch.zeros_like(result, dtype=result.dtype)
+                for e in range(self.num_experts):
+                    expert_delta = self._adapter_delta(
                         x,
                         f"expert_{e}",
                         language_ids=language_ids,
                         expert_id=e,
                         expert_targets=expert_targets,
-                    )
-                    for e in range(self.num_experts)
-                ]
-                expert_outs = torch.stack(expert_outs, dim=-1)  # [B, S, D_out, E]
-
-                topi_expanded = topi.unsqueeze(2).expand(-1, -1, expert_outs.size(2), -1)
-                gathered = torch.gather(expert_outs, dim=3, index=topi_expanded)
-                weights_expanded = weights.unsqueeze(2)
-                moe_out = (gathered * weights_expanded).sum(dim=-1)
+                    ).to(moe_out.dtype)
+                    for k in range(self.top_k):
+                        mask = topi[:, :, k].eq(e)
+                        if not mask.any():
+                            continue
+                        moe_out = moe_out + expert_delta * (weights[:, :, k] * mask.to(weights.dtype)).unsqueeze(-1)
 
                 result = result + moe_out
                 result = result.to(torch_result_dtype)
