@@ -3,7 +3,7 @@
 #SBATCH --nodes=16                   
 #SBATCH --ntasks-per-node=1           # 1 DeepSpeed launcher per node
 #SBATCH --cpus-per-task=4
-#SBATCH --time=96:00:00
+#SBATCH --time=168:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:h100:4             # 4 GPUs per node
 #SBATCH --mem=128GB
@@ -61,7 +61,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --deepspeed \
       --deepspeed_config ds_config.json \
       --epochs 1 \
-      --batch-size 20 \
+      --batch-size 32 \
       --lr 1e-4 \
       --dim 2048 \
       --depth 24 \

@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --time=36:30:00
+#SBATCH --time=168:00:00
 #SBATCH --output=logs/checkpoint_listener_%j.log                #Check this path?
 
 # This script can run either via `sbatch checkpoint_listener.sh ...`

@@ -3,7 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=02:00:00
+#SBATCH --time=04:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:h100:1
 #SBATCH --mem=64GB
@@ -280,8 +280,8 @@ group_name = os.path.basename(checkpoint_parent)
 # Format: {group_name}_eval_v2 (v2 = new metric structure with task-level sections)
 run_id = f"{group_name}_eval_v2".replace("/", "_").replace(" ", "_")
 
-# Initialize W&B run with resume to append to the same run
-# This creates a single run with multiple log calls = line plot!
+# Initialize W&B run in OFFLINE mode (HPC compute nodes have restricted network)
+# Sync later from login node with: wandb sync wandb/offline-run-*
 run = wandb.init(
     project="${WANDB_PROJ}",
     id=run_id,
@@ -296,7 +296,7 @@ run = wandb.init(
         **model_config
     },
     tags=["eval", "${MODEL_VARIANT}"],
-    settings=wandb.Settings(init_timeout=300)  # 5 min timeout for slow HPC networks
+    mode="offline"  # Save locally, sync later from login node
 )
 
 # Define step metric for proper x-axis (line plot!)
