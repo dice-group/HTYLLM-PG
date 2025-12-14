@@ -30,72 +30,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# Language code mapping (actual directory names to simple codes)
-# Based on ISO 639-3 codes used in FineWeb2 samples
-LANG_CODE_MAPPING = {
-    # Special case
-    'english': 'en',
-    
-    # Major languages (ISO 639-3 -> ISO 639-1)
-    'spa_Latn': 'es',   # Spanish
-    'rus_Cyrl': 'ru',   # Russian
-    'hin_Deva': 'hi',   # Hindi (Devanagari)
-    'hin_Latn': 'hi',   # Hindi (Latin)
-    'asm_Beng': 'as',   # Assamese
-    'ben_Latn': 'bn',   # Bengali (Latin)
-    'ory_Orya': 'or',   # Oriya
-    'tel_Telu': 'te',   # Telugu
-    'tel_Latn': 'te',   # Telugu (Latin)
-    'tcy_Knda': 'kn',   # Kannada variant
-    'kat_Geor': 'ka',   # Georgian
-    'fas_Arab': 'fa',   # Farsi/Persian
-    'azj_Cyrl': 'az',   # Azerbaijani (Cyrillic)
-    'tat_Latn': 'tt',   # Tatar
-    'cym_Latn': 'cy',   # Welsh
-    'slv_Latn': 'sl',   # Slovenian
-    'fin_Latn': 'fi',   # Finnish
-    'dzo_Tibt': 'dz',   # Dzongkha
-    'lao_Laoo': 'lo',   # Lao
-    'csy_Latn': 'cs',   # Czech variant
-    'srp_Cyrl': 'sr',   # Serbian (Cyrillic)
-    'sma_Latn': 'se',   # Sami
-    'arz_Arab': 'ar',   # Egyptian Arabic
-    'sdh_Arab': 'ku',   # Kurdish (Sorani)
-    'hbo_Hebr': 'he',   # Ancient Hebrew
-    'nya_Latn': 'ny',   # Chichewa
-    'sbd_Latn': 'mg',   # Southern dialect (related to Malagasy)
-    'snd_Deva': 'sd',   # Sindhi
-    'uzs_Arab': 'uz',   # Uzbek (Arabic script)
-    'sat_Olck': 'sat',  # Santali
-    'mni_Beng': 'mni',  # Manipuri
-    'dty_Deva': 'ne',   # Nepali variant
-    'nwx_Deva': 'ne',   # Another Nepali variant
-    'kru_Deva': 'ks',   # Kashmiri
-    'sah_Cyrl': 'sah',  # Sakha/Yakut
-    'mhr_Cyrl': 'mhr',  # Meadow Mari
-    'myb_Latn': 'my',   # Burmese variant
-    'ksw_Mymr': 'ksw',  # S'gaw Karen
-    'kxm_Thai': 'kxm',  # Northern Khmer
-    'wuu_Hani': 'zh',   # Wu Chinese
-    'zsm_Latn': 'ms',   # Malay
-    'jav_Latn': 'jv',   # Javanese
-    'bug_Latn': 'bug',  # Buginese
-    'tso_Latn': 'ts',   # Tsonga
-    'jbo_Latn': 'jbo',  # Lojban
-    'ile_Latn': 'ie',   # Interlingue
-    'tig_Ethi': 'ti',   # Tigrinya
-    'syc_Syrc': 'syc',  # Classical Syriac
-    'ang_Latn': 'ang',  # Old English
-    'orv_Cyrl': 'orv',  # Old Russian
-    'prg_Latn': 'prg',  # Old Prussian
-    'xal_Cyrl': 'xal',  # Kalmyk
-    'koi_Cyrl': 'koi',  # Komi-Permyak
-    'tkr_Cyrl': 'tkr',  # Tsakhur
-    'abk_Cyrl': 'ab',   # Abkhaz
-    'tzm_Tfng': 'tzm',  # Tamazight
-    
-    # Add more as needed based on your actual data
-}
+# No language code mapping needed - use FineWeb2 directory names directly!
+# Examples: spa_Latn, hin_Deva, rus_Cyrl, english
 
 
 
@@ -105,38 +41,30 @@ def find_language_directories(base_path: Path, target_languages: List[str]) -> D
     
     Args:
         base_path: Base samples directory
-        target_languages: List of simple language codes (e.g., ['en', 'es'])
+        target_languages: List of ISO 639-3+script codes (e.g., ['spa_Latn', 'hin_Deva', 'english'])
     
     Returns:
-        Dictionary mapping simple lang code to directory path
+        Dictionary mapping language code to directory path
     """
     logger.info(f"Scanning {base_path} for language directories...")
     
     lang_to_dir = {}
     
-    # Create reverse mapping (simple code -> full code with script)
-    simple_to_full = defaultdict(list)
-    for full_code, simple_code in LANG_CODE_MAPPING.items():
-        simple_to_full[simple_code].append(full_code)
-    
-    # Scan for directories
+    # Check if base path exists
     if not base_path.exists():
         raise FileNotFoundError(f"Base path does not exist: {base_path}")
     
+    # Scan for directories matching target languages
     for lang_dir in base_path.iterdir():
         if not lang_dir.is_dir():
             continue
         
         dir_name = lang_dir.name
         
-        # Check if this directory corresponds to a target language
-        simple_code = LANG_CODE_MAPPING.get(dir_name)
-        
-        if simple_code in target_languages:
-            # Prefer first matching directory for each language
-            if simple_code not in lang_to_dir:
-                lang_to_dir[simple_code] = lang_dir
-                logger.info(f"Found '{simple_code}' data in {dir_name}/")
+        # Use directory name directly if it matches target language
+        if dir_name in target_languages:
+            lang_to_dir[dir_name] = lang_dir
+            logger.info(f"Found '{dir_name}' data in {dir_name}/")
     
     # Check which languages were not found
     missing = set(target_languages) - set(lang_to_dir.keys())

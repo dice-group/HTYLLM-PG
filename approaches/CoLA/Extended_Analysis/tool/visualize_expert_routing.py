@@ -40,32 +40,50 @@ def create_routing_heatmap(
     languages: List[str],
     num_layers: int,
     num_experts: int,
-    output_file: Path
+    output_file: Path,
+    color_scheme: str = 'modern'
 ):
     """
-    Create heatmap with blue-white-yellow-red color scheme.
+    Create heatmap with white-green-yellow-red-black color scheme.
     
     routing_matrix: numpy array [num_languages, num_layers, num_experts]
                     MUST be normalized using layer-wise normalization!
     languages: list of language codes
+    color_scheme: 'classic' (blue-white-yellow-red) or 'modern' (white-green-yellow-red-black)
     """
-    logger.info("Creating routing heatmap")
+    logger.info(f"Creating routing heatmap with {color_scheme} color scheme")
     
     # Reshape to [languages, layers*experts]
     heatmap_data = routing_matrix.reshape(len(languages), -1)
     
-    # Blue-white-yellow-red color scheme
-    colors = ['blue', 'white', 'yellow', 'red', 'red']
-    positions = [0, 1.0/num_experts, 2.0/num_experts, 0.75, 1.0]
-    lola_cmap = LinearSegmentedColormap.from_list('lola', list(zip(positions, colors)))
+    # white-green-yellow-red-black color scheme
+    if color_scheme == 'modern':
+        # white-green-yellow-red-black (newer, more vibrant)
+        colors = ['white', 'lightgreen', 'yellow', 'lightcoral', 'red', 'black']
+        # Ensure positions are strictly increasing by capping 4/experts at 0.7 max
+        pos_4 = min(4.0/num_experts, 0.7)
+        positions = [0, 1.0/num_experts, 2.0/num_experts, pos_4, 0.75, 1.0]
+        tick_positions = [0, 1.0/num_experts, 2.0/num_experts, pos_4, 0.5, 1.0]
+        tick_labels = ['0', f'1/{num_experts}', f'2/{num_experts}', f'4/{num_experts}', '1/2', '1']
+    else:  # classic
+        # blue-white-yellow-red
+        colors = ['blue', 'white', 'yellow', 'red', 'red']
+        positions = [0, 1.0/num_experts, 2.0/num_experts, 0.75, 1.0]
+        tick_positions = [0, 1.0/num_experts, 2.0/num_experts, 0.5, 1.0]
+        tick_labels = ['0', f'1/{num_experts}', f'2/{num_experts}', '1/2', '1']
     
-    # Create figure (1600x1200 for publication quality)
-    fig, ax = plt.subplots(figsize=(20, 12))
+    custom_cmap = LinearSegmentedColormap.from_list('custom', list(zip(positions, colors)))
+    
+    # Create figure (4000x1700 for heatmap2, 1600x1200 for classic)
+    if color_scheme == 'modern':
+        fig, ax = plt.subplots(figsize=(25, 10.625))  # 16:9 aspect ratio
+    else:
+        fig, ax = plt.subplots(figsize=(20, 12))
     
     # Heatmap with color scheme and range
     im = ax.imshow(
         heatmap_data,
-        cmap=lola_cmap,
+        cmap=custom_cmap,
         aspect='auto',
         vmin=0,  # [0, 1] range for normalized data
         vmax=1,
@@ -91,8 +109,8 @@ def create_routing_heatmap(
     # Colorbar with tick marks
     cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     cbar.set_label('Routing Ratio (normalized per layer)', fontsize=12)
-    cbar.set_ticks([0, 1.0/num_experts, 2.0/num_experts, 0.5, 1.0])
-    cbar.set_ticklabels(['0', f'1/{num_experts}', f'2/{num_experts}', '1/2', '1'])
+    cbar.set_ticks(tick_positions)
+    cbar.set_ticklabels(tick_labels)
     
     # Add layer labels at top
     for layer in range(num_layers):
@@ -195,7 +213,7 @@ def create_tsne_clustering(
             init='pca',
             perplexity=perplexity,
             random_state=42,
-            n_iter=1000  # Limit iterations to prevent hanging
+            max_iter=1000  # Limit iterations to prevent hanging
         )
         
         embedded = tsne.fit_transform(routing_matrix_flat.astype(np.float32))
@@ -347,6 +365,13 @@ def main():
         help='Create layer entropy plot'
     )
     parser.add_argument(
+        '--color_scheme',
+        type=str,
+        choices=['classic', 'modern'],
+        default='modern',
+        help='Heatmap color scheme: classic (blue-white-yellow-red) or modern (white-green-yellow-red-black)'
+    )
+    parser.add_argument(
         '--create_all',
         action='store_true',
         help='Create all visualizations'
@@ -385,7 +410,8 @@ def main():
             languages,
             num_layers,
             num_experts,
-            args.output_dir / 'routing_heatmap.png'
+            args.output_dir / 'routing_heatmap.png',
+            color_scheme=args.color_scheme
         )
     
     if args.create_tsne:
