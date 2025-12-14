@@ -168,6 +168,13 @@ def load_model(
 
     model = init_adapter(config, model, model_args, finetuning_args, is_trainable)
 
+    # Ensure uniform parameter dtypes for mixed precision training. This is required for FSDP flattening
+    # (mixed dtypes inside a wrapped module will crash), and is also consistent with "bf16 everywhere" setups.
+    if is_trainable and model_args.quantization_bit is None:
+        target_dtype = getattr(model_args, "compute_dtype", None)
+        if target_dtype in (torch.bfloat16, torch.float16):
+            model.to(dtype=target_dtype)
+
     if add_valuehead:
         model = AutoModelForCausalLMWithValueHead.from_pretrained(model)
         patch_valuehead_model(model)

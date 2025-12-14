@@ -15,14 +15,15 @@
 
 
 
+import os
 import re
+from distutils.util import strtobool
 from typing import TYPE_CHECKING, Optional, Sequence, Union
 
 import torch
 
 from peft import LoraConfig, LoraModel, PeftModel, TaskType, ColaConfig, ColaModel, get_peft_model, PeftType, HydraLoraConfig, HydraLoraModel, PromptTuningConfig, PromptTuningInit, PromptEmbedding, IA3Config, IA3Model, PromptEncoder, PromptEncoderConfig
 from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.modeling_utils import is_fsdp_enabled
 
 from ..extras import logging
 from ..extras.language import load_language_map
@@ -40,6 +41,10 @@ if TYPE_CHECKING:
 
 
 logger = logging.get_logger(__name__)
+
+
+def _accelerate_wants_fsdp() -> bool:
+    return strtobool(os.environ.get("ACCELERATE_USE_FSDP", "False")) == 1
 
 
 def _build_language_metadata(language_map_spec: Optional[str]):
@@ -901,7 +906,7 @@ def init_adapter(
         pass
     elif finetuning_args.pure_bf16 or finetuning_args.use_badam:
         logger.info_rank0("Pure bf16 / BAdam detected, remaining trainable params in half precision.")
-    elif model_args.quantization_bit is None and (is_deepspeed_zero3_enabled() or is_fsdp_enabled()):
+    elif model_args.quantization_bit is None and (is_deepspeed_zero3_enabled() or _accelerate_wants_fsdp()):
         logger.info_rank0("ZeRO3 / FSDP detected, remaining trainable params in float32.")
     else:
         logger.info_rank0("Upcasting trainable params to float32.")
@@ -937,5 +942,19 @@ def init_adapter(
         )
     else:
         raise NotImplementedError(f"Unknown finetuning type: {finetuning_args.finetuning_type}.")
+
+    # Under FSDP/ZeRO-3, FSDP will flatten parameters within each wrapped module and requires a uniform dtype.
+    # Adapter/Router weights are often initialized in fp32, which will crash FSDP when the base model runs in fp16/bf16.
+    if (
+        is_trainable
+        and model_args.quantization_bit is None
+        and (is_deepspeed_zero3_enabled() or _accelerate_wants_fsdp())
+        and getattr(model_args, "compute_dtype", None) in (torch.float16, torch.bfloat16)
+    ):
+        target_dtype = model_args.compute_dtype
+        for param in filter(lambda p: p.requires_grad, model.parameters()):
+            if param.dtype != target_dtype:
+                param.data = param.data.to(target_dtype)
+        logger.info_rank0(f"FSDP/ZeRO-3 detected, casting trainable params to {target_dtype}.")
 
     return model

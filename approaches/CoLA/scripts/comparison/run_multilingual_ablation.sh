@@ -57,10 +57,10 @@ if [[ "${WANDB_RUN_GROUP}" == "${default_wandb_group}" ]]; then
 fi
 
 # Debug/verification (uncomment to test)
-# export COLA_DEBUG=True
-# export COLA_DEBUG_ROUTING_EVERY=50
-# export HYDRALORA_DEBUG=True
-# export HYDRA_DEBUG_ROUTING_EVERY=50
+export COLA_DEBUG=True
+export COLA_DEBUG_ROUTING_EVERY=50
+export HYDRALORA_DEBUG=True
+export HYDRA_DEBUG_ROUTING_EVERY=50
 
 count_experts_from_language_map() {
   local map_path=$1
@@ -86,7 +86,7 @@ LANGUAGE_TIERS=(
   "tier12|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier1|meta-llama/Llama-3.1-8B"
   # Extended-tokenizer variant
   # "tier12|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier1_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier1/merged_model"
-  "tier72|72|${REPO_ROOT}/tools/two_stage_clustering/72_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier2|meta-llama/Llama-3.1-8B"
+  #"tier72|72|${REPO_ROOT}/tools/two_stage_clustering/72_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier2|meta-llama/Llama-3.1-8B"
   # Extended-tokenizer variant
   # "tier72|72|${REPO_ROOT}/tools/two_stage_clustering/72_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier2_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier2/merged_model"
   # "tier200|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier3_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier3/merged_model"
@@ -95,17 +95,17 @@ LANGUAGE_TIERS=(
 # Hydra variants:
 # <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
 HYDRA_VARIANTS=(
-  "hydra-lora|False|1|learned|0.0|0.0|learned|0.0|1|none|16"           # baseline LoRA-compatible Hydra
-  "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|none|12"          # Hydra flat, 3 heads (paper-faithful: no LPR)
+  #"hydra-lora|False|1|learned|0.0|0.0|learned|0.0|1|none|16"           # baseline LoRA-compatible Hydra
+  "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|none|3"          # Hydra flat, 3 heads (paper-faithful: no LPR)
   "hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|all|6"          # Hydra experts (2-stage), soft LPR
 )
 
 # CoLA variants:
 # <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
 COLA_VARIANTS=(
-  "colaflat|False|1|3|fully|learned|0.0|0.0|learned|0.0|1|none|12"           # CoLA flat (paper-faithful)
+  #"colaflat|False|1|3|fully|learned|0.0|0.0|learned|0.0|1|none|3"           # CoLA flat (paper-faithful)  bs pf 3 fills up two gpus
   "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|all|6"           # C1: expert soft LPR, no head emphasis
-  "colaexp-headbias|True|1|3|fully|learned|0.1|0.0|bias|2.0|1|all|6"         # C2: expert soft LPR + head emphasis (variant A)
+  #"colaexp-headbias|True|1|3|fully|learned|0.1|0.0|bias|2.0|1|all|6"         # C2: expert soft LPR + head emphasis (variant A)
 )
 
 # Resource mappings
@@ -226,7 +226,7 @@ submit_listener_job() {
     echo "[WARN] LM_EVAL_SCRIPT not found at ${LM_EVAL_SCRIPT}; skipping listener launch" >&2
     return
   fi
-  local log_path="${LOG_DIR}/${listener_label}_listener_%j.log"
+  local log_path="${LOG_DIR}/listener/${listener_label}_listener_%j.log"
   local cmd=(sbatch "--output=${log_path}")
   if [[ -n "${LISTENER_SBATCH_ARGS}" ]]; then
     cmd+=(${LISTENER_SBATCH_ARGS})

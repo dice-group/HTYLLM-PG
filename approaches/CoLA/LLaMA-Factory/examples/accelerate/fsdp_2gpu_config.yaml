@@ -1,7 +1,7 @@
 compute_environment: LOCAL_MACHINE
 debug: false
 distributed_type: FSDP
-downcast_bf16: 'no'
+downcast_bf16: 'yes'
 fsdp_config:
   fsdp_auto_wrap_policy: TRANSFORMER_BASED_WRAP
   fsdp_backward_prefetch: BACKWARD_PRE

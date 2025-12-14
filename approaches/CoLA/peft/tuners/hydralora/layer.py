@@ -1028,7 +1028,7 @@ class Linear(nn.Module, HydraLoraLayer):
         intermediate = drop(x.to(A.weight.dtype))  # [B, S, D_in]
         a_dot_x = A(intermediate)  # [B, S, r]
 
-        lora_route = self.lora_route.get(name)
+        lora_route = self.lora_route[name] if name in self.lora_route else None
         if lora_route is None or len(B_list) == 1:
             out = sum(B(a_dot_x) for B in B_list)
             return out * scale

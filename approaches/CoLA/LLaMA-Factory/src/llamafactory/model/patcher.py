@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+from distutils.util import strtobool
 from types import MethodType
 from typing import TYPE_CHECKING, Any, Dict
 
@@ -20,7 +21,6 @@ import torch
 from peft import PeftModel
 from transformers import PreTrainedModel, PreTrainedTokenizerBase, is_torch_npu_available
 from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.modeling_utils import is_fsdp_enabled
 
 from ..extras import logging
 from ..extras.misc import infer_optim_dtype
@@ -50,6 +50,12 @@ if TYPE_CHECKING:
 
 
 logger = logging.get_logger(__name__)
+
+
+def _accelerate_wants_fsdp() -> bool:
+    # transformers.modeling_utils.is_fsdp_enabled() is too strict here (it also requires torch.distributed to be
+    # initialized and FSDP_CPU_RAM_EFFICIENT_LOADING=1). We only need to know whether accelerate will wrap with FSDP.
+    return strtobool(os.environ.get("ACCELERATE_USE_FSDP", "False")) == 1
 
 
 def patch_tokenizer(tokenizer: "PreTrainedTokenizer") -> None:
@@ -116,10 +122,16 @@ def patch_config(
     # deepspeed zero3 is not compatible with low_cpu_mem_usage
     init_kwargs["low_cpu_mem_usage"] = model_args.low_cpu_mem_usage and (not is_deepspeed_zero3_enabled())
 
-    # cast data type of the model if:
-    # 1. not deepspeed zero3 and not fsdp (keep zero3 or fsdp in float32)
-    # 2. quantization_bit is not None (qlora)
-    if (not is_deepspeed_zero3_enabled() and not is_fsdp_enabled()) or model_args.quantization_bit is not None:
+    # Set model parameter dtype at load time.
+    # - DeepSpeed ZeRO-3 historically expects fp32 init on each rank.
+    # - For FSDP, we load directly in the chosen compute dtype (bf16/fp16) to avoid mixed-dtype modules,
+    #   since FSDP may flatten parameters and requires uniform dtypes within a wrapped module.
+    # - For quantized training (QLoRA), always pass torch_dtype.
+    using_fsdp = _accelerate_wants_fsdp()
+    if (
+        (not is_deepspeed_zero3_enabled() and (not using_fsdp or model_args.compute_dtype != torch.float32))
+        or model_args.quantization_bit is not None
+    ):
         init_kwargs["torch_dtype"] = model_args.compute_dtype
 
         if init_kwargs["low_cpu_mem_usage"]:  # device map requires low_cpu_mem_usage=True

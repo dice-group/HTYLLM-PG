@@ -55,6 +55,8 @@ LANGUAGE_HEAD_BIAS_VALUE="${LANGUAGE_HEAD_BIAS_VALUE:-${LANGUAGE_BIAS_VALUE}}"
 LANGUAGE_GUIDANCE_SCOPE="${LANGUAGE_GUIDANCE_SCOPE:-none}"
 ACCELERATE_CONFIG_FILE="${ACCELERATE_CONFIG_FILE:-}"
 USE_COLA_EXPERTS="${USE_COLA_EXPERTS:-True}"
+BF16="${BF16:-True}"
+FP16="${FP16:-False}"
 
 TRAIN_EPOCHS="${NUM_TRAIN_EPOCHS:-1}"
 TRAIN_LR="${LEARNING_RATE:-2e-4}"
@@ -99,22 +101,11 @@ echo "[INFO] Running CoLA LPR training into ${OUTPUT_DIR}"
 python "${REPO_ROOT}/scripts/comparison/router_setup.py" --type cola
 
 ACCELERATE_CMD=()
+ENTRYPOINT=()
 if [[ -n "${ACCELERATE_CONFIG_FILE}" ]]; then
-  MASTER_ADDR="${MASTER_ADDR:-}"
-  if [[ -z "${MASTER_ADDR}" && -n "${SLURM_JOB_NODELIST:-}" ]]; then
-    MASTER_ADDR="$(scontrol show hostnames "${SLURM_JOB_NODELIST}" | head -n 1)"
-  fi
-  MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
-  if [[ -z "${MASTER_PORT:-}" ]]; then
-    MASTER_PORT="$(python - <<'PY'
-import socket
-s = socket.socket()
-s.bind(("", 0))
-print(s.getsockname()[1])
-s.close()
-PY
-)"
-  fi
+  # Deterministic single-node rendezvous (avoid probe-then-use races with torch elastic).
+  MASTER_ADDR="127.0.0.1"
+  MASTER_PORT="${MASTER_PORT:-$((20000 + (${SLURM_JOB_ID:-0} % 20000) ))}"
   export MASTER_ADDR MASTER_PORT
   echo "[INFO] accelerate rendezvous MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT}"
   ACCELERATE_CMD=(
@@ -122,16 +113,22 @@ PY
     --config_file "${ACCELERATE_CONFIG_FILE}"
     --main_process_ip "${MASTER_ADDR}"
     --main_process_port "${MASTER_PORT}"
+    --module
   )
+  # IMPORTANT: do not call `llamafactory-cli train` under accelerate, because LF will torchrun again.
+  ENTRYPOINT=(llamafactory.launcher)
 fi
 
-LLAMAFATORY_CLI="$(command -v llamafactory-cli || true)"
-if [[ -z "${LLAMAFATORY_CLI}" ]]; then
-  echo "[ERROR] llamafactory-cli not found in PATH" >&2
-  exit 1
+if [[ "${#ENTRYPOINT[@]}" -eq 0 ]]; then
+  LLAMAFATORY_CLI="$(command -v llamafactory-cli || true)"
+  if [[ -z "${LLAMAFATORY_CLI}" ]]; then
+    echo "[ERROR] llamafactory-cli not found in PATH" >&2
+    exit 1
+  fi
+  ENTRYPOINT=("${LLAMAFATORY_CLI}" train)
 fi
 
-"${ACCELERATE_CMD[@]}" "${LLAMAFATORY_CLI}" train \
+"${ACCELERATE_CMD[@]}" "${ENTRYPOINT[@]}" \
   --stage sft \
   --do_train \
   --model_name_or_path "${MODEL_NAME_OR_PATH}" \
