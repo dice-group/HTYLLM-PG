@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=moe-multilingual
-#SBATCH --nodes=2                   
+#SBATCH --nodes=12                   
 #SBATCH --ntasks-per-node=1           # 1 DeepSpeed launcher per node
 #SBATCH --cpus-per-task=4
 #SBATCH --time=168:00:00
