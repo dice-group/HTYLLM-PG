@@ -24,7 +24,7 @@
   "checkpoint": {
     "save_dir": "./checkpoints",
     "load_dir": "./checkpoints",
-    "checkpoint_steps": 150
+    "checkpoint_steps": 5000
   },
   "flops_profiler": {
     "enabled": true,
