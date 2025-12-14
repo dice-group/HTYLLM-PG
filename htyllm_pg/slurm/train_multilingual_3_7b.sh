@@ -61,7 +61,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --deepspeed \
       --deepspeed_config ds_config.json \
       --epochs 1 \
-      --batch-size 24 \
+      --batch-size 20 \
       --lr 1e-4 \
       --dim 2048 \
       --depth 24 \
