@@ -91,14 +91,14 @@ if [[ -z "$TASKS" ]]; then
 fi
 
 # ---------- Env ----------
-# Temporarily disable strict unbound variable check for bashrc/conda/modules
-# (they use unbound variables internally)
-set +u
-source ~/.bashrc
-conda activate moe
-module load system/CUDA/12.6.0
-module load compiler/GCCcore/12.3.0
-set -u
+# Temporarily disable strict mode for bashrc/conda/modules
+# (they use unbound variables internally and may source /etc/bashrc)
+set +euo pipefail
+source ~/.bashrc 2>/dev/null || true
+conda activate moe 2>/dev/null || true
+module load system/CUDA/12.6.0 2>/dev/null || true
+module load compiler/GCCcore/12.3.0 2>/dev/null || true
+set -euo pipefail
 
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-4}
 mkdir -p /scratch/hpc-prf-merlin/luke/.cache/torch_extensions
