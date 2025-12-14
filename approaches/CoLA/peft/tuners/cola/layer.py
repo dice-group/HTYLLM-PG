@@ -1276,7 +1276,7 @@ class Linear(nn.Module, ColaLayer):
                     b_sum = 0
                     for a_out in a_outputs:
                         b_sum = b_sum + b_layer(a_out)
-                    out = out + b_sum * head_weights[:, :, b_idx].to(b_sum.dtype)
+                    out = out + b_sum * head_weights[:, :, b_idx].to(b_sum.dtype).unsqueeze(-1)
         elif strategy == "random" or strategy == "random_ab":
             if num_b == 0:
                 return torch.zeros_like(a_outputs[0])

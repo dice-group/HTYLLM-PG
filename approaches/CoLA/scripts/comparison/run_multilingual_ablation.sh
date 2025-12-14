@@ -19,7 +19,7 @@ LANGUAGE_COLUMN=${LANGUAGE_COLUMN:-language}
 TOKENIZED_BASE_DIR=${TOKENIZED_BASE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_tiers_tokenized}
 
 OUTPUT_ROOT=${OUTPUT_ROOT:-/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation}
-WANDB_PROJECT=${WANDB_PROJECT:-htyllm-adapter-lpr-12_72_lang_tier}
+WANDB_PROJECT=${WANDB_PROJECT:-htyllm-adapter-lpr-12_72_200_lang_tier}
 WANDB_ENTITY=${WANDB_ENTITY:-}
 default_wandb_group="multilingual-ablation"
 if [[ -z "${WANDB_RUN_GROUP+x}" ]]; then
@@ -95,17 +95,17 @@ LANGUAGE_TIERS=(
 # Hydra variants:
 # <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
 HYDRA_VARIANTS=(
-  #"hydra-lora|False|1|learned|0.0|0.0|learned|0.0|1|none|16"           # baseline LoRA-compatible Hydra
-  "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|none|3"          # Hydra flat, 3 heads (paper-faithful: no LPR)
-  "hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|all|6"          # Hydra experts (2-stage), soft LPR
+  "hydra-lora|False|1|learned|0.0|0.0|learned|0.0|1|none|2"           # baseline LoRA-compatible Hydra
+  "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|none|2"          # Hydra flat, 3 heads (paper-faithful: no LPR)
+  "hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|all|1"          # Hydra experts (2-stage), soft LPR
 )
 
 # CoLA variants:
 # <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
 COLA_VARIANTS=(
-  #"colaflat|False|1|3|fully|learned|0.0|0.0|learned|0.0|1|none|3"           # CoLA flat (paper-faithful)  bs pf 3 fills up two gpus
-  "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|all|6"           # C1: expert soft LPR, no head emphasis
-  #"colaexp-headbias|True|1|3|fully|learned|0.1|0.0|bias|2.0|1|all|6"         # C2: expert soft LPR + head emphasis (variant A)
+  "colaflat|False|1|3|fully|learned|0.0|0.0|learned|0.0|1|none|3"           # CoLA flat (paper-faithful)  bs pf 3 fills up two gpus
+  "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|all|2"           # C1: expert soft LPR, no head emphasis
+  "colaexp-headbias|True|1|3|fully|learned|0.1|0.0|bias|2.0|1|all|2"         # C2: expert soft LPR + head emphasis (variant A)
 )
 
 # Resource mappings
