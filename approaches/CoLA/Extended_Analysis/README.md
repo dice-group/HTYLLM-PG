@@ -21,7 +21,7 @@ Extract 10,000 sequences per language from your dataset:
 ```bash
 python tool/prepare_language_datasets.py \
     --validation_data /path/to/samples \
-    --languages "en,es,hi,ru,fi" \
+    --languages "english,spa_Latn,hin_Deva,rus_Cyrl,fin_Latn" \
     --num_sequences 10000 \
     --output_dir ./data/language_test_sets
 ```
@@ -94,7 +94,7 @@ sbatch run_analysis_pipeline_SLURM.sh \
     /path/to/checkpoint \
     hydralora \
     /path/to/samples \
-    "en,es,hi,ru,fi"
+    "english,spa_Latn,hin_Deva,rus_Cyrl,fin_Latn"
 ```
 
 **Option 2: Parallel Job Array (Faster)**
@@ -117,7 +117,7 @@ sbatch --array=0-4 run_per_language_SLURM.sh \
 # 1. Prepare data
 python tool/prepare_language_datasets.py \
     --validation_data /path/to/samples \
-    --languages "en,es,hi,ru" \
+    --languages "english,spa_Latn,hin_Deva,rus_Cyrl" \
     --num_sequences 10000 \
     --output_dir ./data/language_test_sets
 
@@ -158,7 +158,7 @@ Extracts language-specific test sets from dataset.
 
 **Key Arguments**:
 - `--validation_data`: Path to samples directory with language subdirectories
-- `--languages`: Simple language codes (e.g., `"en,es,hi,ru"`)
+- `--languages`: ISO 639-3+script codes (e.g., `"english,spa_Latn,hin_Deva,rus_Cyrl"`)
 - `--num_sequences`: Sequences per language (default: 10000)
 - `--text_field`: Field name for text content (default: `"text"`)
 
@@ -280,10 +280,3 @@ The analysis methodology is inspired by techniques from multilingual MoE researc
   year={2024}
 }
 ```
-
-Our implementation is original code designed specifically for CoLA/HydraLoRA adapters.
-
-## Support
-
-For issues or questions, refer to the main implementation plan:
-- `../../.gemini/antigravity/brain/.../lola_expert_analysis_plan.md`
