@@ -21,6 +21,7 @@ TOKENIZED_BASE_DIR=${TOKENIZED_BASE_DIR:-/scratch/hpc-prf-merlin/project_data/mo
 OUTPUT_ROOT=${OUTPUT_ROOT:-/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation}
 WANDB_PROJECT=${WANDB_PROJECT:-htyllm-adapter-lpr-12_72_200_lang_tier}
 WANDB_ENTITY=${WANDB_ENTITY:-}
+FLASH_ATTN=${FLASH_ATTN:-fa2}
 default_wandb_group="multilingual-ablation"
 if [[ -z "${WANDB_RUN_GROUP+x}" ]]; then
   WANDB_RUN_GROUP="${default_wandb_group}"
@@ -45,6 +46,7 @@ export CONDA_BASE CONDA_ENV MODULE_INIT
 export DATASET_NAME DATASET_DIR
 export LANGUAGE_COLUMN
 export WANDB_PROJECT WANDB_ENTITY WANDB_RUN_GROUP
+export FLASH_ATTN
 
 # Speed up split-column filtering on tokenized datasets.
 PREPROCESSING_NUM_WORKERS=${PREPROCESSING_NUM_WORKERS:-32}
@@ -342,6 +344,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "WANDB_NAME=${hydra_wandb}"
       "MODEL_NAME_OR_PATH=${model_path}"
       "TOKENIZED_PATH=${tokenized_path}"
+      "FLASH_ATTN=${FLASH_ATTN}"
       "LANGUAGE_MAP=${tier_map}"
       "LANGUAGE_ROUTER_MODE=${router_mode}"
       "LANGUAGE_HEAD_ROUTER_MODE=${head_router_mode}"
@@ -416,6 +419,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "WANDB_NAME=${cola_wandb}"
       "MODEL_NAME_OR_PATH=${model_path}"
       "TOKENIZED_PATH=${tokenized_path}"
+      "FLASH_ATTN=${FLASH_ATTN}"
       "LANGUAGE_MAP=${tier_map}"
       "LANGUAGE_ROUTER_MODE=${router_mode}"
       "LANGUAGE_HEAD_ROUTER_MODE=${head_router_mode}"

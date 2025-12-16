@@ -61,6 +61,7 @@ HYDRALORA_NUM_EXPERTS="${HYDRALORA_NUM_EXPERTS:-1}"
 HYDRALORA_TOP_K="${HYDRALORA_TOP_K:-1}"
 BF16="${BF16:-True}"
 FP16="${FP16:-False}"
+FLASH_ATTN="${FLASH_ATTN:-fa2}"
 
 TRAIN_EPOCHS="${NUM_TRAIN_EPOCHS:-1}"
 TRAIN_LR="${LEARNING_RATE:-2e-4}"
@@ -153,6 +154,7 @@ fi
   --save_steps "${SAVE_STEPS:-2000}" \
   --max_steps "${MAX_STEPS:-0}" \
   --disable_gradient_checkpointing "${DISABLE_GRADIENT_CHECKPOINTING:-True}" \
+  --flash_attn "${FLASH_ATTN}" \
   --bf16 "${BF16:-False}" \
   --fp16 "${FP16:-True}" \
   --seed "${SEED:-42}" \
