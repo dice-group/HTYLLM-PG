@@ -1,0 +1,3 @@
+[submodule "approaches/CoLA/LLaMA-Factory"]
+	path = approaches/CoLA/LLaMA-Factory
+	url = https://github.com/dice-group/LLaMA-Factory-Merlin
