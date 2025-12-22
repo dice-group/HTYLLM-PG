@@ -315,7 +315,9 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     tier_gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
     accelerate_config=""
     if [[ "${tier_gpu_count}" -ge 2 ]]; then
-      if [[ "${tier_gpu_count}" -ge 4 ]]; then
+      if [[ "${tier_gpu_count}" -ge 8 ]]; then
+        accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_8gpu_config.yaml"
+      elif [[ "${tier_gpu_count}" -ge 4 ]]; then
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml"
       else
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_2gpu_config.yaml"
@@ -372,7 +374,9 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     tier_gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
     accelerate_config=""
     if [[ "${tier_gpu_count}" -ge 2 ]]; then
-      if [[ "${tier_gpu_count}" -ge 4 ]]; then
+      if [[ "${tier_gpu_count}" -ge 8 ]]; then
+        accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_8gpu_config.yaml"
+      elif [[ "${tier_gpu_count}" -ge 4 ]]; then
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml"
       else
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_2gpu_config.yaml"
@@ -447,7 +451,9 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     tier_gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
     accelerate_config=""
     if [[ "${tier_gpu_count}" -ge 2 ]]; then
-      if [[ "${tier_gpu_count}" -ge 4 ]]; then
+      if [[ "${tier_gpu_count}" -ge 8 ]]; then
+        accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_8gpu_config.yaml"
+      elif [[ "${tier_gpu_count}" -ge 4 ]]; then
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml"
       else
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_2gpu_config.yaml"
