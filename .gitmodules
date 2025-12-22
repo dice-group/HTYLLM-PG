@@ -1,3 +1,6 @@
 [submodule "approaches/CoLA/LLaMA-Factory"]
 	path = approaches/CoLA/LLaMA-Factory
 	url = https://github.com/dice-group/LLaMA-Factory-Merlin
+[submodule "approaches/CoLA/data_prep/merlin_data_prep"]
+	path = approaches/CoLA/data_prep/merlin_data_prep
+	url = git@github.com:dice-group/merlin_data_prep.git
