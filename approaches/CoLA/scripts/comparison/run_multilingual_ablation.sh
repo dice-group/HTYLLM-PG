@@ -97,9 +97,9 @@ LANGUAGE_TIERS=(
 # Hydra variants:
 # <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
 HYDRA_VARIANTS=(
-  "hydra-lora|False|1|learned|0.0|0.0|learned|0.0|1|none|2"           # baseline LoRA-compatible Hydra
-  "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|none|2"          # Hydra flat, 3 heads (paper-faithful: no LPR)
-  "hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|all|1"          # Hydra experts (2-stage), soft LPR
+  "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|none|2"               # Hydra flat, 3 heads (paper-faithful: no LPR)
+  "hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|all|1"              # Hydra experts (2-stage), soft LPR
+  "hydra-exp-lpr-expert-only|True|3|learned|0.1|0.0|learned|0.0|1|expert_only|1" # Hydra experts, expert-only guidance
 )
 
 # CoLA variants:
@@ -108,6 +108,13 @@ COLA_VARIANTS=(
   "colaflat|False|1|3|fully|learned|0.0|0.0|learned|0.0|1|none|3"           # CoLA flat (paper-faithful)  bs pf 3 fills up two gpus
   "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|all|2"           # C1: expert soft LPR, no head emphasis
   "colaexp-headbias|True|1|3|fully|learned|0.1|0.0|bias|2.0|1|all|2"         # C2: expert soft LPR + head emphasis (variant A)
+  "colaexp-lpr-expert-only|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|expert_only|2" # C1b: expert-only guidance
+)
+
+# LoRA variants:
+# <label>|<train_bs>
+LORA_VARIANTS=(
+  "lora-baseline|2"
 )
 
 # Resource mappings
@@ -298,6 +305,52 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     exit 1
   fi
   tier_num_experts="$(count_experts_from_language_map "${tier_map}")"
+
+  # LoRA runs (true LoRA baseline)
+  for variant_spec in "${LORA_VARIANTS[@]}"; do
+    IFS='|' read -r label train_bs <<<"${variant_spec}"
+    variant_slug="$(sanitize "${label}")"
+    declare -a lora_sbatch=()
+    select_resources lora_sbatch "${tier_id}"
+    tier_gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
+    accelerate_config=""
+    if [[ "${tier_gpu_count}" -ge 2 ]]; then
+      if [[ "${tier_gpu_count}" -ge 4 ]]; then
+        accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml"
+      else
+        accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_2gpu_config.yaml"
+      fi
+    fi
+
+    lora_descriptor="${tier_id}_${label}_baseline"
+    lora_output="${OUTPUT_ROOT}/${tier_slug}/lora_${variant_slug}_${timestamp}"
+    lora_wandb="${lora_descriptor}_tokenizer:base_${timestamp}"
+    lora_log="lora_${tier_slug}_${variant_slug}"
+
+    lora_env=(
+      "REPO_ROOT=${REPO_ROOT}"
+      "OUTPUT_DIR=${lora_output}"
+      "WANDB_NAME=${lora_wandb}"
+      "MODEL_NAME_OR_PATH=${model_path}"
+      "TOKENIZED_PATH=${tokenized_path}"
+      "FLASH_ATTN=${FLASH_ATTN}"
+      "ADDITIONAL_TARGET=${additional_target}"
+      "MODEL_VARIANT=${tier_id}"
+      "LANGUAGE_TIER=${tier_id}"
+      "WANDB_TAGS=adapter:lora,variant:${label},tier:${tier_id}"
+    )
+    if [[ -n "${train_bs}" ]]; then
+      lora_env+=("PER_DEVICE_TRAIN_BATCH_SIZE=${train_bs}" "PER_DEVICE_EVAL_BATCH_SIZE=${train_bs}")
+    fi
+    if [[ -n "${accelerate_config}" ]]; then
+      lora_env+=("ACCELERATE_CONFIG_FILE=${accelerate_config}")
+    fi
+
+    lora_job=$(submit_job "LoRA-${label}-${tier_id}" \
+      "${COMPARISON_DIR}/lora_job.sh" "${lora_log}" lora_env lora_sbatch)
+    JOB_IDS["lora-${label}-${tier_id}"]="${lora_job}"
+    submit_listener_job "lora-${label}-${tier_id}" "${lora_output}" "${model_path}"
+  done
 
   # Hydra/LoRA runs
   for variant_spec in "${HYDRA_VARIANTS[@]}"; do
