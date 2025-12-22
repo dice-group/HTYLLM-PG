@@ -195,6 +195,7 @@ submit_job() {
   local -n env_assignments=$env_array_name
   local -n sbatch_assignments=$sbatch_array_name
   local cmd=(env)
+  cmd+=("MKL_INTERFACE_LAYER=GNU")
   for assignment in "${env_assignments[@]}"; do
     cmd+=("${assignment}")
   done
@@ -202,6 +203,8 @@ submit_job() {
   if [[ -n "${SBATCH_ARGS:-}" ]]; then
     cmd+=(${SBATCH_ARGS})
   fi
+  cmd+=("--export=ALL,MKL_INTERFACE_LAYER=GNU")
+  echo "[DEBUG] sbatch cmd: ${cmd[*]}"
   for arg in "${sbatch_assignments[@]}"; do
     if [[ -n "${arg}" ]]; then
       cmd+=("${arg}")
