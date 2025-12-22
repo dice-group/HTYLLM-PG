@@ -10,7 +10,7 @@ LOG_DIR="${LOG_DIR:-${CALL_DIR}/logs/multilingual_ablation}"
 cd "${REPO_ROOT}"
 
 CONDA_BASE=${CONDA_BASE:-/opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3}
-CONDA_ENV=${CONDA_ENV:-cola_llama_factory}
+CONDA_ENV=${CONDA_ENV:-merlin}
 MODULE_INIT=${MODULE_INIT:-module purge && module load toolchain/foss/2024a system/CUDA/12.6.0 lib/NCCL/2.22.3-GCCcore-13.3.0-CUDA-12.6.0}
 
 DATASET_NAME=${DATASET_NAME:-c4}
@@ -19,10 +19,10 @@ LANGUAGE_COLUMN=${LANGUAGE_COLUMN:-language}
 TOKENIZED_BASE_DIR=${TOKENIZED_BASE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_tiers_tokenized}
 
 OUTPUT_ROOT=${OUTPUT_ROOT:-/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation}
-WANDB_PROJECT=${WANDB_PROJECT:-htyllm-adapter-lpr-12_72_200_lang_tier}
+WANDB_PROJECT=${WANDB_PROJECT:-TEST_htyllm-adapter-lpr-12_lang_tier}
 WANDB_ENTITY=${WANDB_ENTITY:-}
 FLASH_ATTN=${FLASH_ATTN:-fa2}
-AUTO_FIND_BATCH_SIZE=${AUTO_FIND_BATCH_SIZE:-false}
+AUTO_FIND_BATCH_SIZE=${AUTO_FIND_BATCH_SIZE:-true}
 default_wandb_group="multilingual-ablation"
 if [[ -z "${WANDB_RUN_GROUP+x}" ]]; then
   WANDB_RUN_GROUP="${default_wandb_group}"
@@ -49,7 +49,6 @@ export LANGUAGE_COLUMN
 export WANDB_PROJECT WANDB_ENTITY WANDB_RUN_GROUP
 export FLASH_ATTN
 export AUTO_FIND_BATCH_SIZE
-export MKL_INTERFACE_LAYER="${MKL_INTERFACE_LAYER:-GNU}"
 
 # Speed up split-column filtering on tokenized datasets.
 PREPROCESSING_NUM_WORKERS=${PREPROCESSING_NUM_WORKERS:-32}
@@ -100,18 +99,20 @@ LANGUAGE_TIERS=(
 # Hydra variants:
 # <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
 HYDRA_VARIANTS=(
-  "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|none|2"               # Hydra flat, 3 heads (paper-faithful: no LPR)
-  "hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|all|1"              # Hydra experts (2-stage), soft LPR
-  "hydra-exp-lpr-expert-only|True|3|learned|0.1|0.0|learned|0.0|1|expert_only|1" # Hydra experts, expert-only guidance
+  #"hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|none|2"               # Hydra flat, 3 heads (paper-faithful: no LPR)
+  
+  #"hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|all|1"              # Hydra experts (2-stage), soft LPR
+  #"hydra-exp-lpr-expert-only|True|3|learned|0.1|0.0|learned|0.0|1|expert_only|1" # Hydra experts, expert-only guidance
 )
 
 # CoLA variants:
 # <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
 COLA_VARIANTS=(
-  "colaflat|False|1|3|fully|learned|0.0|0.0|learned|0.0|1|none|3"           # CoLA flat (paper-faithful)  bs pf 3 fills up two gpus
-  "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|all|2"           # C1: expert soft LPR, no head emphasis
-  "colaexp-headbias|True|1|3|fully|learned|0.1|0.0|bias|2.0|1|all|2"         # C2: expert soft LPR + head emphasis (variant A)
-  "colaexp-lpr-expert-only|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|expert_only|2" # C1b: expert-only guidance
+  #"colaflat|False|1|3|fully|learned|0.0|0.0|learned|0.0|1|none|3"           # CoLA flat (paper-faithful)  bs pf 3 fills up two gpus
+  
+  #"colaexp-lpr|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|all|2"           # C1: expert soft LPR, no head emphasis
+  #"colaexp-headbias|True|1|3|fully|learned|0.1|0.0|bias|2.0|1|all|2"         # C2: expert soft LPR + head emphasis (variant A)
+  #"colaexp-lpr-expert-only|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|expert_only|2" # C1b: expert-only guidance
 )
 
 # LoRA variants:
