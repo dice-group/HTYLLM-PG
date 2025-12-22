@@ -22,6 +22,7 @@ OUTPUT_ROOT=${OUTPUT_ROOT:-/scratch/hpc-prf-merlin/project_data/moe_study/multil
 WANDB_PROJECT=${WANDB_PROJECT:-htyllm-adapter-lpr-12_72_200_lang_tier}
 WANDB_ENTITY=${WANDB_ENTITY:-}
 FLASH_ATTN=${FLASH_ATTN:-fa2}
+AUTO_FIND_BATCH_SIZE=${AUTO_FIND_BATCH_SIZE:-false}
 default_wandb_group="multilingual-ablation"
 if [[ -z "${WANDB_RUN_GROUP+x}" ]]; then
   WANDB_RUN_GROUP="${default_wandb_group}"
@@ -47,6 +48,7 @@ export DATASET_NAME DATASET_DIR
 export LANGUAGE_COLUMN
 export WANDB_PROJECT WANDB_ENTITY WANDB_RUN_GROUP
 export FLASH_ATTN
+export AUTO_FIND_BATCH_SIZE
 
 # Speed up split-column filtering on tokenized datasets.
 PREPROCESSING_NUM_WORKERS=${PREPROCESSING_NUM_WORKERS:-32}

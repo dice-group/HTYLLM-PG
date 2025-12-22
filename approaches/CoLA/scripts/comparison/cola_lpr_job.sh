@@ -58,6 +58,7 @@ USE_COLA_EXPERTS="${USE_COLA_EXPERTS:-True}"
 BF16="${BF16:-True}"
 FP16="${FP16:-False}"
 FLASH_ATTN="${FLASH_ATTN:-fa2}"
+AUTO_FIND_BATCH_SIZE="${AUTO_FIND_BATCH_SIZE:-false}"
 
 TRAIN_EPOCHS="${NUM_TRAIN_EPOCHS:-1}"
 TRAIN_LR="${LEARNING_RATE:-2e-4}"
@@ -129,6 +130,11 @@ if [[ "${#ENTRYPOINT[@]}" -eq 0 ]]; then
   ENTRYPOINT=("${LLAMAFATORY_CLI}" train)
 fi
 
+AUTO_FIND_BATCH_SIZE_FLAG=()
+if [[ "${AUTO_FIND_BATCH_SIZE}" == "true" || "${AUTO_FIND_BATCH_SIZE}" == "True" || "${AUTO_FIND_BATCH_SIZE}" == "1" ]]; then
+  AUTO_FIND_BATCH_SIZE_FLAG=(--auto_find_batch_size)
+fi
+
 "${ACCELERATE_CMD[@]}" "${ENTRYPOINT[@]}" \
   --stage sft \
   --do_train \
@@ -157,6 +163,7 @@ fi
   --flash_attn "${FLASH_ATTN}" \
   --bf16 "${BF16:-False}" \
   --fp16 "${FP16:-True}" \
+  "${AUTO_FIND_BATCH_SIZE_FLAG[@]}" \
   --seed "${SEED:-42}" \
   --tokenized_path "${TOKENIZED_PATH}" \
   --preprocessing_num_workers "${PREPROCESSING_NUM_WORKERS}" \
