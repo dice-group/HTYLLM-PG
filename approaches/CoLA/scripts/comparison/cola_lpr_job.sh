@@ -136,6 +136,11 @@ if [[ "${AUTO_FIND_BATCH_SIZE}" == "true" || "${AUTO_FIND_BATCH_SIZE}" == "True"
   AUTO_FIND_BATCH_SIZE_FLAG=(--auto_find_batch_size)
 fi
 
+DEBUG_FLAGS=()
+if [[ "${COLA_DEBUG:-}" == "true" || "${COLA_DEBUG:-}" == "True" || "${COLA_DEBUG:-}" == "1" ]]; then
+  DEBUG_FLAGS+=(--cola_debug)
+fi
+
 "${ACCELERATE_CMD[@]}" "${ENTRYPOINT[@]}" \
   --stage sft \
   --do_train \
@@ -187,6 +192,7 @@ fi
   --language_bias_value "${LANGUAGE_BIAS_VALUE}" \
   --language_head_bias_value "${LANGUAGE_HEAD_BIAS_VALUE}" \
   --language_guidance_scope "${LANGUAGE_GUIDANCE_SCOPE}" \
+  "${DEBUG_FLAGS[@]}" \
   ${ADDITIONAL_TARGET:+--additional_target "${ADDITIONAL_TARGET}"} \
   --report_to wandb \
   --include_effective_tokens_per_second true \

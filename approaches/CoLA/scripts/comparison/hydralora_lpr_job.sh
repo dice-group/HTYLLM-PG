@@ -136,6 +136,11 @@ if [[ "${AUTO_FIND_BATCH_SIZE}" == "true" || "${AUTO_FIND_BATCH_SIZE}" == "True"
   AUTO_FIND_BATCH_SIZE_FLAG=(--auto_find_batch_size)
 fi
 
+DEBUG_FLAGS=()
+if [[ "${HYDRALORA_DEBUG:-}" == "true" || "${HYDRALORA_DEBUG:-}" == "True" || "${HYDRALORA_DEBUG:-}" == "1" ]]; then
+  DEBUG_FLAGS+=(--hydralora_debug)
+fi
+
 "${ACCELERATE_CMD[@]}" "${ENTRYPOINT[@]}" \
   --stage sft \
   --do_train \
@@ -182,6 +187,7 @@ fi
   --language_bias_value "${LANGUAGE_BIAS_VALUE}" \
   --language_head_bias_value "${LANGUAGE_HEAD_BIAS_VALUE}" \
   --language_guidance_scope "${LANGUAGE_GUIDANCE_SCOPE}" \
+  "${DEBUG_FLAGS[@]}" \
   --use_hydralora_experts "${USE_HYDRALORA_EXPERTS}" \
   --hydralora_num_experts "${HYDRALORA_NUM_EXPERTS}" \
   --hydralora_top_k "${HYDRALORA_TOP_K}" \
