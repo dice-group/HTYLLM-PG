@@ -243,6 +243,8 @@ submit_listener_job() {
     return
   fi
   local log_path="${LOG_DIR}/listener/${listener_label}_listener_%j.log"
+  local wandb_group
+  wandb_group="$(basename "${watch_dir}")"
   local cmd=(sbatch "--output=${log_path}")
   if [[ -n "${LISTENER_SBATCH_ARGS}" ]]; then
     cmd+=(${LISTENER_SBATCH_ARGS})
@@ -257,6 +259,7 @@ submit_listener_job() {
     --poll-interval "${LM_EVAL_POLL_INTERVAL}"
     --wandb-project "${LM_EVAL_WANDB_PROJECT}"
     --wandb-prefix "${LM_EVAL_WANDB_PREFIX}_${listener_label}"
+    --wandb-group "${wandb_group}"
   )
   if [[ -n "${LM_EVAL_EXTRA_ARGS}" ]]; then
     cmd+=(--extra-args "${LM_EVAL_EXTRA_ARGS}")

@@ -18,6 +18,11 @@ while [[ $# -gt 0 ]]; do
     --output-dir)   OUTDIR=$2; shift 2;;
     --wandb-project) WP=$2; shift 2;;
     --wandb-prefix)  PREF=$2; shift 2;;
+    --wandb-group)   WGROUP=$2; shift 2;;
+    --wandb-id)      WID=$2; shift 2;;
+    --wandb-resume)  WRESUME=$2; shift 2;;
+    --wandb-mode)    WMODE=$2; shift 2;;
+    --wandb-job-type) WJOB=$2; shift 2;;
     --extra-args)    EXTRA=$2; shift 2;;
     *) echo "Unknown argument: $1"; exit 1;;
   esac
@@ -29,6 +34,10 @@ BS=${BS:-auto}
 TOK=${TOK:-$CKPT}
 WP=${WP:-llama31_multilingual_eval_belebele}
 PREF=${PREF:-cola_moe_acc}
+WGROUP=${WGROUP:-}
+WJOB=${WJOB:-checkpoint_eval}
+WRESUME=${WRESUME:-allow}
+WMODE=${WMODE:-shared}
 
 [[ -z "$CKPT" || -z "$OUTDIR" ]] && { echo "--checkpoint and --output-dir required"; exit 1; }
 [[ ! -d "$CKPT" ]] && { echo "Checkpoint not found: $CKPT"; exit 1; }
@@ -64,6 +73,22 @@ export PYTHONUNBUFFERED=1
 LABEL=$(basename "$CKPT")
 OUTFILE="${OUTDIR}/${LABEL}_lm_eval.jsonl"
 WANDB_NAME="${PREF}_${LABEL}"
+WANDB_ARGS="project=$WP,name=$WANDB_NAME"
+if [[ -n "${WGROUP}" ]]; then
+  WANDB_ARGS="${WANDB_ARGS},group=${WGROUP}"
+fi
+if [[ -n "${WID}" ]]; then
+  WANDB_ARGS="${WANDB_ARGS},id=${WID}"
+fi
+if [[ -n "${WRESUME}" ]]; then
+  WANDB_ARGS="${WANDB_ARGS},resume=${WRESUME}"
+fi
+if [[ -n "${WMODE}" ]]; then
+  WANDB_ARGS="${WANDB_ARGS},mode=${WMODE}"
+fi
+if [[ -n "${WJOB}" ]]; then
+  WANDB_ARGS="${WANDB_ARGS},job_type=${WJOB}"
+fi
 
 echo "Running lm-eval on $LABEL..."
 lm_eval \
@@ -72,7 +97,7 @@ lm_eval \
   --tasks "$TASKS" \
   --batch_size "$BS" \
   --output_path "$OUTFILE" \
-  --wandb_args "project=$WP,name=$WANDB_NAME" \
+  --wandb_args "$WANDB_ARGS" \
   $EXTRA
 
 echo "Done!"

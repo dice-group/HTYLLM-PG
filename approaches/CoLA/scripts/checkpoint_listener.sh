@@ -28,6 +28,10 @@ Options:
   --output-dir DIR     Where to save eval outputs (default: watch-dir/lm_eval)
   --wandb-project NAME W&B project (default: llama31_multilingual_eval_belebele)
   --wandb-prefix PREF  W&B prefix (default: cola_moe_acc)
+  --wandb-group NAME   W&B group to tie checkpoint runs together (default: watch-dir basename)
+  --wandb-id FILE|ID   W&B run id or file containing the id (default: watch-dir/.wandb_eval_run_id)
+  --wandb-resume MODE  W&B resume mode (default: allow)
+  --wandb-mode MODE    W&B mode (default: shared)
   --extra-args "ARGS"  Extra args for lm_eval
   --poll-interval SEC  Scan interval (default: 120)
   --state-file FILE    Track processed ckpts (default: watch-dir/.lm_eval_submitted)
@@ -41,6 +45,10 @@ TOK=""
 POLL=120
 WANDB_PROJ="llama31_multilingual_eval_belebele"
 WANDB_PREF="cola_moe_acc"
+WANDB_GROUP=""
+WANDB_ID=""
+WANDB_RESUME="allow"
+WANDB_MODE="shared"
 EXTRA=""
 WATCH=""
 SCRIPT=""
@@ -58,6 +66,10 @@ while [[ $# -gt 0 ]]; do
     --output-dir) OUT=$2; shift 2; continue;;
     --wandb-project) WANDB_PROJ=$2; shift 2; continue;;
     --wandb-prefix) WANDB_PREF=$2; shift 2; continue;;
+    --wandb-group) WANDB_GROUP=$2; shift 2; continue;;
+    --wandb-id) WANDB_ID=$2; shift 2; continue;;
+    --wandb-resume) WANDB_RESUME=$2; shift 2; continue;;
+    --wandb-mode) WANDB_MODE=$2; shift 2; continue;;
     --extra-args) EXTRA=$2; shift 2; continue;;
     --poll-interval) POLL=$2; shift 2; continue;;
     --state-file) STATE=$2; shift 2; continue;;
@@ -75,6 +87,31 @@ WATCH_LABEL=$(basename "$WATCH")
 OUT=${OUT:-"$WATCH/lm_eval"}
 STATE=${STATE:-"$WATCH/.lm_eval_submitted"}
 STOP=${STOP:-"$WATCH/.training_complete"}
+WANDB_GROUP=${WANDB_GROUP:-"$WATCH_LABEL"}
+WANDB_ID=${WANDB_ID:-"$WATCH/.wandb_eval_run_id"}
+
+resolve_wandb_id() {
+  local id_spec=$1
+  if [[ -f "$id_spec" ]]; then
+    local existing
+    existing=$(cat "$id_spec" | tr -d '[:space:]')
+    if [[ -n "$existing" ]]; then
+      echo "$existing"
+      return 0
+    fi
+  fi
+  if [[ "$id_spec" == */* || "$id_spec" == *.* ]]; then
+    local new_id
+    new_id=$(date +%s%N)
+    new_id="eval_${WATCH_LABEL}_${new_id}"
+    echo "$new_id" > "$id_spec"
+    echo "$new_id"
+    return 0
+  fi
+  echo "$id_spec"
+}
+
+WANDB_RUN_ID=$(resolve_wandb_id "$WANDB_ID")
 
 mkdir -p "$OUT" logs
 touch "$STATE"
@@ -100,6 +137,10 @@ submit() {
     --batch-size "$BS" \
     --wandb-project "$WANDB_PROJ" \
     --wandb-prefix "${wandb_prefix}" \
+    --wandb-group "${WANDB_GROUP}" \
+    --wandb-id "${WANDB_RUN_ID}" \
+    --wandb-resume "${WANDB_RESUME}" \
+    --wandb-mode "${WANDB_MODE}" \
     ${TOK:+--tokenizer "$TOK"} \
     ${EXTRA:+--extra-args "$EXTRA"} \
   && mark "${ckpt_path}"
