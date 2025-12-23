@@ -172,6 +172,7 @@ fi
   --lora_rank "${LORA_R}" \
   --lora_alpha "${LORA_ALPHA}" \
   --lora_dropout "${LORA_DROPOUT}" \
+  --lora_target "${LORA_TARGETS:-q_proj,k_proj,v_proj,o_proj}" \
   --lora_num "${LORA_NUM}" \
   --language_column "${LANGUAGE_COLUMN}" \
   --language_map "${LANGUAGE_MAP}" \
