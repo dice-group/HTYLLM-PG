@@ -63,9 +63,10 @@ def test_cola_lpr_loss_and_metrics(tmp_path) -> None:
     finetuning_args = replace(FinetuningArguments(), finetuning_type="cola", language_prior_weight=0.1)
     trainer = _build_trainer(tmp_path, model, finetuning_args)
 
+    device = next(model.parameters()).device
     inputs = {
-        "input_ids": torch.randn(2, 3, 4),
-        "language_ids": torch.tensor([0, 1]),
+        "input_ids": torch.randn(2, 3, 4, device=device),
+        "language_ids": torch.tensor([0, 1], device=device),
     }
     model(**inputs)
 
@@ -102,9 +103,10 @@ def test_hydra_lpr_loss_and_metrics(tmp_path) -> None:
     finetuning_args = replace(FinetuningArguments(), finetuning_type="hydralora", language_prior_weight=0.1)
     trainer = _build_trainer(tmp_path, model, finetuning_args)
 
+    device = next(model.parameters()).device
     inputs = {
-        "input_ids": torch.randn(2, 3, 4),
-        "language_ids": torch.tensor([0, 1]),
+        "input_ids": torch.randn(2, 3, 4, device=device),
+        "language_ids": torch.tensor([0, 1], device=device),
     }
     model(**inputs)
 

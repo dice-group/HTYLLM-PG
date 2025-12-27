@@ -2,6 +2,7 @@ approaches/adapter/language_adapters/xlora/
 approaches/adapter/evaluation/*.log
 approaches/CoLA/LLaMA-Factory/saves
 approaches/CoLA/papers/further
+approaches/CoLA/outputs/acl_smoke
 
 
 __pycache__/

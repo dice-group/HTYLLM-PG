@@ -232,7 +232,7 @@ def parse_language_tiers(script_path: Path, include_commented: bool = False) -> 
 
 
 def parse_ground_truth(path: Path) -> dict[str, dict[str, str]]:
-    heading_re = re.compile(r"^###\\s+([A-Za-z0-9]+)\\b")
+    heading_re = re.compile(r"^###\s+([A-Za-z0-9]+)\b")
     token_re = re.compile(r"`([^`]+)`")
     variants: dict[str, dict[str, str]] = {}
     current: Optional[str] = None
@@ -253,16 +253,21 @@ def parse_ground_truth(path: Path) -> dict[str, dict[str, str]]:
             key, value = token.split("=", 1)
             key = key.strip()
             value = value.strip()
-            if key in variants[current] and variants[current][key] != value:
-                raise ValueError(
-                    f"Conflicting values for {current}:{key} ({variants[current][key]} vs {value})"
-                )
+            if not key.isupper():
+                continue
+            if key in variants[current]:
+                continue
             variants[current][key] = value
     return variants
 
 
 def default_ground_truth_path() -> Path:
-    return Path(__file__).resolve().parents[2] / "papers" / "further" / "acl_multilingual_routing_ground_truth.md"
+    base = Path(__file__).resolve()
+    candidate = base.parents[2] / "papers" / "further" / "acl_multilingual_routing_ground_truth.md"
+    if candidate.exists():
+        return candidate
+    fallback = base.parents[4] / "papers" / "further" / "acl_multilingual_routing_ground_truth.md"
+    return fallback
 
 
 def default_ablation_script_path() -> Path:

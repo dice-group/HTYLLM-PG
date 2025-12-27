@@ -19,7 +19,12 @@ from scripts.comparison.ablation_specs import (
 RUN_TRAIN_SMOKE = os.environ.get("RUN_TRAIN_SMOKE", "") == "1"
 
 
-def _build_tokenized_dataset(tmp_path: Path, model_name_or_path: str, language_map_path: Path) -> Path:
+def _build_tokenized_dataset(
+    tmp_path: Path,
+    model_name_or_path: str,
+    language_map_path: Path,
+    repo_root: Path,
+) -> Path:
     datasets = pytest.importorskip("datasets")
     transformers = pytest.importorskip("transformers")
 
@@ -37,9 +42,46 @@ def _build_tokenized_dataset(tmp_path: Path, model_name_or_path: str, language_m
     max_samples = int(os.environ.get("SMOKE_DATASET_MAX_SAMPLES", "32"))
     max_length = int(os.environ.get("SMOKE_DATASET_MAX_LENGTH", "128"))
     max_scan = int(os.environ.get("SMOKE_DATASET_MAX_SCAN", "1000"))
+    data_files = os.environ.get("SMOKE_DATASET_DATA_FILES")
+    fallback_language = os.environ.get("SMOKE_DATASET_DEFAULT_LANGUAGE")
+    allow_fallback = os.environ.get("SMOKE_ALLOW_FALLBACK_LANGUAGE", "1") == "1"
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
-    stream = datasets.load_dataset(dataset_name, dataset_config, split=dataset_split, streaming=True)
+    stream = None
+    if data_files:
+        stream = datasets.load_dataset(
+            "json",
+            data_files=data_files.split(","),
+            split="train",
+            streaming=True,
+        )
+    else:
+        try:
+            stream = datasets.load_dataset(
+                dataset_name,
+                dataset_config,
+                split=dataset_split,
+                streaming=True,
+                trust_remote_code=True,
+            )
+        except RuntimeError as exc:
+            if "Dataset scripts are no longer supported" not in str(exc):
+                raise
+            local_fallback = repo_root / "LLaMA-Factory" / "data" / "c4_demo.jsonl"
+            if not local_fallback.exists():
+                raise
+            stream = datasets.load_dataset(
+                "json",
+                data_files=[str(local_fallback)],
+                split="train",
+                streaming=True,
+            )
+
+    if stream is None:
+        raise ValueError("Failed to build dataset stream.")
+
+    if not fallback_language:
+        fallback_language = next(iter(language_vocab))
 
     input_ids = []
     attention_masks = []
@@ -51,11 +93,17 @@ def _build_tokenized_dataset(tmp_path: Path, model_name_or_path: str, language_m
     for example in stream:
         seen += 1
         lang = example.get("lang") or example.get("language")
+        if lang is None and allow_fallback:
+            lang = fallback_language
         if lang is None:
             if seen >= max_scan:
                 break
             continue
         lang_id, fam_id = language_to_ids(lang, language_map, language_vocab, family_vocab)
+        if (lang_id < 0 or fam_id < 0) and allow_fallback:
+            lang_id, fam_id = language_to_ids(
+                fallback_language, language_map, language_vocab, family_vocab
+            )
         if lang_id < 0 or fam_id < 0:
             if seen >= max_scan:
                 break
@@ -232,7 +280,7 @@ def test_smoke_training_all_variants(tmp_path: Path) -> None:
     output_root = Path(env.get("SMOKE_OUTPUT_ROOT", tmp_path))
     output_root.mkdir(parents=True, exist_ok=True)
     language_map = repo_root / "tools" / "two_stage_clustering" / "12_tier_language_groupings.json"
-    tokenized_path = _build_tokenized_dataset(output_root / "tokenized", model_name_or_path, language_map)
+    tokenized_path = _build_tokenized_dataset(output_root / "tokenized", model_name_or_path, language_map, repo_root)
 
     script_path = default_ablation_script_path()
     cola_variants = parse_cola_variants(script_path, include_commented=True)

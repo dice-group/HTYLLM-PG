@@ -7,7 +7,9 @@ from scripts.comparison import router_setup
 
 def test_validate_hydra_router_config(tmp_path) -> None:
     language_map = tmp_path / "map.json"
-    language_map.write_text("{}")
+    language_map.write_text(
+        '{"0": {"languages": ["a"]}, "1": {"languages": ["b"]}, "2": {"languages": ["c"]}}'
+    )
     env = {
         "LANGUAGE_MAP": str(language_map),
         "MODEL_VARIANT": "hydra-variant",
