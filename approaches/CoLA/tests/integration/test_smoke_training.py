@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from llamafactory.extras.language import build_language_vocab, language_to_ids, load_language_groupings
 from scripts.comparison.ablation_specs import (
     default_ablation_script_path,
     parse_cola_variants,
@@ -18,21 +19,83 @@ from scripts.comparison.ablation_specs import (
 RUN_TRAIN_SMOKE = os.environ.get("RUN_TRAIN_SMOKE", "") == "1"
 
 
-def _build_tokenized_dataset(tmp_path: Path) -> Path:
+def _build_tokenized_dataset(tmp_path: Path, model_name_or_path: str, language_map_path: Path) -> Path:
     datasets = pytest.importorskip("datasets")
+    transformers = pytest.importorskip("transformers")
 
     tokenized_root = tmp_path / "tokenized"
     tokenized_root.mkdir(parents=True, exist_ok=True)
 
-    train_rows = 4
-    seq = [1, 2, 3, 4, 5, 6, 7, 8]
-    input_ids = [seq for _ in range(train_rows)]
+    language_map, _, _, _ = load_language_groupings(str(language_map_path))
+    if not language_map:
+        raise ValueError(f"Failed to load language map from {language_map_path}")
+    language_vocab, family_vocab = build_language_vocab(language_map)
+
+    dataset_name = os.environ.get("SMOKE_DATASET_NAME", "c4")
+    dataset_config = os.environ.get("SMOKE_DATASET_CONFIG", "multilingual")
+    dataset_split = os.environ.get("SMOKE_DATASET_SPLIT", "train")
+    max_samples = int(os.environ.get("SMOKE_DATASET_MAX_SAMPLES", "32"))
+    max_length = int(os.environ.get("SMOKE_DATASET_MAX_LENGTH", "128"))
+    max_scan = int(os.environ.get("SMOKE_DATASET_MAX_SCAN", "1000"))
+
+    tokenizer = transformers.AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
+    stream = datasets.load_dataset(dataset_name, dataset_config, split=dataset_split, streaming=True)
+
+    input_ids = []
+    attention_masks = []
+    labels = []
+    language_ids = []
+    family_ids = []
+    seen = 0
+
+    for example in stream:
+        seen += 1
+        lang = example.get("lang") or example.get("language")
+        if lang is None:
+            if seen >= max_scan:
+                break
+            continue
+        lang_id, fam_id = language_to_ids(lang, language_map, language_vocab, family_vocab)
+        if lang_id < 0 or fam_id < 0:
+            if seen >= max_scan:
+                break
+            continue
+        text = example.get("text")
+        if not text:
+            if seen >= max_scan:
+                break
+            continue
+        encoded = tokenizer(
+            text,
+            truncation=True,
+            max_length=max_length,
+            add_special_tokens=True,
+        )
+        if not encoded.get("input_ids"):
+            if seen >= max_scan:
+                break
+            continue
+        input_ids.append(encoded["input_ids"])
+        attention_masks.append(encoded["attention_mask"])
+        labels.append(encoded["input_ids"])
+        language_ids.append(lang_id)
+        family_ids.append(fam_id)
+        if len(input_ids) >= max_samples:
+            break
+        if seen >= max_scan:
+            break
+
+    if not input_ids:
+        raise ValueError(
+            "No usable examples found in dataset stream; check dataset access and language map coverage."
+        )
+
     data = {
         "input_ids": input_ids,
-        "attention_mask": [[1] * len(seq) for _ in range(train_rows)],
-        "labels": input_ids,
-        "language_ids": [0, 1, 2, 3],
-        "family_ids": [0, 1, 2, 3],
+        "attention_mask": attention_masks,
+        "labels": labels,
+        "language_ids": language_ids,
+        "family_ids": family_ids,
     }
 
     train = datasets.Dataset.from_dict(data)
@@ -81,6 +144,10 @@ def _run_train(
         "no",
         "--save_steps",
         "2",
+        "--save_safetensors",
+        "False",
+        "--save_only_model",
+        "True",
         "--seed",
         "42",
         "--tokenized_path",
@@ -150,8 +217,8 @@ def _assert_metrics_present(state: dict, prefixes: tuple[str, ...], keys: tuple[
                 found_prefix[prefix] = True
     missing = [k for k, ok in found.items() if not ok]
     assert not missing, f"Missing metrics in log_history: {missing}"
-    for prefix, ok in found_prefix.items():
-        assert ok, f"Missing metrics with prefix {prefix}"
+    if prefixes and not any(found_prefix.values()):
+        raise AssertionError(f"Missing metrics with any prefix {prefixes}")
 
 
 @pytest.mark.skipif(not RUN_TRAIN_SMOKE, reason="Set RUN_TRAIN_SMOKE=1 to enable training smoke tests.")
@@ -164,8 +231,8 @@ def test_smoke_training_all_variants(tmp_path: Path) -> None:
     model_name_or_path = env.get("MODEL_NAME_OR_PATH", "meta-llama/Llama-3.2-1B")
     output_root = Path(env.get("SMOKE_OUTPUT_ROOT", tmp_path))
     output_root.mkdir(parents=True, exist_ok=True)
-    tokenized_path = _build_tokenized_dataset(output_root / "tokenized")
     language_map = repo_root / "tools" / "two_stage_clustering" / "12_tier_language_groupings.json"
+    tokenized_path = _build_tokenized_dataset(output_root / "tokenized", model_name_or_path, language_map)
 
     script_path = default_ablation_script_path()
     cola_variants = parse_cola_variants(script_path, include_commented=True)
@@ -230,7 +297,7 @@ def test_smoke_training_all_variants(tmp_path: Path) -> None:
         if variant.prior_weight > 0:
             _assert_metrics_present(
                 state,
-                prefixes=("cola/",),
+                prefixes=("cola/", "train/cola/"),
                 keys=("language_prior_loss",),
             )
 
@@ -275,6 +342,6 @@ def test_smoke_training_all_variants(tmp_path: Path) -> None:
         if variant.prior_weight > 0:
             _assert_metrics_present(
                 state,
-                prefixes=("hydralora/",),
+                prefixes=("hydralora/", "train/hydralora/"),
                 keys=("language_prior_loss",),
             )

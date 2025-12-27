@@ -3,7 +3,10 @@ from __future__ import annotations
 import pytest
 from datasets import Dataset
 
-from distributed_data_processor.validation import ValidationError, verify_tokenized_dataset
+from data_prep.merlin_data_prep.distributed_data_processor.src.validation import (
+    ValidationError,
+    verify_tokenized_dataset,
+)
 
 
 def _build_dataset(language_id: int, family_id: int, include_family=True) -> Dataset:
