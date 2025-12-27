@@ -164,7 +164,6 @@ fi
   --eval_strategy "${EVAL_STRATEGY:-steps}" \
   --eval_steps "${EVAL_STEPS:-2000}" \
   --save_steps "${SAVE_STEPS:-2000}" \
-  --max_steps "${MAX_STEPS:-0}" \
   --disable_gradient_checkpointing "${DISABLE_GRADIENT_CHECKPOINTING:-True}" \
   --flash_attn "${FLASH_ATTN}" \
   --bf16 "${BF16:-False}" \
