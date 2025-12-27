@@ -51,7 +51,7 @@ def _parse_float(value: Optional[str]) -> Optional[float]:
     try:
         return float(value)
     except ValueError:
-    return None
+        return None
 
 
 def _parse_int_list(value: Optional[str]) -> Optional[list[int]]:
