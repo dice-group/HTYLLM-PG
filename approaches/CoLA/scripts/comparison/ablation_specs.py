@@ -253,7 +253,7 @@ def parse_ground_truth(path: Path) -> dict[str, dict[str, str]]:
             key, value = token.split("=", 1)
             key = key.strip()
             value = value.strip()
-            if not key.isupper():
+            if key != "finetuning_type" and not re.fullmatch(r"[A-Z0-9_]+", key):
                 continue
             if key in variants[current]:
                 continue

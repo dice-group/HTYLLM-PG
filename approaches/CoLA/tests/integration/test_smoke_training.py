@@ -44,6 +44,7 @@ def _build_tokenized_dataset(
     max_scan = int(os.environ.get("SMOKE_DATASET_MAX_SCAN", "1000"))
     data_files = os.environ.get("SMOKE_DATASET_DATA_FILES")
     fallback_language = os.environ.get("SMOKE_DATASET_DEFAULT_LANGUAGE")
+    fake_langs_env = os.environ.get("SMOKE_DATASET_FAKE_LANGS", "")
     allow_fallback = os.environ.get("SMOKE_ALLOW_FALLBACK_LANGUAGE", "1") == "1"
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(model_name_or_path, use_fast=True)
@@ -83,6 +84,10 @@ def _build_tokenized_dataset(
     if not fallback_language:
         fallback_language = next(iter(language_vocab))
 
+    fake_langs = [item.strip() for item in fake_langs_env.split(",") if item.strip()]
+    if not fake_langs:
+        fake_langs = list(language_vocab.keys())
+
     input_ids = []
     attention_masks = []
     labels = []
@@ -94,7 +99,7 @@ def _build_tokenized_dataset(
         seen += 1
         lang = example.get("lang") or example.get("language")
         if lang is None and allow_fallback:
-            lang = fallback_language
+            lang = fake_langs[(len(input_ids)) % len(fake_langs)]
         if lang is None:
             if seen >= max_scan:
                 break
