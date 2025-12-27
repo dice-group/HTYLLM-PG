@@ -190,14 +190,13 @@ def validate_router_config(config: RouterConfig) -> None:
 
     if config.use_experts and config.expected_heads:
         expected_heads = config.expected_heads
-        all_zero = all(value == 0 for value in expected_heads)
-        if config.expert_heads_override and not all_zero:
+        if config.expert_heads_override:
             if config.expert_heads_override != expected_heads:
                 raise ValueError(
                     "Expert head count mismatch vs override: "
                     f"expected {expected_heads}, got {config.expert_heads_override}."
                 )
-        elif config.lora_num is not None and len(set(expected_heads)) == 1 and not all_zero:
+        elif config.lora_num is not None and len(set(expected_heads)) == 1:
             if config.lora_num != expected_heads[0]:
                 raise ValueError(
                     "Expert head count mismatch vs num_B/lora_num: "

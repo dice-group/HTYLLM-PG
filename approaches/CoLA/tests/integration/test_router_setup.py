@@ -8,7 +8,9 @@ from scripts.comparison import router_setup
 def test_validate_hydra_router_config(tmp_path) -> None:
     language_map = tmp_path / "map.json"
     language_map.write_text(
-        '{"0": {"languages": ["a"]}, "1": {"languages": ["b"]}, "2": {"languages": ["c"]}}'
+        '{"0": {"languages": ["a"], "subgroups": {"s0": ["a"], "s1": ["a"], "s2": ["a"], "s3": ["a"]}},'
+        ' "1": {"languages": ["b"], "subgroups": {"s0": ["b"], "s1": ["b"], "s2": ["b"], "s3": ["b"]}},'
+        ' "2": {"languages": ["c"], "subgroups": {"s0": ["c"], "s1": ["c"], "s2": ["c"], "s3": ["c"]}}}'
     )
     env = {
         "LANGUAGE_MAP": str(language_map),
