@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from scripts.comparison.ablation_specs import (
 
 
 RUN_TRAIN_SMOKE = os.environ.get("RUN_TRAIN_SMOKE", "") == "1"
+RUN_LM_EVAL_SMOKE = os.environ.get("RUN_LM_EVAL_SMOKE", "") == "1"
 
 
 def _build_tokenized_dataset(
@@ -240,6 +242,77 @@ def _run_train(
     subprocess.run(cmd, check=True, env=env)
 
 
+def _run_lm_eval_listener(repo_root: Path, run_dir: Path, env: dict[str, str]) -> None:
+    lm_eval_bin = env.get("LM_EVAL_BIN", "lm_eval")
+    if shutil.which(lm_eval_bin) is None:
+        pytest.skip(f"{lm_eval_bin} not found; skipping lm-eval checkpoint test.")
+    if not env.get("WANDB_API_KEY"):
+        pytest.skip("WANDB_API_KEY not set; skipping lm-eval checkpoint test.")
+
+    tasks = env.get("LM_EVAL_TASKS", "belebele_zsm_Latn,belebele_zul_Latn,xnli")
+    batch_size = env.get("LM_EVAL_BATCH_SIZE", "auto")
+    wandb_project = env.get("LM_EVAL_WANDB_PROJECT", "acl_smoke_eval_debug")
+    wandb_prefix = env.get("LM_EVAL_WANDB_PREFIX", "acl_smoke")
+    wandb_mode = env.get("LM_EVAL_WANDB_MODE", "online")
+    extra_args = env.get("LM_EVAL_EXTRA_ARGS", "--limit 10")
+
+    listener = repo_root / "scripts" / "tests" / "checkpoint_listener_local.sh"
+    eval_script = repo_root / "scripts" / "tests" / "lm_eval_checkpoint_local.sh"
+    subprocess.run(
+        [
+            "bash",
+            str(listener),
+            "--watch-dir",
+            str(run_dir),
+            "--eval-script",
+            str(eval_script),
+            "--tasks",
+            tasks,
+            "--batch-size",
+            batch_size,
+            "--wandb-project",
+            wandb_project,
+            "--wandb-prefix",
+            wandb_prefix,
+            "--wandb-mode",
+            wandb_mode,
+            "--extra-args",
+            extra_args,
+            "--once",
+        ],
+        check=True,
+        env=env,
+    )
+
+    eval_dir = run_dir / "lm_eval"
+    if not eval_dir.exists():
+        raise AssertionError(f"lm_eval output directory missing in {run_dir}")
+    outputs = sorted(eval_dir.glob("*.jsonl"))
+    if len(outputs) < 3:
+        raise AssertionError(f"Expected at least 3 lm_eval outputs in {eval_dir}")
+
+    expected_tasks = [item.strip() for item in tasks.split(",") if item.strip()]
+    for output in outputs[:3]:
+        found = set()
+        for line in output.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            task_name = payload.get("task") or payload.get("task_name")
+            if task_name:
+                found.add(task_name)
+        missing = [task for task in expected_tasks if task not in found]
+        if missing:
+            raise AssertionError(f"Missing lm_eval tasks {missing} in {output}")
+
+    wandb_id_file = run_dir / ".wandb_eval_run_id"
+    if not wandb_id_file.exists():
+        raise AssertionError(f"Missing wandb resume id file in {run_dir}")
+
+
 def _load_json(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
@@ -290,6 +363,9 @@ def test_smoke_training_all_variants(tmp_path: Path) -> None:
     output_root.mkdir(parents=True, exist_ok=True)
     language_map = repo_root / "tools" / "two_stage_clustering" / "12_tier_language_groupings.json"
     tokenized_path = _build_tokenized_dataset(output_root / "tokenized", model_name_or_path, language_map, repo_root)
+    if RUN_LM_EVAL_SMOKE:
+        env.setdefault("SMOKE_TRAIN_STEPS", "3")
+        env.setdefault("SMOKE_SAVE_STEPS", "1")
 
     script_path = default_ablation_script_path()
     cola_variants = parse_cola_variants(script_path, include_commented=True)
@@ -308,6 +384,8 @@ def test_smoke_training_all_variants(tmp_path: Path) -> None:
             env=env,
         )
         _assert_training_outputs(output_dir)
+        if RUN_LM_EVAL_SMOKE:
+            _run_lm_eval_listener(repo_root, output_dir, env)
 
     for variant in cola_variants:
         output_dir = output_root / f"cola_{variant.label}"
@@ -357,6 +435,8 @@ def test_smoke_training_all_variants(tmp_path: Path) -> None:
                 prefixes=("cola/", "train/cola/"),
                 keys=("language_prior_loss",),
             )
+        if RUN_LM_EVAL_SMOKE:
+            _run_lm_eval_listener(repo_root, output_dir, env)
 
     for variant in hydra_variants:
         output_dir = output_root / f"hydra_{variant.label}"
@@ -402,3 +482,5 @@ def test_smoke_training_all_variants(tmp_path: Path) -> None:
                 prefixes=("hydralora/", "train/hydralora/"),
                 keys=("language_prior_loss",),
             )
+        if RUN_LM_EVAL_SMOKE:
+            _run_lm_eval_listener(repo_root, output_dir, env)
