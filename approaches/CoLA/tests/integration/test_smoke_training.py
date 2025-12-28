@@ -63,7 +63,6 @@ def _build_tokenized_dataset(
                 dataset_config,
                 split=dataset_split,
                 streaming=True,
-                trust_remote_code=True,
             )
         except RuntimeError as exc:
             if "Dataset scripts are no longer supported" not in str(exc):
@@ -168,6 +167,11 @@ def _run_train(
     extra_args: list[str],
     env: dict[str, str],
 ) -> None:
+    max_steps = env.get("SMOKE_TRAIN_STEPS", "2")
+    train_batch_size = env.get("SMOKE_BATCH_SIZE", "1")
+    grad_accum = env.get("SMOKE_GRAD_ACCUM", "1")
+    logging_steps = env.get("SMOKE_LOGGING_STEPS", "1")
+    save_steps = env.get("SMOKE_SAVE_STEPS", max_steps)
     cmd = [
         "python3",
         "-m",
@@ -190,13 +194,13 @@ def _run_train(
         str(output_dir),
         "--overwrite_output_dir",
         "--max_steps",
-        "2",
+        str(max_steps),
         "--logging_steps",
-        "1",
+        str(logging_steps),
         "--eval_strategy",
         "no",
         "--save_steps",
-        "2",
+        str(save_steps),
         "--save_safetensors",
         "False",
         "--save_only_model",
@@ -206,9 +210,9 @@ def _run_train(
         "--tokenized_path",
         str(tokenized_path),
         "--per_device_train_batch_size",
-        "1",
+        str(train_batch_size),
         "--gradient_accumulation_steps",
-        "1",
+        str(grad_accum),
         "--learning_rate",
         "2e-4",
         "--lora_rank",
