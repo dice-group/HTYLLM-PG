@@ -18,12 +18,12 @@ DATASET_DIR=${DATASET_DIR:-./LLaMA-Factory/data}
 LANGUAGE_COLUMN=${LANGUAGE_COLUMN:-language}
 TOKENIZED_BASE_DIR=${TOKENIZED_BASE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_tiers_tokenized}
 
-OUTPUT_ROOT=${OUTPUT_ROOT:-/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation}
-WANDB_PROJECT=${WANDB_PROJECT:-TEST_htyllm-adapter-lpr-12_lang_tier}
+OUTPUT_ROOT=${OUTPUT_ROOT:-/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola}
+WANDB_PROJECT=${WANDB_PROJECT:-htyllm-adapter-lpr-200_lang_cola}
 WANDB_ENTITY=${WANDB_ENTITY:-}
 FLASH_ATTN=${FLASH_ATTN:-fa2}
 AUTO_FIND_BATCH_SIZE=${AUTO_FIND_BATCH_SIZE:-true}
-default_wandb_group="multilingual-ablation"
+default_wandb_group="multilingual-ablation-200_lang_cola"
 if [[ -z "${WANDB_RUN_GROUP+x}" ]]; then
   WANDB_RUN_GROUP="${default_wandb_group}"
 fi
@@ -61,10 +61,10 @@ if [[ "${WANDB_RUN_GROUP}" == "${default_wandb_group}" ]]; then
 fi
 
 # Debug/verification (uncomment to test)
-export COLA_DEBUG=True
-export COLA_DEBUG_ROUTING_EVERY=50
-export HYDRALORA_DEBUG=True
-export HYDRA_DEBUG_ROUTING_EVERY=50
+# export COLA_DEBUG=True
+# export COLA_DEBUG_ROUTING_EVERY=500
+# export HYDRALORA_DEBUG=True
+# export HYDRA_DEBUG_ROUTING_EVERY=500
 
 count_experts_from_language_map() {
   local map_path=$1
@@ -85,40 +85,66 @@ else:
 PY
 }
 
+head_counts_from_language_map() {
+  local map_path=$1
+  python - "${map_path}" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r") as f:
+    data = json.load(f)
+
+if not isinstance(data, dict):
+    print("")
+    raise SystemExit(0)
+
+counts = []
+for _, entry in sorted(data.items(), key=lambda kv: str(kv[0])):
+    if not isinstance(entry, dict):
+        counts.append(0)
+        continue
+    subgroups = entry.get("subgroups") or {}
+    if isinstance(subgroups, dict):
+        counts.append(len(subgroups))
+    else:
+        counts.append(0)
+
+if all(c == 0 for c in counts):
+    print("")
+else:
+    print(",".join(str(c) for c in counts))
+PY
+}
+
 # Language tiers: <tier_id>|<language_count>|<language_map_path>|<tokenized_path>|<model_path>
 LANGUAGE_TIERS=(
-  "tier12|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier1|meta-llama/Llama-3.1-8B"
-  # Extended-tokenizer variant
-  # "tier12|12|${REPO_ROOT}/tools/two_stage_clustering/12_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier1_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier1/merged_model"
-  #"tier72|72|${REPO_ROOT}/tools/two_stage_clustering/72_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier2|meta-llama/Llama-3.1-8B"
-  # Extended-tokenizer variant
-  # "tier72|72|${REPO_ROOT}/tools/two_stage_clustering/72_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier2_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier2/merged_model"
-  # "tier200|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/cola_tier3_extended_tokenizer|/scratch/hpc-prf-merlin/project_data/moe_study/tokenizer_extension/cola_tier3/merged_model"
+  "tier200_10_percent|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier3|meta-llama/Llama-3.1-8B"
+  #"tier200_10pct_8gpu|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier3|meta-llama/Llama-3.1-8B"
 )
 
 # Hydra variants:
 # <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
 HYDRA_VARIANTS=(
-  #"hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|none|2"               # Hydra flat, 3 heads (paper-faithful: no LPR)
-  
-  #"hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|all|1"              # Hydra experts (2-stage), soft LPR
-  #"hydra-exp-lpr-expert-only|True|3|learned|0.1|0.0|learned|0.0|1|expert_only|1" # Hydra experts, expert-only guidance
+  "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|none|3"                  # H0: Hydra flat (paper-faithful)
+  "hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|all|2"                 # H1: expert soft LPR
+  "hydra-exp-lpr-expert-only|True|3|learned|0.1|0.0|learned|0.0|1|expert_only|2" # H1b: expert-only guidance
+  "hydra-exp-hard|True|3|hard|0.0|0.0|learned|0.0|1|expert_only|3"           # H2: expert hard routing (language-guided)
 )
 
 # CoLA variants:
 # <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
 COLA_VARIANTS=(
-  #"colaflat|False|1|3|fully|learned|0.0|0.0|learned|0.0|1|none|3"           # CoLA flat (paper-faithful)  bs pf 3 fills up two gpus
-  
-  #"colaexp-lpr|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|all|2"           # C1: expert soft LPR, no head emphasis
-  #"colaexp-headbias|True|1|3|fully|learned|0.1|0.0|bias|2.0|1|all|2"         # C2: expert soft LPR + head emphasis (variant A)
-  #"colaexp-lpr-expert-only|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|expert_only|2" # C1b: expert-only guidance
+  # "colaflat|False|1|3|fully|learned|0.0|0.0|learned|0.0|1|none|5"           # C0: CoLA flat (paper-faithful)
+  # "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|all|4"           # C1: expert soft LPR
+  # "colaexp-headbias|True|1|3|fully|learned|0.1|0.0|bias|2.0|1|all|4"         # C2: expert soft LPR + head emphasis
+  # "colaexp-hard|True|1|3|fully|hard|0.0|0.0|learned|0.0|1|expert_only|4"     # C3: expert hard routing (language-guided)
 )
 
 # LoRA variants:
 # <label>|<train_bs>
 LORA_VARIANTS=(
-  "lora-baseline|2"
+  #"lora-baseline|5"
 )
 
 # Resource mappings
@@ -129,26 +155,42 @@ DEFAULT_PARTITION=${DEFAULT_PARTITION:-gpu}
 
 declare -A TIER_WALLTIME_MAP=(
   ["tier12"]="48:00:00"
-  ["tier72"]="96:00:00"
-  ["tier200"]="120:00:00"
+  ["tier72"]="168:00:00"
+  ["tier200"]="168:00:00"
+  ["tier200_10_percent"]="200:00:00"
+  ["tier200_10pct_8gpu"]="168:00:00"
 )
 
 declare -A TIER_GPU_COUNT_MAP=(
   ["tier12"]=2
   ["tier72"]=4
-  ["tier200"]=8
+  ["tier200"]=4
+  ["tier200_10_percent"]=4
+  ["tier200_10pct_8gpu"]=4
+)
+
+declare -A TIER_NODE_COUNT_MAP=(
+  ["tier12"]=1
+  ["tier72"]=1
+  ["tier200"]=1
+  ["tier200_10_percent"]=1
+  ["tier200_10pct_8gpu"]=2
 )
 
 declare -A TIER_GPU_TYPE_MAP=(
   ["tier12"]="${DEFAULT_GPU_TYPE}"
   ["tier72"]="${DEFAULT_GPU_TYPE}"
   ["tier200"]="${DEFAULT_GPU_TYPE}"
+  ["tier200_10_percent"]="${DEFAULT_GPU_TYPE}"
+  ["tier200_10pct_8gpu"]="${DEFAULT_GPU_TYPE}"
 )
 
 declare -A TIER_PARTITION_MAP=(
   ["tier12"]="${DEFAULT_PARTITION}"
   ["tier72"]="${DEFAULT_PARTITION}"
   ["tier200"]="${DEFAULT_PARTITION}"
+  ["tier200_10_percent"]="${DEFAULT_PARTITION}"
+  ["tier200_10pct_8gpu"]="${DEFAULT_PARTITION}"
 )
 
 ENABLE_LM_EVAL_LISTENER=${ENABLE_LM_EVAL_LISTENER:-true}
@@ -164,8 +206,9 @@ if [[ -z "${LM_EVAL_TASKS:-}" ]]; then
 fi
 LM_EVAL_BATCH_SIZE=${LM_EVAL_BATCH_SIZE:-auto}
 LM_EVAL_POLL_INTERVAL=${LM_EVAL_POLL_INTERVAL:-300}
-LM_EVAL_WANDB_PROJECT=${LM_EVAL_WANDB_PROJECT:-llama31_multilingual_eval_belebele}
-LM_EVAL_WANDB_PREFIX=${LM_EVAL_WANDB_PREFIX:-lm_eval}
+LM_EVAL_WANDB_PROJECT=${LM_EVAL_WANDB_PROJECT:-htyllm-adapter-lpr-200_lang_cola_eval}
+LM_EVAL_WANDB_PREFIX=${LM_EVAL_WANDB_PREFIX:-lm_eval_200_lang_cola}
+LM_EVAL_WANDB_MODE=${LM_EVAL_WANDB_MODE:-online}
 LM_EVAL_EXTRA_ARGS=${LM_EVAL_EXTRA_ARGS:-}
 LISTENER_SBATCH_ARGS=${LISTENER_SBATCH_ARGS:-}
 
@@ -174,6 +217,7 @@ select_resources() {
   local tier_id=$2
   local gpu_type=${TIER_GPU_TYPE_MAP[$tier_id]:-${DEFAULT_GPU_TYPE}}
   local gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
+  local node_count=${TIER_NODE_COUNT_MAP[$tier_id]:-1}
   local partition=${TIER_PARTITION_MAP[$tier_id]:-${DEFAULT_PARTITION}}
   local walltime=${TIER_WALLTIME_MAP[$tier_id]:-${DEFAULT_WALLTIME}}
   out_ref=(
@@ -181,6 +225,9 @@ select_resources() {
     "--gres=gpu:${gpu_type}:${gpu_count}"
     "--time=${walltime}"
   )
+  if [[ "${node_count}" -gt 1 ]]; then
+    out_ref+=("--nodes=${node_count}" "--ntasks=${node_count}" "--ntasks-per-node=1")
+  fi
 }
 
 echo "[INFO] Launching multilingual ablation runs into ${OUTPUT_ROOT}"
@@ -260,6 +307,7 @@ submit_listener_job() {
     --wandb-project "${LM_EVAL_WANDB_PROJECT}"
     --wandb-prefix "${LM_EVAL_WANDB_PREFIX}_${listener_label}"
     --wandb-group "${wandb_group}"
+    --wandb-mode "${LM_EVAL_WANDB_MODE}"
   )
   if [[ -n "${LM_EVAL_EXTRA_ARGS}" ]]; then
     cmd+=(--extra-args "${LM_EVAL_EXTRA_ARGS}")
@@ -316,18 +364,21 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
   fi
   tier_num_experts="$(count_experts_from_language_map "${tier_map}")"
 
+  tier_nodes=${TIER_NODE_COUNT_MAP[$tier_id]:-1}
+  tier_gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
+  tier_total_gpus=$((tier_nodes * tier_gpu_count))
+
   # LoRA runs (true LoRA baseline)
   for variant_spec in "${LORA_VARIANTS[@]}"; do
     IFS='|' read -r label train_bs <<<"${variant_spec}"
     variant_slug="$(sanitize "${label}")"
     declare -a lora_sbatch=()
     select_resources lora_sbatch "${tier_id}"
-    tier_gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
     accelerate_config=""
-    if [[ "${tier_gpu_count}" -ge 2 ]]; then
-      if [[ "${tier_gpu_count}" -ge 8 ]]; then
+    if [[ "${tier_total_gpus}" -ge 2 ]]; then
+      if [[ "${tier_total_gpus}" -ge 8 ]]; then
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_8gpu_config.yaml"
-      elif [[ "${tier_gpu_count}" -ge 4 ]]; then
+      elif [[ "${tier_total_gpus}" -ge 4 ]]; then
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml"
       else
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_2gpu_config.yaml"
@@ -381,12 +432,11 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     fi
     declare -a hydra_sbatch=()
     select_resources hydra_sbatch "${tier_id}"
-    tier_gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
     accelerate_config=""
-    if [[ "${tier_gpu_count}" -ge 2 ]]; then
-      if [[ "${tier_gpu_count}" -ge 8 ]]; then
+    if [[ "${tier_total_gpus}" -ge 2 ]]; then
+      if [[ "${tier_total_gpus}" -ge 8 ]]; then
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_8gpu_config.yaml"
-      elif [[ "${tier_gpu_count}" -ge 4 ]]; then
+      elif [[ "${tier_total_gpus}" -ge 4 ]]; then
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml"
       else
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_2gpu_config.yaml"
@@ -428,6 +478,12 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "LANGUAGE_TIER=${tier_id}"
       "WANDB_TAGS=adapter:hydra,variant:${label},tier:${tier_id},mode:${router_mode},head_mode:${head_router_mode},gamma:${prior_weight}"
     )
+    if [[ "${use_experts}" == "True" ]]; then
+      hydra_expert_lora_nums="$(head_counts_from_language_map "${tier_map}")"
+      if [[ -n "${hydra_expert_lora_nums}" ]]; then
+        hydra_env+=("HYDRALORA_EXPERT_LORA_NUMS=${hydra_expert_lora_nums}")
+      fi
+    fi
     if [[ -n "${train_bs}" ]]; then
       hydra_env+=("PER_DEVICE_TRAIN_BATCH_SIZE=${train_bs}" "PER_DEVICE_EVAL_BATCH_SIZE=${train_bs}")
     fi
@@ -458,12 +514,11 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
     fi
     declare -a cola_sbatch=()
     select_resources cola_sbatch "${tier_id}"
-    tier_gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
     accelerate_config=""
-    if [[ "${tier_gpu_count}" -ge 2 ]]; then
-      if [[ "${tier_gpu_count}" -ge 8 ]]; then
+    if [[ "${tier_total_gpus}" -ge 2 ]]; then
+      if [[ "${tier_total_gpus}" -ge 8 ]]; then
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_8gpu_config.yaml"
-      elif [[ "${tier_gpu_count}" -ge 4 ]]; then
+      elif [[ "${tier_total_gpus}" -ge 4 ]]; then
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml"
       else
         accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_2gpu_config.yaml"
@@ -507,6 +562,12 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "LANGUAGE_TIER=${tier_id}"
       "WANDB_TAGS=adapter:cola,variant:${label},tier:${tier_id},mode:${router_mode},head_mode:${head_router_mode},gamma:${prior_weight}"
     )
+    if [[ "${use_experts}" == "True" ]]; then
+      cola_expert_num_b="$(head_counts_from_language_map "${tier_map}")"
+      if [[ -n "${cola_expert_num_b}" ]]; then
+        cola_env+=("COLA_EXPERT_NUM_B=${cola_expert_num_b}")
+      fi
+    fi
     if [[ -n "${train_bs}" ]]; then
       cola_env+=("PER_DEVICE_TRAIN_BATCH_SIZE=${train_bs}" "PER_DEVICE_EVAL_BATCH_SIZE=${train_bs}")
     fi

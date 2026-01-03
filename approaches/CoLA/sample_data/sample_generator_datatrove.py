@@ -53,7 +53,7 @@ def _load_plan(csv_path: Path, max_sample: int | None, tokenizer_training: bool)
         docs = docs if docs and docs > 0 else max_sample
         size = min(max_sample, docs) if max_sample else docs
         if tokenizer_training and size:
-            size = max(1, int(size * 0.05))
+            size = max(1, int(size * 0.1))
         plan.append((subset, size))
     return plan
 

@@ -74,6 +74,7 @@ LORA_R="${LORA_R:-16}"
 LORA_ALPHA="${LORA_ALPHA:-32}"
 LORA_DROPOUT="${LORA_DROPOUT:-0.05}"
 LORA_NUM="${LORA_NUM:-4}"
+EXPERT_LORA_NUMS="${HYDRALORA_EXPERT_LORA_NUMS:-}"
 ADDITIONAL_TARGET="${ADDITIONAL_TARGET:-}"
 PREPROCESSING_NUM_WORKERS="${PREPROCESSING_NUM_WORKERS:-${SLURM_CPUS_PER_TASK:-8}}"
 PREPROCESSING_BATCH_SIZE="${PREPROCESSING_BATCH_SIZE:-100000}"
@@ -105,9 +106,14 @@ python "${REPO_ROOT}/scripts/comparison/router_setup.py" --type hydra
 
 ACCELERATE_CMD=()
 ENTRYPOINT=()
+LAUNCH_PREFIX=()
 if [[ -n "${ACCELERATE_CONFIG_FILE}" ]]; then
-  # Deterministic single-node rendezvous (avoid probe-then-use races with torch elastic).
-  MASTER_ADDR="127.0.0.1"
+  # Deterministic rendezvous (avoid probe-then-use races with torch elastic).
+  if [[ -n "${SLURM_JOB_NODELIST:-}" ]]; then
+    MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
+  else
+    MASTER_ADDR="127.0.0.1"
+  fi
   MASTER_PORT="${MASTER_PORT:-$((20000 + (${SLURM_JOB_ID:-0} % 20000) ))}"
   export MASTER_ADDR MASTER_PORT
   echo "[INFO] accelerate rendezvous MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT}"
@@ -116,8 +122,23 @@ if [[ -n "${ACCELERATE_CONFIG_FILE}" ]]; then
     --config_file "${ACCELERATE_CONFIG_FILE}"
     --main_process_ip "${MASTER_ADDR}"
     --main_process_port "${MASTER_PORT}"
-    --module
   )
+  if [[ "${SLURM_NNODES:-1}" -gt 1 ]]; then
+    if [[ -n "${SLURM_GPUS_ON_NODE:-}" ]]; then
+      GPUS_PER_NODE=$(echo "${SLURM_GPUS_ON_NODE}" | grep -oE '[0-9]+' | head -n 1)
+    elif [[ -n "${SLURM_JOB_GPUS:-}" ]]; then
+      IFS=',' read -ra _gpu_list <<< "${SLURM_JOB_GPUS}"
+      GPUS_PER_NODE=${#_gpu_list[@]}
+    elif [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+      IFS=',' read -ra _gpu_list <<< "${CUDA_VISIBLE_DEVICES}"
+      GPUS_PER_NODE=${#_gpu_list[@]}
+    else
+      GPUS_PER_NODE=4
+    fi
+    ACCELERATE_CMD+=(--num_machines "${SLURM_NNODES}" --machine_rank "${SLURM_NODEID:-0}" --num_processes "${GPUS_PER_NODE}")
+    LAUNCH_PREFIX=(srun --ntasks="${SLURM_NNODES}" --ntasks-per-node=1 --export=ALL)
+  fi
+  ACCELERATE_CMD+=(--module)
   # IMPORTANT: do not call `llamafactory-cli train` under accelerate, because LF will torchrun again.
   ENTRYPOINT=(llamafactory.launcher)
 fi
@@ -141,7 +162,7 @@ if [[ "${HYDRALORA_DEBUG:-}" == "true" || "${HYDRALORA_DEBUG:-}" == "True" || "$
   DEBUG_FLAGS+=(--hydralora_debug)
 fi
 
-"${ACCELERATE_CMD[@]}" "${ENTRYPOINT[@]}" \
+"${LAUNCH_PREFIX[@]}" "${ACCELERATE_CMD[@]}" "${ENTRYPOINT[@]}" \
   --stage sft \
   --do_train \
   --model_name_or_path "${MODEL_NAME_OR_PATH}" \
@@ -162,8 +183,8 @@ fi
   --gradient_accumulation_steps "${GRAD_ACC}" \
   --logging_steps "${LOGGING_STEPS:-10}" \
   --eval_strategy "${EVAL_STRATEGY:-steps}" \
-  --eval_steps "${EVAL_STEPS:-2000}" \
-  --save_steps "${SAVE_STEPS:-2000}" \
+  --eval_steps "${EVAL_STEPS:-5000}" \
+  --save_steps "${SAVE_STEPS:-5000}" \
   --disable_gradient_checkpointing "${DISABLE_GRADIENT_CHECKPOINTING:-True}" \
   --flash_attn "${FLASH_ATTN}" \
   --bf16 "${BF16:-False}" \
@@ -178,6 +199,7 @@ fi
   --lora_dropout "${LORA_DROPOUT}" \
   --lora_target "${LORA_TARGETS:-q_proj,k_proj,v_proj,o_proj}" \
   --lora_num "${LORA_NUM}" \
+  ${EXPERT_LORA_NUMS:+--hydralora_expert_lora_nums "${EXPERT_LORA_NUMS}"} \
   --language_column "${LANGUAGE_COLUMN}" \
   --language_map "${LANGUAGE_MAP}" \
   --language_router_mode "${LANGUAGE_ROUTER_MODE}" \
