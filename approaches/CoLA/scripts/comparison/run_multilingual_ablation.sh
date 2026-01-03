@@ -124,12 +124,12 @@ LANGUAGE_TIERS=(
 )
 
 # Hydra variants:
-# <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
+# <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<head_top_k>|<guidance_scope>|<train_bs>
 HYDRA_VARIANTS=(
-  "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|none|3"                  # H0: Hydra flat (paper-faithful)
-  "hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|all|2"                 # H1: expert soft LPR
-  "hydra-exp-lpr-expert-only|True|3|learned|0.1|0.0|learned|0.0|1|expert_only|2" # H1b: expert-only guidance
-  "hydra-exp-hard|True|3|hard|0.0|0.0|learned|0.0|1|expert_only|3"           # H2: expert hard routing (language-guided)
+  "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|1|none|3"                  # H0: Hydra flat (paper-faithful)
+  "hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|1|all|2"                 # H1: expert soft LPR
+  "hydra-exp-lpr-expert-only|True|3|learned|0.1|0.0|learned|0.0|1|1|expert_only|2" # H1b: expert-only guidance
+  "hydra-exp-hard|True|3|hard|0.0|0.0|hard|0.0|1|1|all|2"           # H2: expert+head hard routing (language-guided)
 )
 
 # CoLA variants:
@@ -157,7 +157,7 @@ declare -A TIER_WALLTIME_MAP=(
   ["tier12"]="48:00:00"
   ["tier72"]="168:00:00"
   ["tier200"]="168:00:00"
-  ["tier200_10_percent"]="200:00:00"
+  ["tier200_10_percent"]="168:00:00"
   ["tier200_10pct_8gpu"]="168:00:00"
 )
 
@@ -417,8 +417,11 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
 
   # Hydra/LoRA runs
   for variant_spec in "${HYDRA_VARIANTS[@]}"; do
-    IFS='|' read -r label use_experts lora_num router_mode prior_weight bias_value head_router_mode head_bias_value top_k guidance_scope train_bs <<<"${variant_spec}"
+    IFS='|' read -r label use_experts lora_num router_mode prior_weight bias_value head_router_mode head_bias_value top_k head_top_k guidance_scope train_bs <<<"${variant_spec}"
     variant_slug="$(sanitize "${label}")"
+    if [[ -z "${head_top_k:-}" ]]; then
+      head_top_k=1
+    fi
     if [[ -z "${head_router_mode:-}" ]]; then
       head_router_mode="${router_mode}"
     fi
@@ -473,6 +476,7 @@ for tier_spec in "${LANGUAGE_TIERS[@]}"; do
       "USE_HYDRALORA_EXPERTS=${use_experts}"
       "HYDRALORA_NUM_EXPERTS=${hydra_num_experts}"
       "HYDRALORA_TOP_K=${top_k}"
+      "HYDRALORA_HEAD_TOP_K=${head_top_k}"
       "LORA_NUM=${lora_num}"
       "MODEL_VARIANT=${tier_id}"
       "LANGUAGE_TIER=${tier_id}"

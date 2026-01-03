@@ -60,6 +60,7 @@ ACCELERATE_CONFIG_FILE="${ACCELERATE_CONFIG_FILE:-}"
 USE_HYDRALORA_EXPERTS="${USE_HYDRALORA_EXPERTS:-False}"
 HYDRALORA_NUM_EXPERTS="${HYDRALORA_NUM_EXPERTS:-1}"
 HYDRALORA_TOP_K="${HYDRALORA_TOP_K:-1}"
+HYDRALORA_HEAD_TOP_K="${HYDRALORA_HEAD_TOP_K:-1}"
 BF16="${BF16:-True}"
 FP16="${FP16:-False}"
 FLASH_ATTN="${FLASH_ATTN:-fa2}"
@@ -95,6 +96,7 @@ export WANDB_CONFIG_JSON=$(cat <<EOF
   "use_hydralora_experts": ${USE_HYDRALORA_EXPERTS},
   "hydralora_num_experts": ${HYDRALORA_NUM_EXPERTS},
   "hydralora_top_k": ${HYDRALORA_TOP_K},
+  "hydralora_head_top_k": ${HYDRALORA_HEAD_TOP_K},
   "lora_num": ${LORA_NUM}
 }
 EOF
@@ -212,6 +214,7 @@ fi
   --use_hydralora_experts "${USE_HYDRALORA_EXPERTS}" \
   --hydralora_num_experts "${HYDRALORA_NUM_EXPERTS}" \
   --hydralora_top_k "${HYDRALORA_TOP_K}" \
+  --hydralora_head_top_k "${HYDRALORA_HEAD_TOP_K}" \
   ${ADDITIONAL_TARGET:+--additional_target "${ADDITIONAL_TARGET}"} \
   --report_to wandb \
   --include_effective_tokens_per_second true \
