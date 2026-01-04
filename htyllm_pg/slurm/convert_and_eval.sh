@@ -279,17 +279,18 @@ if os.path.exists(config_path):
 checkpoint_parent = "${CHECKPOINT_PARENT}"
 group_name = os.path.basename(checkpoint_parent)
 
-# Create a consistent run ID for resuming (allows line plot across checkpoints)
-# Format: {group_name}_eval_v2 (v2 = new metric structure with task-level sections)
-run_id = f"{group_name}_eval_v2".replace("/", "_").replace(" ", "_")
+# Create a unique run ID per checkpoint to avoid concurrency issues
+# We use a common 'group' to aggregate them in the UI
+run_id = f"eval_{group_name}_{checkpoint_name}"
+group_id = f"{group_name}_eval_v2"
 
-# Initialize W&B run in OFFLINE mode (HPC compute nodes have restricted network)
-# Sync later from login node with: wandb sync wandb/offline-run-*
+# Initialize W&B run
 run = wandb.init(
     project="${WANDB_PROJ}",
     id=run_id,
-    name=f"eval_{group_name}",
-    resume="allow",  # Resume if exists, create if not
+    group=group_id,
+    name=f"eval_{checkpoint_name}",
+    resume="allow",  # Resume if this specific checkpoint was already eval'd
     config={
         "model_variant": "${MODEL_VARIANT}",
         "tasks": "${TASKS}",
@@ -299,7 +300,7 @@ run = wandb.init(
         **model_config
     },
     tags=["eval", "${MODEL_VARIANT}"],
-    mode="offline"  # Save locally, sync later from login node
+    # mode="offline"  # Removed to enable auto-sync
 )
 
 # Define step metric for proper x-axis (line plot!)

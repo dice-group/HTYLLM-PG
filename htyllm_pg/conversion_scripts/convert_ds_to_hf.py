@@ -161,6 +161,9 @@ import inspect
 # This is required for the MoE layer to function correctly during inference
 if not deepspeed.comm.is_initialized():
     import os
+    import random
+    import time
+    
     # If running in a non-distributed environment (e.g. simple inference/eval),
     # set up a single-process distributed environment to satisfy DeepSpeed requirements.
     if "RANK" not in os.environ:
@@ -168,12 +171,27 @@ if not deepspeed.comm.is_initialized():
         os.environ["LOCAL_RANK"] = "0"
         os.environ["WORLD_SIZE"] = "1"
         os.environ["MASTER_ADDR"] = "127.0.0.1"
-        # Use a random port to avoid collisions
-        import random
-        port = random.randint(10000, 60000)
-        os.environ["MASTER_PORT"] = str(port)
-
-    deepspeed.init_distributed(dist_backend="nccl", auto_mpi_discovery=False)
+        
+        # Retry initialization in case of port collision
+        max_retries = 10
+        for attempt in range(max_retries):
+            try:
+                # Use existing MASTER_PORT on first attempt, random on retry
+                if "MASTER_PORT" not in os.environ or attempt > 0:
+                    port = random.randint(10000, 60000)
+                    os.environ["MASTER_PORT"] = str(port)
+                
+                deepspeed.init_distributed(dist_backend="nccl", auto_mpi_discovery=False)
+                break
+            except Exception as e:
+                # Catch port collision errors
+                if ("EADDRINUSE" in str(e) or "address already in use" in str(e)) and attempt < max_retries - 1:
+                    # Wait a bit before retrying to reduce contention
+                    time.sleep(1 + random.random())
+                    continue
+                raise e
+    else:
+        deepspeed.init_distributed(dist_backend="nccl", auto_mpi_discovery=False)
 
 {inspect.getsource(HTYLLMConfig)}
 
