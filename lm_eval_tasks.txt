@@ -121,5 +121,3 @@ belebele_zho_Hant
 belebele_zsm_Latn
 belebele_zul_Latn
 xnli
-hellaswag
-arc_multilingual
