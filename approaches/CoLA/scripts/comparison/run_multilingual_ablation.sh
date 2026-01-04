@@ -16,7 +16,8 @@ MODULE_INIT=${MODULE_INIT:-module purge && module load toolchain/foss/2024a syst
 DATASET_NAME=${DATASET_NAME:-c4}
 DATASET_DIR=${DATASET_DIR:-./LLaMA-Factory/data}
 LANGUAGE_COLUMN=${LANGUAGE_COLUMN:-language}
-TOKENIZED_BASE_DIR=${TOKENIZED_BASE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_tiers_tokenized}
+TOKENIZED_BASE_DIR=${TOKENIZED_BASE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_tiers_tokenized_fully_200}
+#TOKENIZED_BASE_DIR=${TOKENIZED_BASE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_tiers_tokenized}
 
 OUTPUT_ROOT=${OUTPUT_ROOT:-/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola}
 WANDB_PROJECT=${WANDB_PROJECT:-htyllm-adapter-lpr-200_lang_cola}
@@ -119,23 +120,24 @@ PY
 
 # Language tiers: <tier_id>|<language_count>|<language_map_path>|<tokenized_path>|<model_path>
 LANGUAGE_TIERS=(
-  "tier200_10_percent|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier3|meta-llama/Llama-3.1-8B"
+  #"tier200_10_percent|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier3|meta-llama/Llama-3.1-8B"
   #"tier200_10pct_8gpu|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier3|meta-llama/Llama-3.1-8B"
+  "tier200_full|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier3|meta-llama/Llama-3.1-8B"
 )
 
 # Hydra variants:
 # <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<head_top_k>|<guidance_scope>|<train_bs>
 HYDRA_VARIANTS=(
-  "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|1|none|3"                  # H0: Hydra flat (paper-faithful)
-  "hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|1|all|2"                 # H1: expert soft LPR
-  "hydra-exp-lpr-expert-only|True|3|learned|0.1|0.0|learned|0.0|1|1|expert_only|2" # H1b: expert-only guidance
-  "hydra-exp-hard|True|3|hard|0.0|0.0|hard|0.0|1|1|all|2"           # H2: expert+head hard routing (language-guided)
+  # "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|1|none|3"                  # H0: Hydra flat (paper-faithful)
+  # "hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|1|all|2"                 # H1: expert soft LPR
+  # "hydra-exp-lpr-expert-only|True|3|learned|0.1|0.0|learned|0.0|1|1|expert_only|2" # H1b: expert-only guidance
+  # "hydra-exp-hard|True|3|hard|0.0|0.0|hard|0.0|1|1|all|2"           # H2: expert+head hard routing (language-guided)
 )
 
 # CoLA variants:
 # <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
 COLA_VARIANTS=(
-  # "colaflat|False|1|3|fully|learned|0.0|0.0|learned|0.0|1|none|5"           # C0: CoLA flat (paper-faithful)
+  "colaflat|False|1|3|fully|learned|0.0|0.0|learned|0.0|1|none|5"           # C0: CoLA flat (paper-faithful)
   # "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|all|4"           # C1: expert soft LPR
   # "colaexp-headbias|True|1|3|fully|learned|0.1|0.0|bias|2.0|1|all|4"         # C2: expert soft LPR + head emphasis
   # "colaexp-hard|True|1|3|fully|hard|0.0|0.0|learned|0.0|1|expert_only|4"     # C3: expert hard routing (language-guided)
@@ -159,6 +161,7 @@ declare -A TIER_WALLTIME_MAP=(
   ["tier200"]="168:00:00"
   ["tier200_10_percent"]="168:00:00"
   ["tier200_10pct_8gpu"]="168:00:00"
+  ["tier200_full"]="168:00:00"
 )
 
 declare -A TIER_GPU_COUNT_MAP=(
@@ -167,6 +170,7 @@ declare -A TIER_GPU_COUNT_MAP=(
   ["tier200"]=4
   ["tier200_10_percent"]=4
   ["tier200_10pct_8gpu"]=4
+  ["tier200_full"]=4
 )
 
 declare -A TIER_NODE_COUNT_MAP=(
@@ -174,7 +178,7 @@ declare -A TIER_NODE_COUNT_MAP=(
   ["tier72"]=1
   ["tier200"]=1
   ["tier200_10_percent"]=1
-  ["tier200_10pct_8gpu"]=2
+  ["tier200_full"]=4
 )
 
 declare -A TIER_GPU_TYPE_MAP=(
@@ -183,6 +187,7 @@ declare -A TIER_GPU_TYPE_MAP=(
   ["tier200"]="${DEFAULT_GPU_TYPE}"
   ["tier200_10_percent"]="${DEFAULT_GPU_TYPE}"
   ["tier200_10pct_8gpu"]="${DEFAULT_GPU_TYPE}"
+  ["tier200_full"]="${DEFAULT_GPU_TYPE}"
 )
 
 declare -A TIER_PARTITION_MAP=(
@@ -191,6 +196,7 @@ declare -A TIER_PARTITION_MAP=(
   ["tier200"]="${DEFAULT_PARTITION}"
   ["tier200_10_percent"]="${DEFAULT_PARTITION}"
   ["tier200_10pct_8gpu"]="${DEFAULT_PARTITION}"
+  ["tier200_full"]="${DEFAULT_PARTITION}"
 )
 
 ENABLE_LM_EVAL_LISTENER=${ENABLE_LM_EVAL_LISTENER:-true}

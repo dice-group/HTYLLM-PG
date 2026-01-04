@@ -4,7 +4,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:h100:1
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH --time=08:00:00
 #SBATCH --partition=gpu
 #SBATCH --output=logs/lpr_ablation/hydra_%j.log
@@ -111,7 +111,10 @@ ENTRYPOINT=()
 LAUNCH_PREFIX=()
 if [[ -n "${ACCELERATE_CONFIG_FILE}" ]]; then
   # Deterministic rendezvous (avoid probe-then-use races with torch elastic).
-  if [[ -n "${SLURM_JOB_NODELIST:-}" ]]; then
+  if [[ -n "${MASTER_ADDR_OVERRIDE:-}" ]]; then
+    MASTER_ADDR="${MASTER_ADDR_OVERRIDE}"
+  elif [[ -n "${SLURM_JOB_NODELIST:-}" ]]; then
+    # Always use the same master host across nodes (avoid per-node hostname).
     MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
   else
     MASTER_ADDR="127.0.0.1"
@@ -119,6 +122,10 @@ if [[ -n "${ACCELERATE_CONFIG_FILE}" ]]; then
   MASTER_PORT="${MASTER_PORT:-$((20000 + (${SLURM_JOB_ID:-0} % 20000) ))}"
   export MASTER_ADDR MASTER_PORT
   echo "[INFO] accelerate rendezvous MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT}"
+  if [[ "${SLURM_NNODES:-1}" -gt 1 && "${SLURM_NODEID:-0}" -ne 0 ]]; then
+    "${REPO_ROOT}/scripts/comparison/wait_for_master.sh" \
+      "${MASTER_ADDR}" "${MASTER_PORT}" "${MASTER_CONNECT_TIMEOUT:-90}"
+  fi
   ACCELERATE_CMD=(
     accelerate launch
     --config_file "${ACCELERATE_CONFIG_FILE}"
@@ -137,7 +144,8 @@ if [[ -n "${ACCELERATE_CONFIG_FILE}" ]]; then
     else
       GPUS_PER_NODE=4
     fi
-    ACCELERATE_CMD+=(--num_machines "${SLURM_NNODES}" --machine_rank "${SLURM_NODEID:-0}" --num_processes "${GPUS_PER_NODE}")
+    TOTAL_PROCESSES=$((SLURM_NNODES * GPUS_PER_NODE))
+    ACCELERATE_CMD+=(--num_machines "${SLURM_NNODES}" --machine_rank "${SLURM_NODEID:-0}" --num_processes "${TOTAL_PROCESSES}")
     LAUNCH_PREFIX=(srun --ntasks="${SLURM_NNODES}" --ntasks-per-node=1 --export=ALL)
   fi
   ACCELERATE_CMD+=(--module)
