@@ -160,7 +160,10 @@ else
   fi
   
   # Run conversion with deepspeed (single GPU)
-  deepspeed --num_gpus=1 htyllm_pg/conversion_scripts/convert_ds_to_hf.py \
+  # Generate a random port to avoid collisions (default 29500 often taken)
+  export MASTER_PORT=$(shuf -i 10000-65535 -n 1)
+  
+  deepspeed --num_gpus=1 --master_port $MASTER_PORT htyllm_pg/conversion_scripts/convert_ds_to_hf.py \
     --checkpoint_path "$CHECKPOINT" \
     --output_dir "$HF_MODEL_PATH" \
     --config_path "$CONFIG_PATH"

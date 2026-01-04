@@ -12,6 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import CausalLMOutputWithPast
+from transformers.generation import GenerationMixin
 from htyllm_pg.model_builder import MoE_Transformer, moe_builder
 
 class HTYLLMConfig(PretrainedConfig):
@@ -44,7 +45,7 @@ class HTYLLMConfig(PretrainedConfig):
     def num_hidden_layers(self):
         return self.depth
 
-class HTYLLMForCausalLM(PreTrainedModel):
+class HTYLLMForCausalLM(PreTrainedModel, GenerationMixin):
     config_class = HTYLLMConfig
     
     def __init__(self, config):
@@ -151,6 +152,7 @@ def convert(args):
     wrapper_code = f"""
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import CausalLMOutputWithPast
+from transformers.generation import GenerationMixin
 import torch
 import deepspeed
 import inspect
@@ -166,7 +168,10 @@ if not deepspeed.comm.is_initialized():
         os.environ["LOCAL_RANK"] = "0"
         os.environ["WORLD_SIZE"] = "1"
         os.environ["MASTER_ADDR"] = "127.0.0.1"
-        os.environ["MASTER_PORT"] = "29500"
+        # Use a random port to avoid collisions
+        import random
+        port = random.randint(10000, 60000)
+        os.environ["MASTER_PORT"] = str(port)
 
     deepspeed.init_distributed(dist_backend="nccl", auto_mpi_discovery=False)
 
