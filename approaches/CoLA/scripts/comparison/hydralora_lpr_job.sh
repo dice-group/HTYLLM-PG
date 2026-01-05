@@ -4,7 +4,6 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:h100:1
-#SBATCH --mem=128G
 #SBATCH --time=08:00:00
 #SBATCH --partition=gpu
 #SBATCH --output=logs/lpr_ablation/hydra_%j.log
@@ -218,7 +217,7 @@ fi
   --per_device_train_batch_size "${TRAIN_BS}" \
   --per_device_eval_batch_size "${EVAL_BS}" \
   --gradient_accumulation_steps "${GRAD_ACC}" \
-  --logging_steps "${LOGGING_STEPS:-10}" \
+  --logging_steps "${LOGGING_STEPS:-50}" \
   --eval_strategy "${EVAL_STRATEGY:-steps}" \
   --eval_steps "${EVAL_STEPS:-5000}" \
   --save_steps "${SAVE_STEPS:-5000}" \
