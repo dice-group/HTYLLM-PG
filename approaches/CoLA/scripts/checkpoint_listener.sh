@@ -119,14 +119,28 @@ touch "$STATE"
 processed() { grep -Fxq "$1" "$STATE"; }
 mark() { echo "$1" >> "$STATE"; }
 
+resolve_eval_target() {
+  local ckpt_path=$1
+  if [[ -f "${ckpt_path}/adapter_config.json" ]]; then
+    echo "${ckpt_path}"
+    return
+  fi
+  if [[ -f "${ckpt_path}_adapter/adapter_config.json" ]]; then
+    echo "${ckpt_path}_adapter"
+    return
+  fi
+  echo "${ckpt_path}"
+}
+
 submit() {
   local ckpt_path=$1
   echo "[INFO] eval for ${ckpt_path}"
   local ckpt_label
   ckpt_label=$(basename "${ckpt_path}")
   local job_name="lm-eval_${WATCH_LABEL}_${ckpt_label}"
-  local job_log="logs/${job_name}_%j.log"
+  local job_log="${OUT}/logs/${job_name}_%j.log"
   local wandb_prefix="${WANDB_PREF}_${WATCH_LABEL}"
+  mkdir -p "${OUT}/logs"
   sbatch \
     --job-name="${job_name}" \
     --output="${job_log}" \
@@ -152,11 +166,18 @@ while true; do
   mapfile -t CKPTS < <(find "$WATCH" -maxdepth 1 -type d -name 'checkpoint-*' | sort -V)
 
   for ckpt in "${CKPTS[@]}"; do
-    processed "$ckpt" || submit "$ckpt"
+    eval_target=$(resolve_eval_target "$ckpt")
+    processed "$eval_target" || submit "$eval_target"
   done
 
   if [[ -f "$STOP" ]]; then
-    processed "$WATCH" || submit "$WATCH"
+    if [[ ${#CKPTS[@]} -gt 0 ]]; then
+      last_ckpt="${CKPTS[-1]}"
+      eval_target=$(resolve_eval_target "$last_ckpt")
+      processed "$eval_target" || submit "$eval_target"
+    else
+      processed "$WATCH" || submit "$WATCH"
+    fi
     echo "[INFO] Training done, exiting."
     exit 0
   fi

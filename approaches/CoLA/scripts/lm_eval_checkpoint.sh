@@ -42,6 +42,10 @@ WMODE=${WMODE:-shared}
 [[ -z "$CKPT" || -z "$OUTDIR" ]] && { echo "--checkpoint and --output-dir required"; exit 1; }
 [[ ! -d "$CKPT" ]] && { echo "Checkpoint not found: $CKPT"; exit 1; }
 
+if [[ ! -f "$CKPT/adapter_config.json" && -f "${CKPT}_adapter/adapter_config.json" ]]; then
+  CKPT="${CKPT}_adapter"
+fi
+
 MODEL_ARGS="pretrained=$CKPT,tokenizer=$TOK"
 if [[ -f "$CKPT/adapter_config.json" ]]; then
   BASE=${TOK}
@@ -64,8 +68,10 @@ fi
 mkdir -p "$OUTDIR" logs
 module purge
 module load toolchain/foss/2024a system/CUDA/12.6.0 lib/NCCL/2.22.3-GCCcore-13.3.0-CUDA-12.6.0
-source /opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3/etc/profile.d/conda.sh
-conda activate cola_llama_factory
+CONDA_BASE="${CONDA_BASE:-/opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3}"
+CONDA_ENV="${CONDA_ENV:-merlin}"
+source "${CONDA_BASE}/etc/profile.d/conda.sh"
+conda activate "${CONDA_ENV}"
 
 export PYTHONUNBUFFERED=1
 
