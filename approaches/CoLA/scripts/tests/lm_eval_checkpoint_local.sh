@@ -34,6 +34,10 @@ EXTRA=${EXTRA:-}
 [[ -z "${CKPT:-}" || -z "${OUTDIR:-}" ]] && { echo "--checkpoint and --output-dir required"; exit 1; }
 [[ ! -d "${CKPT}" ]] && { echo "Checkpoint not found: ${CKPT}"; exit 1; }
 
+if [[ ! -f "${CKPT}/adapter_config.json" && -f "${CKPT}_adapter/adapter_config.json" ]]; then
+  CKPT="${CKPT}_adapter"
+fi
+
 MODEL_ARGS="pretrained=${CKPT},tokenizer=${TOK}"
 if [[ -f "${CKPT}/adapter_config.json" ]]; then
   BASE=${TOK}

@@ -305,6 +305,7 @@ submit_listener_job() {
   cmd+=(
     "${CHECKPOINT_LISTENER_SCRIPT}"
     --watch-dir "${watch_dir}"
+    --output-dir "${watch_dir}/lm_eval"
     --eval-script "${LM_EVAL_SCRIPT}"
     --tokenizer "${model_path}"
     --tasks "${LM_EVAL_TASKS}"

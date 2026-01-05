@@ -41,11 +41,13 @@ export TORCH_EXTENSIONS_DIR="${TORCH_EXTENSIONS_DIR:-${XDG_CACHE_HOME}/torch_ext
 mkdir -p "${XDG_CACHE_HOME}" "${TRITON_CACHE_DIR}" "${TORCH_EXTENSIONS_DIR}"
 
 DATASET_DIR="${DATASET_DIR:-./LLaMA-Factory/data}"
+DIST_DEBUG="${DIST_DEBUG:-1}"
 TOKENIZED_PATH="${TOKENIZED_PATH:?TOKENIZED_PATH not set}"
 MODEL_NAME_OR_PATH="${MODEL_NAME_OR_PATH:?MODEL_NAME_OR_PATH not set}"
 DATASET_NAME="${DATASET_NAME:-c4}"
 EVAL_DATASET_NAME="${EVAL_DATASET_NAME:-${DATASET_NAME}}"
 ACCELERATE_CONFIG_FILE="${ACCELERATE_CONFIG_FILE:-}"
+export ACCELERATE_CONFIG_FILE
 
 BF16="${BF16:-True}"
 FP16="${FP16:-False}"
@@ -75,48 +77,73 @@ ENTRYPOINT=()
 LAUNCH_PREFIX=()
 if [[ -n "${ACCELERATE_CONFIG_FILE}" ]]; then
   # Deterministic rendezvous (avoid probe-then-use races with torch elastic).
+  MASTER_HOST=""
+  MASTER_ADDR_SOURCE="fallback"
   if [[ -n "${MASTER_ADDR_OVERRIDE:-}" ]]; then
     MASTER_ADDR="${MASTER_ADDR_OVERRIDE}"
+    MASTER_HOST="${MASTER_ADDR_OVERRIDE}"
+    MASTER_ADDR_SOURCE="override"
   elif [[ -n "${SLURM_JOB_NODELIST:-}" ]]; then
     # Always use the same master host across nodes (avoid per-node hostname).
-    MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
+    MASTER_HOST=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
+    MASTER_ADDR=$(getent ahosts "${MASTER_HOST}" | awk '$1 ~ /^[0-9]+(\.[0-9]+){3}$/ {print $1; exit}')
+    if [[ -z "${MASTER_ADDR}" ]]; then
+      MASTER_ADDR="${MASTER_HOST}"
+    else
+      MASTER_ADDR_SOURCE="getent_ahosts"
+    fi
   else
     MASTER_ADDR="127.0.0.1"
+    MASTER_HOST="${MASTER_ADDR}"
+    MASTER_ADDR_SOURCE="localhost"
   fi
   MASTER_PORT="${MASTER_PORT:-$((20000 + (${SLURM_JOB_ID:-0} % 20000) ))}"
   export MASTER_ADDR MASTER_PORT
-  echo "[INFO] accelerate rendezvous MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT}"
-  if [[ "${SLURM_NNODES:-1}" -gt 1 && "${SLURM_NODEID:-0}" -ne 0 ]]; then
-    "${REPO_ROOT}/scripts/comparison/wait_for_master.sh" \
-      "${MASTER_ADDR}" "${MASTER_PORT}" "${MASTER_CONNECT_TIMEOUT:-90}"
+  echo "[INFO] accelerate rendezvous MASTER_HOST=${MASTER_HOST} MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT} source=${MASTER_ADDR_SOURCE}"
+  if [[ "${DIST_DEBUG:-}" == "1" && "${SLURM_NNODES:-1}" -gt 1 ]]; then
+    srun --ntasks="${SLURM_NNODES}" --ntasks-per-node=1 --export=ALL       bash -c "echo host=\$(hostname) nodeid=\${SLURM_NODEID} master_host=${MASTER_HOST} master_addr=${MASTER_ADDR}; getent ahosts ${MASTER_HOST} | head -n 3"
   fi
-  ACCELERATE_CMD=(
-    accelerate launch
-    --config_file "${ACCELERATE_CONFIG_FILE}"
-    --main_process_ip "${MASTER_ADDR}"
-    --main_process_port "${MASTER_PORT}"
-  )
-  if [[ "${SLURM_NNODES:-1}" -gt 1 ]]; then
-    if [[ -n "${SLURM_GPUS_ON_NODE:-}" ]]; then
-      GPUS_PER_NODE=$(echo "${SLURM_GPUS_ON_NODE}" | grep -oE '[0-9]+' | head -n 1)
-    elif [[ -n "${SLURM_JOB_GPUS:-}" ]]; then
-      IFS=',' read -ra _gpu_list <<< "${SLURM_JOB_GPUS}"
-      GPUS_PER_NODE=${#_gpu_list[@]}
-    elif [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
-      IFS=',' read -ra _gpu_list <<< "${CUDA_VISIBLE_DEVICES}"
-      GPUS_PER_NODE=${#_gpu_list[@]}
-    else
-      GPUS_PER_NODE=4
-    fi
-    TOTAL_PROCESSES=$((SLURM_NNODES * GPUS_PER_NODE))
-    ACCELERATE_CMD+=(--num_machines "${SLURM_NNODES}" --machine_rank "${SLURM_NODEID:-0}" --num_processes "${TOTAL_PROCESSES}")
-    LAUNCH_PREFIX=(srun --ntasks="${SLURM_NNODES}" --ntasks-per-node=1 --export=ALL)
-  fi
-  ACCELERATE_CMD+=(--module)
-  # IMPORTANT: do not call `llamafactory-cli train` under accelerate, because LF will torchrun again.
-  ENTRYPOINT=(llamafactory.launcher)
-fi
 
+  GPUS_PER_NODE_SOURCE="default"
+  if [[ -n "${SLURM_GPUS_ON_NODE:-}" ]]; then
+    GPUS_PER_NODE_SOURCE="SLURM_GPUS_ON_NODE=${SLURM_GPUS_ON_NODE}"
+    GPUS_PER_NODE=$(echo "${SLURM_GPUS_ON_NODE}" | awk -F: '{print $NF}' | grep -oE '[0-9]+' | head -n 1)
+  elif [[ -n "${SLURM_JOB_GPUS:-}" ]]; then
+    GPUS_PER_NODE_SOURCE="SLURM_JOB_GPUS=${SLURM_JOB_GPUS}"
+    IFS=',' read -ra _gpu_list <<< "${SLURM_JOB_GPUS}"
+    GPUS_PER_NODE=${#_gpu_list[@]}
+  elif [[ -n "${CUDA_VISIBLE_DEVICES:-}" ]]; then
+    GPUS_PER_NODE_SOURCE="CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}"
+    IFS=',' read -ra _gpu_list <<< "${CUDA_VISIBLE_DEVICES}"
+    GPUS_PER_NODE=${#_gpu_list[@]}
+  else
+    GPUS_PER_NODE=1
+  fi
+  TOTAL_PROCESSES=$((SLURM_NNODES * GPUS_PER_NODE))
+  export TOTAL_PROCESSES
+  echo "[INFO] dist config: nnodes=${SLURM_NNODES} node_id=${SLURM_NODEID:-0} gpus_per_node=${GPUS_PER_NODE} total_procs=${TOTAL_PROCESSES} source=${GPUS_PER_NODE_SOURCE}"
+
+  if [[ "${SLURM_NNODES:-1}" -gt 1 ]]; then
+    LAUNCH_PREFIX=(srun --ntasks="${SLURM_NNODES}" --ntasks-per-node=1 --export=ALL)
+    ACCELERATE_CMD=(
+      bash -lc
+      "if [[ ${SLURM_NNODES} -gt 1 && \$SLURM_NODEID -ne 0 ]]; then         bash ${REPO_ROOT}/scripts/comparison/wait_for_master.sh ${MASTER_ADDR} ${MASTER_PORT} ${MASTER_CONNECT_TIMEOUT:-90};       fi;       accelerate launch         --config_file ${ACCELERATE_CONFIG_FILE}         --num_machines ${SLURM_NNODES}         --num_processes ${TOTAL_PROCESSES}         --machine_rank \$SLURM_NODEID         --main_process_ip ${MASTER_ADDR}         --main_process_port ${MASTER_PORT}         --module llamafactory.launcher \"\$@\""
+    )
+    ENTRYPOINT=("_")
+  else
+    ACCELERATE_CMD=(
+      accelerate launch
+      --config_file "${ACCELERATE_CONFIG_FILE}"
+      --main_process_ip "${MASTER_ADDR}"
+      --main_process_port "${MASTER_PORT}"
+      --num_machines 1
+      --machine_rank 0
+      --num_processes "${TOTAL_PROCESSES}"
+    )
+    ACCELERATE_CMD+=(--module)
+    ENTRYPOINT=(llamafactory.launcher)
+  fi
+fi
 if [[ "${#ENTRYPOINT[@]}" -eq 0 ]]; then
   LLAMAFATORY_CLI="$(command -v llamafactory-cli || true)"
   if [[ -z "${LLAMAFATORY_CLI}" ]]; then
