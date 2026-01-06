@@ -181,6 +181,7 @@ fi
 echo "[INFO] Running lm_eval..."
 
 # Build lm_eval command
+export HF_DATASETS_OFFLINE=1
 LM_EVAL_CMD="lm_eval \
   --model hf \
   --model_args pretrained=${HF_MODEL_PATH},trust_remote_code=True \
