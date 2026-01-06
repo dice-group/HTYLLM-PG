@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -7,8 +8,40 @@ from typing import Iterable, Optional
 
 import torch
 
+logger = logging.getLogger(__name__)
+
 
 _MODEL_CACHE: dict[tuple[str, str], object] = {}
+
+
+def _log_adapter_stats(model: torch.nn.Module) -> None:
+    try:
+        names = [name for name, _ in model.named_parameters()]
+    except Exception:  # noqa: BLE001
+        return
+    router_count = sum(".router." in name for name in names)
+    expert_count = sum(".expert_" in name for name in names)
+    lora_count = sum(".lora_" in name for name in names)
+    logger.info(
+        "Adapter params: lora=%d router=%d expert=%d",
+        lora_count,
+        router_count,
+        expert_count,
+    )
+    cfg = getattr(model, "peft_config", None)
+    if cfg:
+        for key, val in cfg.items():
+            num_experts = getattr(val, "num_experts", None)
+            heads_per_expert = getattr(val, "heads_per_expert", None)
+            router_mode = getattr(val, "router_mode", None)
+            if num_experts or heads_per_expert or router_mode:
+                logger.info(
+                    "Adapter config[%s]: num_experts=%s heads_per_expert=%s router_mode=%s",
+                    key,
+                    num_experts,
+                    heads_per_expert,
+                    router_mode,
+                )
 
 
 def _parse_torch_dtype(value: Optional[str]):
@@ -203,7 +236,9 @@ def _run_eval(
         if device_map is not None:
             load_kwargs["device_map"] = device_map
         base_model = AutoModelForCausalLM.from_pretrained(pretrained, **load_kwargs)
+        logger.info("Base model device: %s", next(base_model.parameters()).device)
         peft_model = PeftModel.from_pretrained(base_model, peft, is_trainable=False)
+        _log_adapter_stats(peft_model)
         _MODEL_CACHE[model_key] = peft_model
 
     HFLMWithLang = _build_hflm_with_lang_class(HFLM)
@@ -280,6 +315,10 @@ def main() -> int:
     parser.add_argument("--log-router-metrics", action="store_true", help="Log CoLA/Hydra router metrics from PEFT")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s|%(asctime)s|%(name)s:%(lineno)d >> %(message)s",
+    )
 
     ckpt = _resolve_adapter_dir(Path(args.checkpoint))
     if not ckpt.exists():
