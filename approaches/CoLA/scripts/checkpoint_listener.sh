@@ -119,6 +119,54 @@ touch "$STATE"
 processed() { grep -Fxq "$1" "$STATE"; }
 mark() { echo "$1" >> "$STATE"; }
 
+SPLIT_ENABLE=${LM_EVAL_SPLIT_ENABLE:-true}
+BELEBELE_CHUNKS=${LM_EVAL_BELEBELE_CHUNKS:-4}
+
+build_task_groups() {
+  local tasks_csv=$1
+  local -a all_tasks=()
+  local -a belebele=()
+  local -a others=()
+  local -a groups=()
+
+  IFS=',' read -r -a all_tasks <<< "$tasks_csv"
+  for t in "${all_tasks[@]}"; do
+    if [[ "$t" == belebele_* ]]; then
+      belebele+=("$t")
+    elif [[ -n "$t" ]]; then
+      others+=("$t")
+    fi
+  done
+
+  if [[ "${SPLIT_ENABLE}" != "true" || ${#belebele[@]} -eq 0 ]]; then
+    groups+=("all|$tasks_csv")
+    printf "%s\n" "${groups[@]}"
+    return
+  fi
+
+  local chunk_count=${BELEBELE_CHUNKS}
+  [[ "$chunk_count" -lt 1 ]] && chunk_count=1
+  local chunk_size=$(( ( ${#belebele[@]} + chunk_count - 1 ) / chunk_count ))
+  local idx=0
+  for ((i=0; i<${#belebele[@]}; i+=chunk_size)); do
+    local slice=("${belebele[@]:i:chunk_size}")
+    local slice_csv
+    slice_csv=$(IFS=,; echo "${slice[*]}")
+    idx=$((idx + 1))
+    groups+=("belebele_chunk${idx}|${slice_csv}")
+  done
+
+  for t in "${others[@]}"; do
+    if [[ "$t" == "xnli" ]]; then
+      groups+=("xnli|xnli")
+    else
+      groups+=("other|$t")
+    fi
+  done
+
+  printf "%s\n" "${groups[@]}"
+}
+
 resolve_eval_target() {
   local ckpt_path=$1
   local adapter_path="${ckpt_path}_adapter"
@@ -166,22 +214,25 @@ is_old_enough() {
 
 submit() {
   local ckpt_path=$1
-  echo "[INFO] eval for ${ckpt_path}"
+  local group_label=$2
+  local group_tasks=$3
+  echo "[INFO] eval for ${ckpt_path} (${group_label})"
   local ckpt_label
   ckpt_label=$(basename "${ckpt_path}")
-  local job_name="lm-eval_${WATCH_LABEL}_${ckpt_label}"
-  local job_log="${OUT}/logs/${job_name}_%j.log"
+  local job_name="lm-eval_${WATCH_LABEL}_${ckpt_label}_${group_label}"
+  local eval_out_dir="${OUT}/${ckpt_label}/${group_label}"
+  local job_log="${eval_out_dir}/${job_name}_%j.log"
   local wandb_prefix="${WANDB_PREF}_${WATCH_LABEL}"
   local adapter_path="${ckpt_path}_adapter"
   local adapter_sharded="${ckpt_path}_adapter_sharded"
-  mkdir -p "${OUT}/logs"
+  mkdir -p "${eval_out_dir}"
   sbatch \
     --job-name="${job_name}" \
     --output="${job_log}" \
     "$SCRIPT" \
     --checkpoint "${ckpt_path}" \
-    --output-dir "$OUT" \
-    --tasks "$TASKS" \
+    --output-dir "${eval_out_dir}" \
+    --tasks "${group_tasks}" \
     --batch-size "$BS" \
     --wandb-project "$WANDB_PROJ" \
     --wandb-prefix "${wandb_prefix}" \
@@ -192,9 +243,9 @@ submit() {
     ${TOK:+--tokenizer "$TOK"} \
     ${EXTRA:+--extra-args "$EXTRA"} \
   && {
-    mark "${ckpt_path}"
+    mark "${ckpt_path}|${group_label}"
     if [[ -d "${adapter_sharded}" && "${ckpt_path}" != *"_adapter" && "${ckpt_path}" != *"_adapter_sharded" ]]; then
-      mark "${adapter_path}"
+      mark "${adapter_path}|${group_label}"
     fi
   }
 }
@@ -210,7 +261,11 @@ while true; do
     if ! is_old_enough "$ckpt"; then
       continue
     fi
-    processed "$eval_target" || submit "$eval_target"
+    mapfile -t TASK_GROUPS < <(build_task_groups "$TASKS")
+    for group in "${TASK_GROUPS[@]}"; do
+      IFS='|' read -r group_label group_tasks <<< "$group"
+      processed "${eval_target}|${group_label}" || submit "$eval_target" "$group_label" "$group_tasks"
+    done
   done
 
   if [[ -f "$STOP" ]]; then
@@ -218,7 +273,11 @@ while true; do
       last_ckpt="${CKPTS[-1]}"
       eval_target=$(resolve_eval_target "$last_ckpt")
       if [[ -n "$eval_target" ]]; then
-        processed "$eval_target" || submit "$eval_target"
+        mapfile -t TASK_GROUPS < <(build_task_groups "$TASKS")
+        for group in "${TASK_GROUPS[@]}"; do
+          IFS='|' read -r group_label group_tasks <<< "$group"
+          processed "${eval_target}|${group_label}" || submit "$eval_target" "$group_label" "$group_tasks"
+        done
       fi
     else
       processed "$WATCH" || submit "$WATCH"

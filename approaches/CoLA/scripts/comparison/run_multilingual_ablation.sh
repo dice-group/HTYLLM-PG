@@ -299,7 +299,7 @@ submit_listener_job() {
   local tier_label
   tier_label="$(basename "$(dirname "${watch_dir}")")"
   local eval_out_dir="${LOG_DIR}/${tier_label}/eval"
-  local log_path="${LOG_DIR}/listener/${listener_label}_listener_%j.log"
+  local log_path="${eval_out_dir}/listener.log"
   local wandb_group
   wandb_group="$(basename "${watch_dir}")"
   mkdir -p "${eval_out_dir}"

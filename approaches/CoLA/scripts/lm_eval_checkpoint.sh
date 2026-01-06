@@ -53,7 +53,7 @@ WMODE=${WMODE:-shared}
 LANG_MODE=${LANG_MODE:-${LM_EVAL_LANG_MODE:-both}}
 USE_LANG_WRAPPER=${LM_EVAL_USE_LANG_WRAPPER:-auto}
 LOG_ROUTER_METRICS=${LM_EVAL_LOG_ROUTER_METRICS:-true}
-LIMIT=${LM_EVAL_LIMIT:-}
+LIMIT=${LM_EVAL_LIMIT:-500}
 
 [[ -z "$CKPT" || -z "$OUTDIR" ]] && { echo "--checkpoint and --output-dir required"; exit 1; }
 [[ ! -d "$CKPT" ]] && { echo "Checkpoint not found: $CKPT"; exit 1; }
