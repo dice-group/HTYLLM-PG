@@ -65,6 +65,7 @@ FLASH_ATTN="${FLASH_ATTN:-fa2}"
 AUTO_FIND_BATCH_SIZE="${AUTO_FIND_BATCH_SIZE:-false}"
 
 TRAIN_EPOCHS="${NUM_TRAIN_EPOCHS:-1}"
+MAX_STEPS="${MAX_STEPS:-}"
 TRAIN_LR="${LEARNING_RATE:-2e-4}"
 TRAIN_BS="${PER_DEVICE_TRAIN_BATCH_SIZE:-2}"
 EVAL_BS="${PER_DEVICE_EVAL_BATCH_SIZE:-${TRAIN_BS}}"
@@ -211,6 +212,7 @@ fi
   --overwrite_output_dir \
   --run_name "${RUN_NAME}" \
   --num_train_epochs "${TRAIN_EPOCHS}" \
+  ${MAX_STEPS:+--max_steps "${MAX_STEPS}"} \
   --learning_rate "${TRAIN_LR}" \
   --lr_scheduler_type "${LR_SCHEDULER_TYPE:-cosine}" \
   --warmup_ratio "${WARMUP_RATIO:-0.03}" \

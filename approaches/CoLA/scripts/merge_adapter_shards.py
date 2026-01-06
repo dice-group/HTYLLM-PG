@@ -94,6 +94,13 @@ def main():
 
     adapter_state = get_peft_model_state_dict(peft_model)
     reader = FileSystemReader(str(adapter_sharded_dir))
+    try:
+        metadata = reader.read_metadata()
+        shard_keys = set(metadata.state_dict_metadata.keys())
+        if shard_keys:
+            adapter_state = {k: v for k, v in adapter_state.items() if k in shard_keys}
+    except Exception:
+        shard_keys = set()
     dcp_load(adapter_state, storage_reader=reader)
 
     output_dir.mkdir(parents=True, exist_ok=True)
