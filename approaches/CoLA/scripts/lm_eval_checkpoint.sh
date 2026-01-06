@@ -50,6 +50,11 @@ LIMIT=${LM_EVAL_LIMIT:-}
 if [[ ! -f "$CKPT/adapter_config.json" && -f "${CKPT}_adapter/adapter_config.json" ]]; then
   CKPT="${CKPT}_adapter"
 fi
+if [[ ! -f "$CKPT/adapter_config.json" && -d "${CKPT}_adapter_sharded" ]]; then
+  echo "[ERROR] Found sharded adapter checkpoint at ${CKPT}_adapter_sharded but no merged adapter." >&2
+  echo "        Run scripts/merge_adapter_shards.py (torchrun) to produce ${CKPT}_adapter first." >&2
+  exit 1
+fi
 
 MODEL_ARGS="pretrained=$CKPT,tokenizer=$TOK"
 if [[ -f "$CKPT/adapter_config.json" ]]; then
