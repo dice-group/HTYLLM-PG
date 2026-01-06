@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-"""Minimal lm-eval wrapper to run with/without language_ids.
-
-KISS design: run per-task and inject a fixed language_id per task.
-Requires lm_eval to be installed in the active environment.
-"""
-from __future__ import annotations
-
 import argparse
 import json
 import os
@@ -17,6 +9,32 @@ import torch
 
 
 _MODEL_CACHE: dict[tuple[str, str], object] = {}
+
+
+def _parse_torch_dtype(value: Optional[str]):
+    if value is None:
+        return None
+    val = str(value).strip().lower()
+    if val in ("", "none", "null"):
+        return None
+    if val == "auto":
+        return "auto"
+    if val in ("bf16", "bfloat16"):
+        return torch.bfloat16
+    if val in ("fp16", "float16", "half"):
+        return torch.float16
+    if val in ("fp32", "float32", "float"):
+        return torch.float32
+    raise ValueError(f"Unsupported torch dtype: {value}")
+
+
+def _normalize_device_map(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    val = str(value).strip()
+    if not val or val.lower() in ("none", "null"):
+        return None
+    return val
 
 
 def _resolve_adapter_dir(path: Path) -> Path:
@@ -46,7 +64,7 @@ def _parse_tasks(tasks: str) -> list[str]:
 
 
 def _task_to_lang_code(task: str) -> Optional[str]:
-    # KISS: take suffix after first underscore, e.g. belebele_eng_Latn -> eng_Latn
+    # take suffix after first underscore, e.g. belebele_eng_Latn -> eng_Latn
     if "_" not in task:
         return None
     return task.split("_", 1)[1]
@@ -129,6 +147,8 @@ def _run_eval(
     wandb_config_args: Optional[str],
     log_samples: bool,
     log_router_metrics: bool,
+    torch_dtype,
+    device_map: Optional[str],
 ):
     # Ensure repo-local PEFT (with CoLA/Hydra) is used inside lm_eval.
     repo_root = Path(__file__).resolve().parents[1]
@@ -177,7 +197,12 @@ def _run_eval(
 
     model_key = (pretrained, peft)
     if model_key not in _MODEL_CACHE:
-        base_model = AutoModelForCausalLM.from_pretrained(pretrained)
+        load_kwargs = {"low_cpu_mem_usage": True}
+        if torch_dtype is not None:
+            load_kwargs["torch_dtype"] = torch_dtype
+        if device_map is not None:
+            load_kwargs["device_map"] = device_map
+        base_model = AutoModelForCausalLM.from_pretrained(pretrained, **load_kwargs)
         peft_model = PeftModel.from_pretrained(base_model, peft, is_trainable=False)
         _MODEL_CACHE[model_key] = peft_model
 
@@ -239,6 +264,16 @@ def main() -> int:
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--limit", type=float, default=None, help="lm_eval limit per task")
     parser.add_argument("--mode", choices=["with_ids", "no_ids", "both"], default="both")
+    parser.add_argument(
+        "--torch-dtype",
+        default=os.environ.get("LM_EVAL_TORCH_DTYPE"),
+        help="Torch dtype for model load (auto|bf16|fp16|fp32).",
+    )
+    parser.add_argument(
+        "--device-map",
+        default=os.environ.get("LM_EVAL_DEVICE_MAP"),
+        help="Optional device_map for model load (e.g. auto).",
+    )
     parser.add_argument("--wandb-args", default=None, help="Comma args for wandb.init, e.g. project=lm-eval,job_type=eval")
     parser.add_argument("--wandb-config-args", default=None, help="Comma args for wandb.config.update")
     parser.add_argument("--log-samples", action="store_true", help="Log lm_eval samples in results/W&B")
@@ -255,6 +290,10 @@ def main() -> int:
 
     lang_list = _load_language_list(ckpt)
     lang_map = _build_lang_id_map(lang_list)
+    torch_dtype = _parse_torch_dtype(args.torch_dtype)
+    if torch_dtype is None and args.device.startswith("cuda"):
+        torch_dtype = "auto"
+    device_map = _normalize_device_map(args.device_map)
 
     # Build HF model_args for lm_eval
     base_model = args.tokenizer
@@ -281,6 +320,8 @@ def main() -> int:
             wandb_config_args=args.wandb_config_args,
             log_samples=args.log_samples,
             log_router_metrics=args.log_router_metrics,
+            torch_dtype=torch_dtype,
+            device_map=device_map,
         )
 
     if args.mode in ("with_ids", "both"):
@@ -306,6 +347,8 @@ def main() -> int:
                 wandb_config_args=args.wandb_config_args,
                 log_samples=args.log_samples,
                 log_router_metrics=args.log_router_metrics,
+                torch_dtype=torch_dtype,
+                device_map=device_map,
             )
 
     return 0
