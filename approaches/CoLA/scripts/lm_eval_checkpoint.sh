@@ -2,15 +2,23 @@
 #SBATCH --job-name=cola-lm-eval
 #SBATCH --gres=gpu:h100:1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
-#SBATCH --time=04:00:00
+#SBATCH --mem=128G
+#SBATCH --time=08:00:00
 #SBATCH --partition=gpu
 #SBATCH --output=logs/lm_eval_%x_%j.log
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="${REPO_ROOT:-}"
+if [[ -z "${REPO_ROOT}" && -n "${SLURM_SUBMIT_DIR:-}" ]]; then
+  if [[ -f "${SLURM_SUBMIT_DIR}/scripts/merge_adapter_shards.py" ]]; then
+    REPO_ROOT="${SLURM_SUBMIT_DIR}"
+  fi
+fi
+if [[ -z "${REPO_ROOT}" ]]; then
+  REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -65,6 +73,10 @@ PY
     base_model="${TOK}"
   fi
   if [[ -n "${base_model}" ]]; then
+    if [[ ! -f "${REPO_ROOT}/scripts/merge_adapter_shards.py" ]]; then
+      echo "[ERROR] merge_adapter_shards.py not found under ${REPO_ROOT}/scripts." >&2
+      exit 1
+    fi
     python3 "${REPO_ROOT}/scripts/merge_adapter_shards.py" \
       --adapter-sharded-dir "${CKPT}_adapter_sharded" \
       --output-dir "${CKPT}_adapter" \

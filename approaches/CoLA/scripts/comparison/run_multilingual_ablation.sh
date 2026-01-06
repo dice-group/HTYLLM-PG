@@ -47,6 +47,7 @@ mkdir -p "${LOG_DIR}" "${OUTPUT_ROOT}"
 export CONDA_BASE CONDA_ENV MODULE_INIT
 export DATASET_NAME DATASET_DIR
 export LANGUAGE_COLUMN
+export REPO_ROOT
 export WANDB_PROJECT WANDB_ENTITY WANDB_RUN_GROUP
 export FLASH_ATTN
 export AUTO_FIND_BATCH_SIZE
@@ -302,7 +303,7 @@ submit_listener_job() {
   local wandb_group
   wandb_group="$(basename "${watch_dir}")"
   mkdir -p "${eval_out_dir}"
-  local cmd=(sbatch "--output=${log_path}")
+  local cmd=(sbatch "--output=${log_path}" "--export=ALL,REPO_ROOT=${REPO_ROOT}")
   if [[ -n "${LISTENER_SBATCH_ARGS}" ]]; then
     cmd+=(${LISTENER_SBATCH_ARGS})
   fi

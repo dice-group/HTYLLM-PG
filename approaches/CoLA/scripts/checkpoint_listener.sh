@@ -154,6 +154,8 @@ submit() {
   local job_name="lm-eval_${WATCH_LABEL}_${ckpt_label}"
   local job_log="${OUT}/logs/${job_name}_%j.log"
   local wandb_prefix="${WANDB_PREF}_${WATCH_LABEL}"
+  local adapter_path="${ckpt_path}_adapter"
+  local adapter_sharded="${ckpt_path}_adapter_sharded"
   mkdir -p "${OUT}/logs"
   sbatch \
     --job-name="${job_name}" \
@@ -171,7 +173,12 @@ submit() {
     --wandb-mode "${WANDB_MODE}" \
     ${TOK:+--tokenizer "$TOK"} \
     ${EXTRA:+--extra-args "$EXTRA"} \
-  && mark "${ckpt_path}"
+  && {
+    mark "${ckpt_path}"
+    if [[ -d "${adapter_sharded}" && "${ckpt_path}" != *"_adapter" && "${ckpt_path}" != *"_adapter_sharded" ]]; then
+      mark "${adapter_path}"
+    fi
+  }
 }
 
 echo "[INFO] Watching $WATCH"
