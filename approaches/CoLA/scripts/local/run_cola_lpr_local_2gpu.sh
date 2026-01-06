@@ -141,6 +141,7 @@ fi
     --eval-script "${REPO_ROOT}/scripts/tests/lm_eval_checkpoint_local.sh" \
     --tasks "${LM_EVAL_TASKS}" \
     --batch-size "${LM_EVAL_BATCH_SIZE}" \
+    --tokenizer "${MODEL_NAME_OR_PATH}" \
     --wandb-project "${LM_EVAL_WANDB_PROJECT}" \
     --wandb-prefix "${LM_EVAL_WANDB_PREFIX}" \
     --wandb-mode "${LM_EVAL_WANDB_MODE}" \

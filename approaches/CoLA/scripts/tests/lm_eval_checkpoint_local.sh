@@ -42,6 +42,7 @@ LIMIT=${LM_EVAL_LIMIT:-}
 [[ -z "${CKPT:-}" || -z "${OUTDIR:-}" ]] && { echo "--checkpoint and --output-dir required"; exit 1; }
 [[ ! -d "${CKPT}" ]] && { echo "Checkpoint not found: ${CKPT}"; exit 1; }
 
+ORIG_CKPT="${CKPT}"
 if [[ ! -f "${CKPT}/adapter_config.json" && -f "${CKPT}_adapter/adapter_config.json" ]]; then
   CKPT="${CKPT}_adapter"
 fi
@@ -54,7 +55,7 @@ fi
 MODEL_ARGS="pretrained=${CKPT},tokenizer=${TOK}"
 if [[ -f "${CKPT}/adapter_config.json" ]]; then
   BASE=${TOK}
-  if [[ -z "${BASE}" || "${BASE}" == "${CKPT}" ]]; then
+  if [[ -z "${BASE}" || "${BASE}" == "${CKPT}" || "${BASE}" == "${ORIG_CKPT}" ]]; then
     BASE=$(python3 - <<'PY' "${CKPT}/adapter_config.json"
 import json, sys
 cfg = json.load(open(sys.argv[1]))
