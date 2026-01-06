@@ -136,6 +136,10 @@ resolve_eval_target() {
     fi
   fi
   if [[ -d "${adapter_sharded}" ]]; then
+    if [[ ! -f "${adapter_sharded}/.done" ]]; then
+      echo ""
+      return
+    fi
     echo "${ckpt_path}"
     return
   fi
@@ -144,6 +148,20 @@ resolve_eval_target() {
     return
   fi
   echo ""
+}
+
+is_old_enough() {
+  local path=$1
+  local min_age=${MIN_CKPT_AGE_SECONDS:-300}
+  if [[ "${min_age}" -le 0 ]]; then
+    return 0
+  fi
+  local now
+  now=$(date +%s)
+  local mtime
+  mtime=$(stat -c %Y "$path" 2>/dev/null || echo 0)
+  local age=$((now - mtime))
+  [[ "${age}" -ge "${min_age}" ]]
 }
 
 submit() {
@@ -189,6 +207,9 @@ while true; do
   for ckpt in "${CKPTS[@]}"; do
     eval_target=$(resolve_eval_target "$ckpt")
     [[ -z "$eval_target" ]] && continue
+    if ! is_old_enough "$ckpt"; then
+      continue
+    fi
     processed "$eval_target" || submit "$eval_target"
   done
 
