@@ -23,6 +23,7 @@ while [[ $# -gt 0 ]]; do
     --wandb-resume)  WRESUME=$2; shift 2;;
     --wandb-mode)    WMODE=$2; shift 2;;
     --wandb-job-type) WJOB=$2; shift 2;;
+    --lang-mode)     LANG_MODE=$2; shift 2;;
     --extra-args)    EXTRA=$2; shift 2;;
     *) echo "Unknown argument: $1"; exit 1;;
   esac
@@ -38,6 +39,10 @@ WGROUP=${WGROUP:-}
 WJOB=${WJOB:-checkpoint_eval}
 WRESUME=${WRESUME:-allow}
 WMODE=${WMODE:-shared}
+LANG_MODE=${LANG_MODE:-${LM_EVAL_LANG_MODE:-both}}
+USE_LANG_WRAPPER=${LM_EVAL_USE_LANG_WRAPPER:-auto}
+LOG_ROUTER_METRICS=${LM_EVAL_LOG_ROUTER_METRICS:-true}
+LIMIT=${LM_EVAL_LIMIT:-}
 
 [[ -z "$CKPT" || -z "$OUTDIR" ]] && { echo "--checkpoint and --output-dir required"; exit 1; }
 [[ ! -d "$CKPT" ]] && { echo "Checkpoint not found: $CKPT"; exit 1; }
@@ -96,14 +101,52 @@ if [[ -n "${WJOB}" ]]; then
   WANDB_ARGS="${WANDB_ARGS},job_type=${WJOB}"
 fi
 
-echo "Running lm-eval on $LABEL..."
-lm_eval \
-  --model hf \
-  --model_args "$MODEL_ARGS" \
-  --tasks "$TASKS" \
-  --batch_size "$BS" \
-  --output_path "$OUTFILE" \
-  --wandb_args "$WANDB_ARGS" \
-  $EXTRA
+HAS_LANGUAGE_LIST="false"
+if [[ -f "$CKPT/adapter_config.json" ]]; then
+  HAS_LANGUAGE_LIST=$(python3 - <<'PY' "$CKPT/adapter_config.json"
+import json
+import sys
+cfg = json.load(open(sys.argv[1]))
+print("true" if cfg.get("language_list") else "false")
+PY
+)
+fi
+
+USE_LANG="false"
+if [[ "$USE_LANG_WRAPPER" == "true" ]]; then
+  USE_LANG="true"
+elif [[ "$USE_LANG_WRAPPER" == "auto" && "$HAS_LANGUAGE_LIST" == "true" ]]; then
+  USE_LANG="true"
+fi
+
+if [[ "$USE_LANG" == "true" && -f "$CKPT/adapter_config.json" ]]; then
+  echo "Running lm-eval (with and without language ids) on $LABEL..."
+  WRAPPER_ARGS=(
+    "--checkpoint" "$CKPT"
+    "--tokenizer" "$TOK_USE"
+    "--tasks" "$TASKS"
+    "--batch-size" "$BS"
+    "--output-dir" "$OUTDIR"
+    "--mode" "$LANG_MODE"
+    "--wandb-args" "$WANDB_ARGS"
+  )
+  if [[ -n "$LIMIT" ]]; then
+    WRAPPER_ARGS+=("--limit" "$LIMIT")
+  fi
+  if [[ "$LOG_ROUTER_METRICS" == "true" ]]; then
+    WRAPPER_ARGS+=("--log-router-metrics")
+  fi
+  python3 scripts/lm_eval_language_ids.py "${WRAPPER_ARGS[@]}" $EXTRA
+else
+  echo "Running lm-eval on $LABEL..."
+  lm_eval \
+    --model hf \
+    --model_args "$MODEL_ARGS" \
+    --tasks "$TASKS" \
+    --batch_size "$BS" \
+    --output_path "$OUTFILE" \
+    --wandb_args "$WANDB_ARGS" \
+    $EXTRA
+fi
 
 echo "Done!"

@@ -121,12 +121,21 @@ mark() { echo "$1" >> "$STATE"; }
 
 resolve_eval_target() {
   local ckpt_path=$1
+  local adapter_path="${ckpt_path}_adapter"
   if [[ -f "${ckpt_path}/adapter_config.json" ]]; then
-    echo "${ckpt_path}"
-    return
+    if [[ -f "${ckpt_path}/adapter_model.safetensors" || -f "${ckpt_path}/adapter_model.bin" ]]; then
+      echo "${ckpt_path}"
+      return
+    fi
   fi
-  if [[ -f "${ckpt_path}_adapter/adapter_config.json" ]]; then
-    echo "${ckpt_path}_adapter"
+  if [[ -f "${adapter_path}/adapter_config.json" ]]; then
+    if [[ -f "${adapter_path}/adapter_model.safetensors" || -f "${adapter_path}/adapter_model.bin" ]]; then
+      echo "${adapter_path}"
+      return
+    fi
+  fi
+  if [[ -f "${ckpt_path}/adapter_config.json" || -d "${adapter_path}" ]]; then
+    echo ""
     return
   fi
   echo "${ckpt_path}"
@@ -167,6 +176,7 @@ while true; do
 
   for ckpt in "${CKPTS[@]}"; do
     eval_target=$(resolve_eval_target "$ckpt")
+    [[ -z "$eval_target" ]] && continue
     processed "$eval_target" || submit "$eval_target"
   done
 
@@ -174,7 +184,9 @@ while true; do
     if [[ ${#CKPTS[@]} -gt 0 ]]; then
       last_ckpt="${CKPTS[-1]}"
       eval_target=$(resolve_eval_target "$last_ckpt")
-      processed "$eval_target" || submit "$eval_target"
+      if [[ -n "$eval_target" ]]; then
+        processed "$eval_target" || submit "$eval_target"
+      fi
     else
       processed "$WATCH" || submit "$WATCH"
     fi
