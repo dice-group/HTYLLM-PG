@@ -43,6 +43,27 @@ LIMIT=${LM_EVAL_LIMIT:-}
 [[ ! -d "${CKPT}" ]] && { echo "Checkpoint not found: ${CKPT}"; exit 1; }
 
 ORIG_CKPT="${CKPT}"
+if [[ ! -f "${CKPT}/adapter_config.json" && -d "${CKPT}_adapter_sharded" ]]; then
+  base_model=""
+  if [[ -f "${CKPT}_adapter_sharded/adapter_config.json" ]]; then
+    base_model=$(python3 - <<'PY' "${CKPT}_adapter_sharded/adapter_config.json"
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+print(cfg.get("base_model_name_or_path", ""))
+PY
+)
+  fi
+  if [[ -z "${base_model}" ]]; then
+    base_model="${TOK}"
+  fi
+  if [[ -n "${base_model}" ]]; then
+    python3 "${REPO_ROOT}/scripts/merge_adapter_shards.py" \
+      --adapter-sharded-dir "${CKPT}_adapter_sharded" \
+      --output-dir "${CKPT}_adapter" \
+      --base-model "${base_model}"
+  fi
+fi
+
 if [[ ! -f "${CKPT}/adapter_config.json" && -f "${CKPT}_adapter/adapter_config.json" ]]; then
   CKPT="${CKPT}_adapter"
 fi

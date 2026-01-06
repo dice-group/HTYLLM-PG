@@ -9,6 +9,9 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --checkpoint)   CKPT=$2; shift 2;;
@@ -48,6 +51,27 @@ LIMIT=${LM_EVAL_LIMIT:-}
 [[ ! -d "$CKPT" ]] && { echo "Checkpoint not found: $CKPT"; exit 1; }
 
 ORIG_CKPT="${CKPT}"
+if [[ ! -f "$CKPT/adapter_config.json" && -d "${CKPT}_adapter_sharded" ]]; then
+  base_model=""
+  if [[ -f "${CKPT}_adapter_sharded/adapter_config.json" ]]; then
+    base_model=$(python3 - <<'PY' "${CKPT}_adapter_sharded/adapter_config.json"
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+print(cfg.get("base_model_name_or_path", ""))
+PY
+)
+  fi
+  if [[ -z "${base_model}" ]]; then
+    base_model="${TOK}"
+  fi
+  if [[ -n "${base_model}" ]]; then
+    python3 "${REPO_ROOT}/scripts/merge_adapter_shards.py" \
+      --adapter-sharded-dir "${CKPT}_adapter_sharded" \
+      --output-dir "${CKPT}_adapter" \
+      --base-model "${base_model}"
+  fi
+fi
+
 if [[ ! -f "$CKPT/adapter_config.json" && -f "${CKPT}_adapter/adapter_config.json" ]]; then
   CKPT="${CKPT}_adapter"
 fi
@@ -142,7 +166,7 @@ if [[ "$USE_LANG" == "true" && -f "$CKPT/adapter_config.json" ]]; then
   if [[ "$LOG_ROUTER_METRICS" == "true" ]]; then
     WRAPPER_ARGS+=("--log-router-metrics")
   fi
-  python3 scripts/lm_eval_language_ids.py "${WRAPPER_ARGS[@]}" $EXTRA
+  python3 "${REPO_ROOT}/scripts/lm_eval_language_ids.py" "${WRAPPER_ARGS[@]}" $EXTRA
 else
   echo "Running lm-eval on $LABEL..."
   lm_eval \

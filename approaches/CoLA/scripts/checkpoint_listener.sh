@@ -122,6 +122,7 @@ mark() { echo "$1" >> "$STATE"; }
 resolve_eval_target() {
   local ckpt_path=$1
   local adapter_path="${ckpt_path}_adapter"
+  local adapter_sharded="${ckpt_path}_adapter_sharded"
   if [[ -f "${ckpt_path}/adapter_config.json" ]]; then
     if [[ -f "${ckpt_path}/adapter_model.safetensors" || -f "${ckpt_path}/adapter_model.bin" ]]; then
       echo "${ckpt_path}"
@@ -134,11 +135,15 @@ resolve_eval_target() {
       return
     fi
   fi
-  if [[ -f "${ckpt_path}/adapter_config.json" || -d "${adapter_path}" ]]; then
+  if [[ -d "${adapter_sharded}" ]]; then
+    echo "${ckpt_path}"
+    return
+  fi
+  if [[ -f "${ckpt_path}/adapter_config.json" || -d "${adapter_path}" || -d "${adapter_sharded}" ]]; then
     echo ""
     return
   fi
-  echo "${ckpt_path}"
+  echo ""
 }
 
 submit() {
