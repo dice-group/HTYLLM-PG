@@ -112,7 +112,7 @@ if [[ "${MERGE_ADAPTER_SHARDS:-1}" == "1" ]]; then
     echo "[INFO] Merging adapter shards for ${#CKPTS[@]} checkpoints..."
     for ckpt in "${CKPTS[@]}"; do
       if [[ -d "${ckpt}_adapter_sharded" && ! -f "${ckpt}_adapter/adapter_model.safetensors" ]]; then
-        torchrun --nproc_per_node=2 "${REPO_ROOT}/scripts/merge_adapter_shards.py" \
+        python3 "${REPO_ROOT}/scripts/merge_adapter_shards.py" \
           --adapter-sharded-dir "${ckpt}_adapter_sharded" \
           --output-dir "${ckpt}_adapter" \
           --base-model "${MODEL_NAME_OR_PATH}"

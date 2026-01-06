@@ -33,14 +33,8 @@ def _ensure_repo_peft():
         sys.path.insert(0, str(peft_root))
 
 
-def _init_distributed():
-    if torch.distributed.is_available() and torch.distributed.is_initialized():
-        return
-    world_size = int(os.environ.get("WORLD_SIZE", "1"))
-    if world_size <= 1:
-        return
-    backend = "nccl" if torch.cuda.is_available() else "gloo"
-    torch.distributed.init_process_group(backend=backend)
+def _is_distributed() -> bool:
+    return torch.distributed.is_available() and torch.distributed.is_initialized()
 
 
 def main():
@@ -61,25 +55,24 @@ def main():
     output_dir = output_dir.resolve()
 
     _ensure_repo_peft()
-    _init_distributed()
 
-    rank = 0
-    world_size = 1
-    if torch.distributed.is_available() and torch.distributed.is_initialized():
+    rank = int(os.environ.get("RANK", "0"))
+    if _is_distributed():
         rank = torch.distributed.get_rank()
-        world_size = torch.distributed.get_world_size()
 
-    if args.device_map and world_size > 1:
+    if rank != 0:
+        return
+
+    if args.device_map and _is_distributed():
         raise ValueError("--device-map is only supported for single-process merges")
 
-    device = torch.device("cuda", rank) if torch.cuda.is_available() else torch.device("cpu")
+    device = torch.device("cuda", 0) if torch.cuda.is_available() else torch.device("cpu")
     if torch.cuda.is_available():
         torch.cuda.set_device(device)
 
     from peft import PeftConfig, get_peft_model
     from peft.utils.save_and_load import get_peft_model_state_dict
-    from torch.distributed.checkpoint import FileSystemReader, load as dcp_load
-    from torch.distributed.checkpoint.state_dict import StateDictOptions, get_model_state_dict, set_model_state_dict
+    from torch.distributed.checkpoint import load as dcp_load
     from transformers import AutoModelForCausalLM
 
     peft_config = PeftConfig.from_pretrained(str(adapter_sharded_dir))
@@ -99,52 +92,26 @@ def main():
         base.to(device)
     peft_model = get_peft_model(base, peft_config)
 
-    if world_size > 1:
-        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+    adapter_state = get_peft_model_state_dict(peft_model)
+    dcp_load(adapter_state, checkpoint_id=str(adapter_sharded_dir), no_dist=True)
 
-        peft_model = FSDP(peft_model, use_orig_params=True)
-
-    load_opts = StateDictOptions(full_state_dict=False, cpu_offload=False, ignore_frozen_params=True)
-    shard_state = get_model_state_dict(peft_model, options=load_opts)
-    reader = FileSystemReader(str(adapter_sharded_dir))
-    if world_size > 1:
-        dcp_load(shard_state, storage_reader=reader)
-    else:
-        dcp_load(shard_state, storage_reader=reader, no_dist=True)
-    set_model_state_dict(peft_model, shard_state, options=load_opts)
-
-    gather_opts = StateDictOptions(full_state_dict=True, cpu_offload=True, ignore_frozen_params=True)
-    full_state = get_model_state_dict(peft_model, options=gather_opts)
-    if full_state is not None and any(k.startswith("_fsdp_wrapped_module.") for k in full_state):
-        full_state = {k.removeprefix("_fsdp_wrapped_module."): v for k, v in full_state.items()}
-
-    if world_size > 1:
-        unwrapped = peft_model.module
-    else:
-        unwrapped = peft_model
-
-    adapter_state = get_peft_model_state_dict(unwrapped, state_dict=full_state)
-    if rank == 0:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        unwrapped.save_pretrained(
-            str(output_dir),
-            state_dict=adapter_state,
-            safe_serialization=not args.no_safetensors,
+    output_dir.mkdir(parents=True, exist_ok=True)
+    peft_model.save_pretrained(
+        str(output_dir),
+        state_dict=adapter_state,
+        safe_serialization=not args.no_safetensors,
+    )
+    meta_path = output_dir / "adapter_merge.json"
+    meta_path.write_text(
+        json.dumps(
+            {
+                "source": str(adapter_sharded_dir),
+                "base_model_name_or_path": base_model,
+                "world_size": int(os.environ.get("WORLD_SIZE", "1")),
+            },
+            indent=2,
         )
-        meta_path = output_dir / "adapter_merge.json"
-        meta_path.write_text(
-            json.dumps(
-                {
-                    "source": str(adapter_sharded_dir),
-                    "base_model_name_or_path": base_model,
-                    "world_size": world_size,
-                },
-                indent=2,
-            )
-        )
-
-    if torch.distributed.is_available() and torch.distributed.is_initialized():
-        torch.distributed.barrier()
+    )
 
 
 if __name__ == "__main__":

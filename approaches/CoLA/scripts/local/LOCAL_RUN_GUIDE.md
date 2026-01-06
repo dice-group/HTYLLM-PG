@@ -19,7 +19,7 @@ Distributed adapter checkpoints previously failed to save correctly under FSDP (
 
 ## Key Fixes / References
 - Adapter save for FSDP (sharded): `LLaMA-Factory/src/llamafactory/train/callbacks.py` (SaveAdapterCheckpointCallback)
-- Merge sharded adapters: `scripts/merge_adapter_shards.py`
+- Merge sharded adapters: `scripts/merge_adapter_shards.py` (single-process)
 - Adapter state dict filtering: `LLaMA-Factory/src/peft/utils/save_and_load.py`
 - LM-eval wrapper with language IDs: `scripts/lm_eval_language_ids.py`
 
