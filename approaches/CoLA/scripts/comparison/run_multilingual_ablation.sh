@@ -295,9 +295,13 @@ submit_listener_job() {
     echo "[WARN] LM_EVAL_SCRIPT not found at ${LM_EVAL_SCRIPT}; skipping listener launch" >&2
     return
   fi
+  local tier_label
+  tier_label="$(basename "$(dirname "${watch_dir}")")"
+  local eval_out_dir="${LOG_DIR}/${tier_label}/eval"
   local log_path="${LOG_DIR}/listener/${listener_label}_listener_%j.log"
   local wandb_group
   wandb_group="$(basename "${watch_dir}")"
+  mkdir -p "${eval_out_dir}"
   local cmd=(sbatch "--output=${log_path}")
   if [[ -n "${LISTENER_SBATCH_ARGS}" ]]; then
     cmd+=(${LISTENER_SBATCH_ARGS})
@@ -305,7 +309,7 @@ submit_listener_job() {
   cmd+=(
     "${CHECKPOINT_LISTENER_SCRIPT}"
     --watch-dir "${watch_dir}"
-    --output-dir "${watch_dir}/lm_eval"
+    --output-dir "${eval_out_dir}"
     --eval-script "${LM_EVAL_SCRIPT}"
     --tokenizer "${model_path}"
     --tasks "${LM_EVAL_TASKS}"
