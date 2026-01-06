@@ -72,7 +72,7 @@ def main():
 
     from peft import PeftConfig, get_peft_model
     from peft.utils.save_and_load import get_peft_model_state_dict
-    from torch.distributed.checkpoint import load as dcp_load
+    from torch.distributed.checkpoint import FileSystemReader, load as dcp_load
     from transformers import AutoModelForCausalLM
 
     peft_config = PeftConfig.from_pretrained(str(adapter_sharded_dir))
@@ -93,7 +93,8 @@ def main():
     peft_model = get_peft_model(base, peft_config)
 
     adapter_state = get_peft_model_state_dict(peft_model)
-    dcp_load(adapter_state, checkpoint_id=str(adapter_sharded_dir), no_dist=True)
+    reader = FileSystemReader(str(adapter_sharded_dir))
+    dcp_load(adapter_state, storage_reader=reader)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     peft_model.save_pretrained(
