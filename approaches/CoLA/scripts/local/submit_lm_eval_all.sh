@@ -42,7 +42,7 @@ for CKPT in "${CKPTS[@]}"; do
 
   sbatch --job-name=\"lm-eval-summary\" --output=\"${LOG_DIR}/lm-eval_summary_%j.log\" \
     --dependency=afterok:${EVAL_JOB} \
-    --gres=gpu:h100:1 --cpus-per-task=1 --mem=16G --time=01:00:00 --partition=gpu \
+    --cpus-per-task=1 --mem=8G --time=00:30:00 --partition=cpu \
     --export=ALL,CKPT=\"${CKPT}\",RUN_NAME=\"${RUN_NAME}\" \
     --wrap "
     source '${CONDA_BASE}/etc/profile.d/conda.sh'
