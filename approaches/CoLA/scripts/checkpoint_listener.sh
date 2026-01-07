@@ -221,6 +221,9 @@ submit() {
   ckpt_label=$(basename "${ckpt_path}")
   local job_name="lm-eval_${WATCH_LABEL}_${ckpt_label}_${group_label}"
   local eval_out_dir="${OUT}/${ckpt_label}/${group_label}"
+  if [[ "${group_label}" == "all" ]]; then
+    eval_out_dir="${OUT}/${ckpt_label}"
+  fi
   local job_log="${eval_out_dir}/${job_name}_%j.log"
   local wandb_prefix="${WANDB_PREF}_${WATCH_LABEL}"
   local adapter_path="${ckpt_path}_adapter"

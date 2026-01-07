@@ -50,7 +50,15 @@ def _log_summary_series_wandb(
     if not no_ids_path.exists() and not with_ids_paths:
         print(f"[WARN] No eval results found under {output_dir}", file=sys.stderr)
         return
+    if "checkpoint-" not in output_dir.name:
+        print(
+            f"[WARN] Summary job expects per-checkpoint output dir, got {output_dir}",
+            file=sys.stderr,
+        )
+        return
+    run_id_dir = output_dir.parent
     print(f"[INFO] Summary job output_dir={output_dir}", file=sys.stderr)
+    print(f"[INFO] Summary job run_id_dir={run_id_dir}", file=sys.stderr)
     print(f"[INFO] Summary job checkpoint={checkpoint_path}", file=sys.stderr)
     if no_ids_path.exists():
         print(f"[INFO] Summary job found {no_ids_path.name}", file=sys.stderr)
@@ -74,7 +82,7 @@ def _log_summary_series_wandb(
     wandb_args_dict.pop("name", None)
 
     def init_series_run(suffix: str) -> "wandb.sdk.wandb_run.Run":
-        run_id_path = output_dir / f".wandb_summary_id_{suffix}"
+        run_id_path = run_id_dir / f".wandb_summary_id_{suffix}"
         if run_id_path.exists():
             run_id = run_id_path.read_text().strip()
         else:

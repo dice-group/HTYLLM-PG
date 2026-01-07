@@ -2,8 +2,8 @@
 #SBATCH --job-name=cola-lm-eval
 #SBATCH --gres=gpu:h100:1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=128G
-#SBATCH --time=08:00:00
+#SBATCH --mem=160G
+#SBATCH --time=12:00:00
 #SBATCH --partition=gpu
 #SBATCH --output=logs/lm_eval_%x_%j.log
 
@@ -53,7 +53,8 @@ WMODE=${WMODE:-shared}
 LANG_MODE=${LANG_MODE:-${LM_EVAL_LANG_MODE:-both}}
 USE_LANG_WRAPPER=${LM_EVAL_USE_LANG_WRAPPER:-auto}
 LOG_ROUTER_METRICS=${LM_EVAL_LOG_ROUTER_METRICS:-true}
-LIMIT=${LM_EVAL_LIMIT:-500}
+LIMIT=${LM_EVAL_LIMIT:-}
+ENABLE_SUMMARY=${LM_EVAL_ENABLE_SUMMARY:-true}
 
 [[ -z "$CKPT" || -z "$OUTDIR" ]] && { echo "--checkpoint and --output-dir required"; exit 1; }
 [[ ! -d "$CKPT" ]] && { echo "Checkpoint not found: $CKPT"; exit 1; }
@@ -189,6 +190,27 @@ else
     --output_path "$OUTFILE" \
     --wandb_args "$WANDB_ARGS" \
     $EXTRA
+fi
+
+if [[ "${ENABLE_SUMMARY}" == "true" ]]; then
+  if [[ "$(basename "$OUTDIR")" == checkpoint-* ]]; then
+    RUN_ROOT="$(basename "$(dirname "$ORIG_CKPT")")"
+    SUMMARY_NAME="${LM_EVAL_SUMMARY_NAME:-$RUN_ROOT}"
+    if [[ -z "${SUMMARY_NAME}" && -n "${WGROUP}" ]]; then
+      SUMMARY_NAME="${WGROUP}"
+    fi
+    WANDB_SUMMARY_ARGS="project=$WP,name=$SUMMARY_NAME"
+    if [[ -n "${WGROUP}" ]]; then
+      WANDB_SUMMARY_ARGS="${WANDB_SUMMARY_ARGS},group=${WGROUP}"
+    fi
+    if [[ -n "${WMODE}" ]]; then
+      WANDB_SUMMARY_ARGS="${WANDB_SUMMARY_ARGS},mode=${WMODE}"
+    fi
+    python3 "${REPO_ROOT}/scripts/wandb_summary_job.py" \
+      --checkpoint "${CKPT}" \
+      --output-dir "${OUTDIR}" \
+      --wandb-args "${WANDB_SUMMARY_ARGS}"
+  fi
 fi
 
 echo "Done!"

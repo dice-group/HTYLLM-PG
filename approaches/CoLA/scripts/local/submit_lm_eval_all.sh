@@ -18,10 +18,18 @@ LOG_DIR="${SCRIPT_DIR}/logs"
 cd "$REPO_ROOT"
 mkdir -p "${LOG_DIR}"
 TASKS="belebele_eng_Latn,belebele_deu_Latn,belebele_zul_Latn"
+LAST_JOB_ID=""
 
 for CKPT in "${CKPTS[@]}"; do
   RUN_NAME="$(basename "$(dirname "${CKPT}")")"
-  sbatch --job-name="lm-eval-${RUN_NAME}" --output="${LOG_DIR}/lm-eval_${RUN_NAME}_%j.log" \
+  CKPT_NAME="$(basename "${CKPT}")"
+  OUT_DIR="${OUT}/all/${RUN_NAME}/${CKPT_NAME}"
+  DEP_OPT=()
+  if [[ -n "${LAST_JOB_ID}" ]]; then
+    DEP_OPT=(--dependency="afterok:${LAST_JOB_ID}")
+  fi
+  JOB_SUBMIT_OUT=$(sbatch "${DEP_OPT[@]}" \
+    --job-name="lm-eval-${RUN_NAME}" --output="${LOG_DIR}/lm-eval_${RUN_NAME}_%j.log" \
     --gres=gpu:h100:1 --cpus-per-task=4 --mem=128G --time=12:00:00 --partition=gpu \
     --export=ALL,CKPT="${CKPT}",RUN_NAME="${RUN_NAME}" \
     --wrap "
@@ -32,18 +40,20 @@ for CKPT in "${CKPTS[@]}"; do
       --checkpoint \"${CKPT}\" \
       --tokenizer '${TOKENIZER}' \
       --tasks '${TASKS}' \
-      --output-dir '${OUT}/all' \
+      --output-dir \"${OUT_DIR}\" \
       --batch-size auto \
       --device-map auto \
-      --limit 500 \
+      --limit 10 \
       --mode both \
       --wandb-args \"project=${PROJ},group=${GROUP},name=${RUN_NAME},mode=online\"
     echo '========== DETAILED EVAL FINISHED =========='
     echo '========== BEGIN SUMMARY STEP =========='
-    sleep 100
+    sleep 10
     python3 scripts/wandb_summary_job.py \
       --checkpoint \"${CKPT}\" \
-      --output-dir \"${OUT}/all\" \
+      --output-dir \"${OUT_DIR}\" \
       --wandb-args \"project=${PROJ},group=${GROUP},name=${RUN_NAME},mode=online\"
     "
+  )
+  LAST_JOB_ID=$(echo "${JOB_SUBMIT_OUT}" | awk '{print $4}')
 done
