@@ -21,8 +21,8 @@ TASKS="belebele_eng_Latn,belebele_deu_Latn,belebele_zul_Latn"
 
 for CKPT in "${CKPTS[@]}"; do
   RUN_NAME="$(basename "$(dirname "${CKPT}")")"
-  EVAL_JOB=$(sbatch --parsable --job-name="lm-eval-${RUN_NAME}" --output="${LOG_DIR}/lm-eval_${RUN_NAME}_%j.log" \
-    --gres=gpu:h100:1 --cpus-per-task=4 --mem=400G --time=12:00:00 --partition=gpu \
+  sbatch --job-name="lm-eval-${RUN_NAME}" --output="${LOG_DIR}/lm-eval_${RUN_NAME}_%j.log" \
+    --gres=gpu:h100:1 --cpus-per-task=4 --mem=128G --time=12:00:00 --partition=gpu \
     --export=ALL,CKPT="${CKPT}",RUN_NAME="${RUN_NAME}" \
     --wrap "
     source '${CONDA_BASE}/etc/profile.d/conda.sh'
@@ -38,16 +38,9 @@ for CKPT in "${CKPTS[@]}"; do
       --limit 500 \
       --mode both \
       --wandb-args \"project=${PROJ},group=${GROUP},name=${RUN_NAME},mode=online\"
-    ")
-
-  sbatch --job-name="lm-eval-summary-${RUN_NAME}" --output="${LOG_DIR}/lm-eval_summary_${RUN_NAME}_%j.log" \
-    --dependency=afterok:${EVAL_JOB} \
-    --cpus-per-task=1 --mem=8G --time=00:30:00 --partition=normal \
-    --export=ALL,CKPT=\"${CKPT}\",RUN_NAME=\"${RUN_NAME}\" \
-    --wrap "
-    source '${CONDA_BASE}/etc/profile.d/conda.sh'
-    conda activate '${CONDA_ENV}'
-    cd '${REPO_ROOT}'
+    echo '========== DETAILED EVAL FINISHED =========='
+    echo '========== BEGIN SUMMARY STEP =========='
+    sleep 100
     python3 scripts/wandb_summary_job.py \
       --checkpoint \"${CKPT}\" \
       --output-dir \"${OUT}/all\" \

@@ -135,6 +135,16 @@ def _parse_tasks(tasks: str) -> list[str]:
     return [t.strip() for t in tasks.split(",") if t.strip()]
 
 
+def _infer_checkpoint_step(checkpoint_path: Path) -> Optional[int]:
+    match = re.search(r"checkpoint-(\d+)", str(checkpoint_path))
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
 def _task_to_lang_code(task: str) -> Optional[str]:
     # take suffix after first underscore, e.g. belebele_eng_Latn -> eng_Latn
     if "_" not in task:
