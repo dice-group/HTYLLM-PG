@@ -119,7 +119,7 @@ touch "$STATE"
 processed() { grep -Fxq "$1" "$STATE"; }
 mark() { echo "$1" >> "$STATE"; }
 
-SPLIT_ENABLE=${LM_EVAL_SPLIT_ENABLE:-true}
+SPLIT_ENABLE=${LM_EVAL_SPLIT_ENABLE:-false}
 BELEBELE_CHUNKS=${LM_EVAL_BELEBELE_CHUNKS:-4}
 
 build_task_groups() {

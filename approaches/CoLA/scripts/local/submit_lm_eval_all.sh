@@ -2,7 +2,10 @@
 set -euo pipefail
 
 REPO_ROOT="/scratch/hpc-prf-merlin/joel/HTYLLM-PG/approaches/CoLA"
-CKPT="/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaflat_20260106_173545/checkpoint-80_adapter"
+CKPTS=(
+  "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaflat_20260106_173545/checkpoint-40_adapter"
+  "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaflat_20260106_173545/checkpoint-80_adapter"
+)
 TOKENIZER="meta-llama/Llama-3.1-8B"
 OUT="/scratch/hpc-prf-merlin/project_data/moe_study/lm_eval_smoke"
 PROJ="htyllm-lm-eval"
@@ -13,21 +16,26 @@ LOG_DIR="$(pwd)/logs"
 
 cd "$REPO_ROOT"
 mkdir -p "${LOG_DIR}"
-TASKS=$(paste -sd, configs/lm_eval_tasks.txt | tr -d '\r')
+TASKS="belebele_eng_Latn,belebele_deu_Latn,belebele_zul_Latn"
 
-sbatch --job-name="lm-eval-all" --output="${LOG_DIR}/lm-eval_all_%j.log" \
-  --gres=gpu:h100:1 --cpus-per-task=4 --mem=400G --time=12:00:00 --partition=gpu \
-  --wrap "
-  source '${CONDA_BASE}/etc/profile.d/conda.sh'
-  conda activate '${CONDA_ENV}'
-  cd '${REPO_ROOT}'
-  python3 scripts/lm_eval_language_ids.py \
-    --checkpoint '${CKPT}' \
-    --tokenizer '${TOKENIZER}' \
-    --tasks '${TASKS}' \
-    --output-dir '${OUT}/all' \
-    --batch-size auto \
-    --device-map auto \
-    --mode both \
-    --wandb-args 'project=${PROJ},group=${GROUP},name=all,mode=online'
-  "
+for CKPT in "${CKPTS[@]}"; do
+  RUN_NAME="$(basename "$(dirname "${CKPT}")")"
+  sbatch --job-name="lm-eval-all" --output="${LOG_DIR}/lm-eval_all_%j.log" \
+    --gres=gpu:h100:1 --cpus-per-task=4 --mem=400G --time=12:00:00 --partition=gpu \
+    --export=ALL,CKPT="${CKPT}",RUN_NAME="${RUN_NAME}" \
+    --wrap "
+    source '${CONDA_BASE}/etc/profile.d/conda.sh'
+    conda activate '${CONDA_ENV}'
+    cd '${REPO_ROOT}'
+    python3 scripts/lm_eval_language_ids.py \
+      --checkpoint \"${CKPT}\" \
+      --tokenizer '${TOKENIZER}' \
+      --tasks '${TASKS}' \
+      --output-dir '${OUT}/all' \
+      --batch-size auto \
+      --device-map auto \
+      --limit 500 \
+      --mode both \
+      --wandb-args \"project=${PROJ},group=${GROUP},name=${RUN_NAME},mode=online\"
+    "
+done
