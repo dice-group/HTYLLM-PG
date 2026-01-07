@@ -50,6 +50,11 @@ def _log_summary_series_wandb(
     if not no_ids_path.exists() and not with_ids_paths:
         print(f"[WARN] No eval results found under {output_dir}", file=sys.stderr)
         return
+    print(f"[INFO] Summary job output_dir={output_dir}", file=sys.stderr)
+    print(f"[INFO] Summary job checkpoint={checkpoint_path}", file=sys.stderr)
+    if no_ids_path.exists():
+        print(f"[INFO] Summary job found {no_ids_path.name}", file=sys.stderr)
+    print(f"[INFO] Summary job with_ids_files={len(with_ids_paths)}", file=sys.stderr)
 
     no_ids_results = json.loads(no_ids_path.read_text()) if no_ids_path.exists() else {}
     with_ids_results = [json.loads(path.read_text()) for path in with_ids_paths]
@@ -63,6 +68,7 @@ def _log_summary_series_wandb(
     if project:
         wandb_args_dict["project"] = f"{project}_summary"
     base_name = wandb_args_dict.get("name") or "eval"
+    print(f"[INFO] Summary job run base_name={base_name}", file=sys.stderr)
     wandb_args_dict.pop("resume", None)
     wandb_args_dict.pop("id", None)
     wandb_args_dict.pop("name", None)
@@ -134,6 +140,7 @@ def main() -> int:
         args.wandb_args,
         args.wandb_config_args,
     )
+    print("[INFO] Summary job completed", file=sys.stderr)
     return 0
 
 

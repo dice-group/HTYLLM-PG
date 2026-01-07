@@ -378,6 +378,9 @@ def main() -> int:
 
     tasks = _parse_tasks(args.tasks)
     outdir = Path(args.output_dir)
+    print(f"[INFO] Eval run: checkpoint={ckpt}", file=sys.stderr)
+    print(f"[INFO] Eval run: tasks={len(tasks)} mode={args.mode}", file=sys.stderr)
+    print(f"[INFO] Eval run: output_dir={outdir}", file=sys.stderr)
 
     lang_list = _load_language_list(ckpt)
     lang_map = _build_lang_id_map(lang_list)
@@ -444,6 +447,7 @@ def main() -> int:
                 run_suffix=f"with_ids_{task}",
             )
 
+    print("[INFO] Eval run completed", file=sys.stderr)
     return 0
 
 
