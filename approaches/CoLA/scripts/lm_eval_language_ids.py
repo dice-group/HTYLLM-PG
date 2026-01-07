@@ -32,15 +32,52 @@ def _log_adapter_stats(model: torch.nn.Module) -> None:
     if cfg:
         for key, val in cfg.items():
             num_experts = getattr(val, "num_experts", None)
-            heads_per_expert = getattr(val, "heads_per_expert", None)
-            router_mode = getattr(val, "router_mode", None)
-            if num_experts or heads_per_expert or router_mode:
+            top_k = getattr(val, "top_k", None)
+            head_top_k = getattr(val, "head_top_k", None)
+            lora_num = getattr(val, "lora_num", None)
+            expert_lora_nums = getattr(val, "expert_lora_nums", None)
+            num_a = getattr(val, "num_A", None)
+            num_b = getattr(val, "num_B", None)
+            expert_num_a = getattr(val, "expert_num_A", None)
+            expert_num_b = getattr(val, "expert_num_B", None)
+            router_mode = getattr(val, "language_router_mode", None)
+            head_router_mode = getattr(val, "language_head_router_mode", None)
+            use_cola_experts = getattr(val, "use_cola_experts", None)
+            use_hydra_experts = getattr(val, "use_hydralora_experts", None)
+            if any(
+                x is not None
+                for x in (
+                    num_experts,
+                    top_k,
+                    head_top_k,
+                    lora_num,
+                    expert_lora_nums,
+                    num_a,
+                    num_b,
+                    expert_num_a,
+                    expert_num_b,
+                    router_mode,
+                    head_router_mode,
+                    use_cola_experts,
+                    use_hydra_experts,
+                )
+            ):
                 logger.info(
-                    "Adapter config[%s]: num_experts=%s heads_per_expert=%s router_mode=%s",
+                    "Adapter config[%s]: num_experts=%s top_k=%s head_top_k=%s lora_num=%s expert_lora_nums=%s num_A=%s num_B=%s expert_num_A=%s expert_num_B=%s router_mode=%s head_router_mode=%s use_cola_experts=%s use_hydralora_experts=%s",
                     key,
                     num_experts,
-                    heads_per_expert,
+                    top_k,
+                    head_top_k,
+                    lora_num,
+                    expert_lora_nums,
+                    num_a,
+                    num_b,
+                    expert_num_a,
+                    expert_num_b,
                     router_mode,
+                    head_router_mode,
+                    use_cola_experts,
+                    use_hydra_experts,
                 )
 
 
