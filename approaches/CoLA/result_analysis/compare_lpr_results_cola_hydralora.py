@@ -34,14 +34,17 @@ METRIC_ALIASES: Dict[str, List[str]] = {
     "train/cola/topk_weight_mean": ["train/cola/topk_weight_mean", "cola/topk_weight_mean"],
     "train/cola/language_target_hit_rate": [
         "train/cola/language_target_hit_rate",
+        "train/train/cola/language_target_hit_rate",
         "cola/language_target_hit_rate",
     ],
     "train/cola/language_target_prob_mean": [
         "train/cola/language_target_prob_mean",
+        "train/train/cola/language_target_prob_mean",
         "cola/language_target_prob_mean",
     ],
     "train/cola/language_target_token_frac": [
         "train/cola/language_target_token_frac",
+        "train/train/cola/language_target_token_frac",
         "cola/language_target_token_frac",
     ],
     "train/hydralora/head_load_cv": [
@@ -348,6 +351,11 @@ def gather_runs(project_path: str, group: str, max_points: int) -> Dict[str, Dic
             maybe_tier, rest = normalized_name.split("_", 1)
             if len(maybe_tier) > 4 and maybe_tier[4:].isdigit():
                 normalized_name = rest
+        # Strip optional "<pct>_percent_" prefix after tier removal (e.g., 10_percent_foo -> foo).
+        if normalized_name and normalized_name[0].isdigit():
+            parts = normalized_name.split("_", 2)
+            if len(parts) >= 2 and parts[1] == "percent":
+                normalized_name = parts[2] if len(parts) == 3 else ""
         # Strip optional base_ prefix after tier removal.
         if normalized_name.startswith("base_"):
             normalized_name = normalized_name[len("base_") :]

@@ -6,7 +6,8 @@ With `LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml`, checkpoints are 
 - Load a standard HF `save_pretrained` directory (`config.json` + model weights), or
 - Load a PEFT adapter directory (`adapter_config.json` + adapter weights).
 
-The FSDP checkpoints do not include `config.json`, and adapter checkpoints may be missing or incomplete, so eval fails.
+The raw FSDP checkpoints do not include `config.json` or `adapter_config.json`, so eval fails unless a matching
+`checkpoint-XX_adapter/` exists (or you export a full HF checkpoint).
 
 ## Observed Layout (Example)
 ```
@@ -28,15 +29,14 @@ checkpoint-40/
 ```
 Notably missing: `config.json`, `adapter_config.json`.
 
-## CoLA/Hydra-Specific Root Cause
-In PEFT, `get_peft_model_state_dict()` filters LoRA-family adapters by keys containing "lora_". This means:
-- Expert routers in CoLA/Hydra are named `router.*` (no `lora_` prefix) and are not saved.
-- Head routers in Hydra use `lora_route.*` and are saved.
-
-Result: even if an adapter checkpoint exists, expert router weights are lost, which breaks routing at eval time.
+## CoLA/Hydra Router Weights (Status)
+Older builds filtered adapter weights strictly by keys containing `"lora_"`, which dropped CoLA/Hydra expert routers
+(`*.router.*`). This repo now explicitly includes `.router.` keys for `COLA` and `HYDRALORA`, so adapter checkpoints
+should retain expert router weights. If you still see missing router weights, backport the router inclusion in
+`save_and_load.py`.
 
 File references:
-- `LLaMA-Factory/src/peft/utils/save_and_load.py` (`get_peft_model_state_dict`)
+- `LLaMA-Factory/src/peft/utils/save_and_load.py` (`get_peft_model_state_dict` includes `.router.` for COLA/HYDRALORA)
 - `LLaMA-Factory/src/peft/tuners/cola/layer.py` (expert router lives in `self.router`)
 - `LLaMA-Factory/src/peft/tuners/hydralora/layer.py` (expert router lives in `self.router`)
 
@@ -44,35 +44,39 @@ File references:
 1) Save adapter checkpoints during training
    - Callback: `SaveAdapterCheckpointCallback` in
      `LLaMA-Factory/src/llamafactory/train/callbacks.py`
-   - Should create `checkpoint-XXXX_adapter/` containing `adapter_config.json`
+   - Creates `checkpoint-XXXX_adapter/` containing `adapter_config.json`
      and adapter weights.
 
-2) Export FSDP checkpoints to adapter format
-   - Script: `scripts/comparison/export_fsdp_checkpoint.py`
-   - Batch wrapper: `scripts/comparison/export_fsdp_checkpoints.sh`
-   - These detect FSDP layouts and export a loadable adapter directory.
+2) Eval scripts already prefer adapters
+   - `scripts/lm_eval_checkpoint.sh` and `scripts/checkpoint_listener.sh` will
+     auto-swap to `checkpoint-*_adapter/` if present.
+
+3) Export a full HF checkpoint (optional)
+   - `llamafactory-cli export` can merge base + adapter into a standalone
+     `save_pretrained` directory for evals that need a full checkpoint.
 
 ## How We Should Continue (Recommended Path)
 1) Confirm whether adapter checkpoints exist
    - Check for `checkpoint-XX_adapter/` alongside FSDP checkpoint dirs.
-2) If adapter checkpoints are missing, use the export script
-   - Export `checkpoint-XX` to `checkpoint-XX_adapter` and point lm-eval at it.
+2) If adapter checkpoints are missing
+   - Re-run training (preferred) or manually export via `llamafactory-cli export`
+     once an adapter is available.
 3) If the custom callback is failing
    - Inspect training logs for errors from `SaveAdapterCheckpointCallback`.
    - Ensure the training model is a `PeftModel` wrapped in FSDP.
 4) Fix adapter saving for CoLA/Hydra routers
-   - Extend `get_peft_model_state_dict()` to include `router.*` keys when
-     `peft_type` is `COLA` or `HYDRALORA`, so expert routers are saved.
+   - Verify `get_peft_model_state_dict()` includes `.router.` keys for
+     `COLA`/`HYDRALORA` (older branches may still drop them).
 5) Optional: update checkpoint listener
    - Prefer evaluating `checkpoint-*_adapter/` if present.
-   - Otherwise, call `export_fsdp_checkpoint.py` before eval.
+   - Otherwise, export a full HF checkpoint before eval.
 
 ## Practical Options for This Repo
 1) Prefer adapter checkpoints for eval
    - Ensure `checkpoint-*_adapter/` is written (with router weights saved).
-2) Convert FSDP checkpoints before eval
-   - Use `scripts/comparison/export_fsdp_checkpoint.py` (or Accelerate
-     `merge_fsdp_weights`) to produce a loadable directory for `lm_eval`.
-3) Save full HF checkpoint at train time
-   - Force `FULL_STATE_DICT` and call `save_pretrained` with
-     `accelerator.get_state_dict(model)` so checkpoints are loadable without conversion.
+2) Export a full HF checkpoint when needed
+   - Use `llamafactory-cli export` to merge base + adapter into a
+     `save_pretrained` directory for `lm_eval`.
+3) Save full HF checkpoint at train time (if you need it)
+   - Call `save_pretrained` with a full state dict (or use `llamafactory-cli export`)
+     so checkpoints are loadable without conversion.
