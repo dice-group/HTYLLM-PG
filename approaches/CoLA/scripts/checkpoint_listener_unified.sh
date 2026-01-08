@@ -6,9 +6,11 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --time=168:00:00
+
 # Unified checkpoint listener: scans multiple roots and submits lm-eval jobs for new adapters.
 # Options: --watch-root/--roots-file, --tasks/--limit, --marker-tag/--force.
 # Logs: listener log in --log-root and per-run eval logs in subfolders.
+# example usage: forces re-eval and limits to 100 sbatch ./checkpoint_listener_unified.sh --force --limit 100
 
 set -euo pipefail
 
@@ -140,7 +142,11 @@ resolve_adapter() {
 
 mark_seen() {
   local target=$1
-  touch "${target}/.eval_submitted_${MARK_TAG}"
+  local eval_dir
+  eval_dir="$(dirname "$target")/${OUT_SUBDIR}/$(basename "$target")"
+  mkdir -p "$eval_dir"
+  touch "${target}/.eval_submitted_${MARK_TAG}" || true
+  touch "${eval_dir}/.eval_submitted_${MARK_TAG}"
 }
 
 is_seen() {
@@ -148,7 +154,14 @@ is_seen() {
   if [[ "$FORCE" == "true" ]]; then
     return 1
   fi
-  [[ -f "${target}/.eval_submitted_${MARK_TAG}" || -f "${target}/.eval_done_${MARK_TAG}" || -f "${target}/.eval_failed_${MARK_TAG}" ]]
+  local eval_dir
+  eval_dir="$(dirname "$target")/${OUT_SUBDIR}/$(basename "$target")"
+  [[ -f "${target}/.eval_submitted_${MARK_TAG}" \
+      || -f "${target}/.eval_done_${MARK_TAG}" \
+      || -f "${target}/.eval_failed_${MARK_TAG}" \
+      || -f "${eval_dir}/.eval_submitted_${MARK_TAG}" \
+      || -f "${eval_dir}/.eval_done_${MARK_TAG}" \
+      || -f "${eval_dir}/.eval_failed_${MARK_TAG}" ]]
 }
 
 submit_eval() {
@@ -171,6 +184,11 @@ submit_eval() {
   fi
   mkdir -p "$eval_out_dir"
   mkdir -p "$log_dir"
+  local lock_dir="${eval_out_dir}/.eval_lock_${MARK_TAG}"
+  if ! mkdir "$lock_dir" 2>/dev/null; then
+    echo "[INFO] skip locked: ckpt=${target} marker=${MARK_TAG}"
+    return
+  fi
   echo "[INFO] submit eval ckpt=${target} out=${eval_out_dir} tasks=${TASKS} limit=${LIMIT:-none} script=${SCRIPT}"
   local -a sbatch_cmd=(sbatch)
   if [[ -n "$LIMIT" ]]; then
@@ -191,10 +209,15 @@ submit_eval() {
     --wandb-group "$run_label" \
     ${TOK:+--tokenizer "$TOK"} \
   )
-  local job_out
-  job_out=$("${sbatch_cmd[@]}")
-  echo "[INFO] ${job_out} (ckpt=${target})"
-  mark_seen "$target"
+  local job_out=""
+  if job_out=$("${sbatch_cmd[@]}"); then
+    echo "[INFO] ${job_out} (ckpt=${target})"
+    mark_seen "$target"
+  else
+    rmdir "$lock_dir" 2>/dev/null || true
+    echo "[WARN] sbatch failed for ckpt=${target}" >&2
+    return
+  fi
 }
 
 if [[ "$IGNORE_EXISTING" == "true" ]]; then

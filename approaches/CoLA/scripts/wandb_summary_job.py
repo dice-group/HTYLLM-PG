@@ -1,4 +1,5 @@
 import argparse
+import os
 import json
 import sys
 import time
@@ -102,8 +103,9 @@ def _log_summary_series_wandb(
 
     wandb_args_dict = simple_parse_args_string(wandb_args)
     project = wandb_args_dict.get("project")
-    if project:
-        wandb_args_dict["project"] = f"{project}_summary"
+    summary_suffix = os.environ.get("WANDB_SUMMARY_SUFFIX", "").strip()
+    if project and summary_suffix:
+        wandb_args_dict["project"] = f"{project}{summary_suffix}"
     base_name = wandb_args_dict.get("name") or "eval"
     print(f"[INFO] Summary job run base_name={base_name}", file=sys.stderr)
     wandb_args_dict.pop("resume", None)
@@ -127,6 +129,7 @@ def _log_summary_series_wandb(
 
     if no_ids_results:
         run = init_series_run("no_ids")
+        print(f"[INFO] Summary job W&B url={run.get_url()}", file=sys.stderr)
         if wandb_config_args:
             cfg = simple_parse_args_string(wandb_config_args)
             if cfg:
@@ -145,6 +148,7 @@ def _log_summary_series_wandb(
 
     if with_ids_results:
         run = init_series_run("with_ids")
+        print(f"[INFO] Summary job W&B url={run.get_url()}", file=sys.stderr)
         if wandb_config_args:
             cfg = simple_parse_args_string(wandb_config_args)
             if cfg:
@@ -164,6 +168,7 @@ def _log_summary_series_wandb(
 
     if plain_results:
         run = init_series_run("plain")
+        print(f"[INFO] Summary job W&B url={run.get_url()}", file=sys.stderr)
         if wandb_config_args:
             cfg = simple_parse_args_string(wandb_config_args)
             if cfg:

@@ -64,7 +64,7 @@ done
 TASKS=${TASKS:-belebele}
 BS=${BS:-auto}
 TOK=${TOK:-}
-WP=${WP:-llama31_multilingual_eval_belebele}
+WP=${WP:-htyllm-adapter-lpr-200_lang_cola_eval}
 PREF=${PREF:-${LM_EVAL_WANDB_PREFIX:-}}
 WGROUP=${WGROUP:-${LM_EVAL_WANDB_GROUP:-}}
 WJOB=${WJOB:-checkpoint_eval}
