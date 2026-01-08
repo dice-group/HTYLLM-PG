@@ -7,9 +7,41 @@ import torch.distributed.checkpoint as dist_cp
 import torch.distributed as dist
 
 RUNS = {
-    "cola_local_lpr": {
-        "root": "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-lpr_20260108_031230",
-        "checkpoints": ["checkpoint-40_adapter_sharded", "checkpoint-80_adapter_sharded"],
+    "lora_baseline": {
+        "root": "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/lora_lora-baseline_20260108_053146",
+        "checkpoints": ["checkpoint-20_adapter", "checkpoint-10_adapter"],
+    },
+    "hydra_exp_hard": {
+        "root": "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-exp-hard_20260108_053146",
+        "checkpoints": ["checkpoint-20_adapter", "checkpoint-10_adapter"],
+    },
+    "hydra_exp_lpr_expert_only": {
+        "root": "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-exp-lpr-expert-only_20260108_053146",
+        "checkpoints": ["checkpoint-20_adapter", "checkpoint-10_adapter"],
+    },
+    "hydra_exp_lpr": {
+        "root": "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-exp-lpr_20260108_053146",
+        "checkpoints": ["checkpoint-20_adapter", "checkpoint-10_adapter"],
+    },
+    "hydra_flat": {
+        "root": "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-flat_20260108_053146",
+        "checkpoints": ["checkpoint-20_adapter", "checkpoint-10_adapter"],
+    },
+    "cola_exp_hard": {
+        "root": "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-hard_20260108_053146",
+        "checkpoints": ["checkpoint-20_adapter", "checkpoint-10_adapter"],
+    },
+    "cola_exp_headbias": {
+        "root": "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-headbias_20260108_053146",
+        "checkpoints": ["checkpoint-20_adapter", "checkpoint-10_adapter"],
+    },
+    "cola_exp_lpr": {
+        "root": "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-lpr_20260108_053146",
+        "checkpoints": ["checkpoint-20_adapter", "checkpoint-10_adapter"],
+    },
+    "cola_flat": {
+        "root": "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaflat_20260108_053146",
+        "checkpoints": ["checkpoint-20_adapter", "checkpoint-10_adapter"],
     },
 }
 
@@ -64,6 +96,14 @@ def ensure_dist():
 
 
 def load_full_state(ckpt_dir):
+    ckpt_dir = str(ckpt_dir)
+    if os.path.isfile(os.path.join(ckpt_dir, "adapter_model.safetensors")):
+        try:
+            from safetensors.torch import load_file
+        except Exception as exc:
+            raise RuntimeError("safetensors is required for adapter_model.safetensors") from exc
+        return load_file(os.path.join(ckpt_dir, "adapter_model.safetensors"))
+
     ensure_dist()
     checkpoint_id = None
     meta_path = os.path.join(ckpt_dir, "adapter_sharded.json")
@@ -261,6 +301,12 @@ def main():
             "Router diff",
             ["router", "gate", "language_router", "routing"],
         )
+        summarize_group_diffs(
+            tensors_a,
+            tensors_b,
+            "Head router diff",
+            ["lora_route"],
+        )
 
         a_keys_a = collect_keys(tensors_a, ["lora_A", "lora_a", "cola_A", "cola_a"])
         b_keys_a = collect_keys(tensors_a, ["lora_B", "lora_b", "cola_B", "cola_b"])
@@ -274,6 +320,12 @@ def main():
                 f"A/B key count: "
                 f"A={len(a_keys_a)} B={len(b_keys_a)} "
                 f"ratio_A={ratio_a:.2f} ratio_B={ratio_b:.2f} ratio_match={ratio_match}"
+            )
+        head_router_keys_a = collect_keys(tensors_a, ["lora_route"])
+        head_router_keys_b = collect_keys(tensors_b, ["lora_route"])
+        if head_router_keys_a or head_router_keys_b:
+            print(
+                f"Head router key count: A={len(head_router_keys_a)} B={len(head_router_keys_b)}"
             )
 
     if dist.is_available() and dist.is_initialized():
