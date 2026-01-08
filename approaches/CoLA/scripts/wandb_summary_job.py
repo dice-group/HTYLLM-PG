@@ -47,7 +47,8 @@ def _log_summary_series_wandb(
 ) -> None:
     no_ids_path = output_dir / "no_language_ids.json"
     with_ids_paths = sorted(output_dir.glob("with_language_ids_*.json"))
-    if not no_ids_path.exists() and not with_ids_paths:
+    plain_paths = sorted(output_dir.glob("*_lm_eval.jsonl"))
+    if not no_ids_path.exists() and not with_ids_paths and not plain_paths:
         print(f"[WARN] No eval results found under {output_dir}", file=sys.stderr)
         return
     if "checkpoint-" not in output_dir.name:
@@ -63,10 +64,38 @@ def _log_summary_series_wandb(
     if no_ids_path.exists():
         print(f"[INFO] Summary job found {no_ids_path.name}", file=sys.stderr)
     print(f"[INFO] Summary job with_ids_files={len(with_ids_paths)}", file=sys.stderr)
+    if plain_paths:
+        print(f"[INFO] Summary job plain_files={len(plain_paths)}", file=sys.stderr)
 
     no_ids_results = json.loads(no_ids_path.read_text()) if no_ids_path.exists() else {}
     with_ids_results = [json.loads(path.read_text()) for path in with_ids_paths]
-    summary_metrics = _summarize_results(with_ids_results or [no_ids_results])
+    plain_results: list[dict] = []
+    for path in plain_paths:
+        try:
+            text = path.read_text().strip()
+        except Exception:
+            continue
+        if not text:
+            continue
+        parsed = None
+        if text.lstrip().startswith("{"):
+            try:
+                parsed = json.loads(text)
+            except Exception:
+                parsed = None
+        if parsed is None:
+            for line in text.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    parsed = json.loads(line)
+                except Exception:
+                    continue
+            # keep the last valid JSON line
+        if isinstance(parsed, dict):
+            plain_results.append(parsed)
+    summary_metrics = _summarize_results(with_ids_results or ([no_ids_results] if no_ids_results else []) or plain_results)
     step = _infer_checkpoint_step(checkpoint_path)
 
     import wandb
@@ -122,6 +151,25 @@ def _log_summary_series_wandb(
                 run.config.update(cfg, allow_val_change=True)
         metrics = {}
         for entry in with_ids_results:
+            for task_name, vals in entry.get("results", {}).items():
+                if not isinstance(vals, dict):
+                    continue
+                for key, value in vals.items():
+                    if isinstance(value, (int, float)):
+                        metrics[f"{task_name}/{key}"] = float(value)
+        for key, value in summary_metrics.items():
+            metrics[f"summary/{key}"] = float(value)
+        run.log(metrics, step=step)
+        run.finish()
+
+    if plain_results:
+        run = init_series_run("plain")
+        if wandb_config_args:
+            cfg = simple_parse_args_string(wandb_config_args)
+            if cfg:
+                run.config.update(cfg, allow_val_change=True)
+        metrics: dict[str, float] = {}
+        for entry in plain_results:
             for task_name, vals in entry.get("results", {}).items():
                 if not isinstance(vals, dict):
                     continue

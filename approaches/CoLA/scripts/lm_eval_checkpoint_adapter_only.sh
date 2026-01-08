@@ -11,13 +11,34 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-}"
+
+find_repo_root() {
+  local base=$1
+  while [[ -n "$base" && "$base" != "/" ]]; do
+    if [[ -f "${base}/scripts/lm_eval_language_ids.py" && -f "${base}/scripts/wandb_summary_job.py" ]]; then
+      echo "$base"
+      return 0
+    fi
+    base=$(dirname "$base")
+  done
+  return 1
+}
+
+if [[ -n "${REPO_ROOT}" ]]; then
+  REPO_ROOT="$(find_repo_root "$REPO_ROOT")" || REPO_ROOT=""
+fi
 if [[ -z "${REPO_ROOT}" && -n "${SLURM_SUBMIT_DIR:-}" ]]; then
-  if [[ -f "${SLURM_SUBMIT_DIR}/scripts/lm_eval_language_ids.py" ]]; then
-    REPO_ROOT="${SLURM_SUBMIT_DIR}"
-  fi
+  REPO_ROOT="$(find_repo_root "$SLURM_SUBMIT_DIR")" || REPO_ROOT=""
 fi
 if [[ -z "${REPO_ROOT}" ]]; then
-  REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+  REPO_ROOT="$(find_repo_root "$PWD")" || REPO_ROOT=""
+fi
+if [[ -z "${REPO_ROOT}" ]]; then
+  REPO_ROOT="$(find_repo_root "$SCRIPT_DIR")" || REPO_ROOT=""
+fi
+if [[ -z "${REPO_ROOT}" ]]; then
+  echo "Could not resolve REPO_ROOT; set REPO_ROOT or run from the repo." >&2
+  exit 1
 fi
 
 while [[ $# -gt 0 ]]; do
@@ -44,8 +65,8 @@ TASKS=${TASKS:-belebele}
 BS=${BS:-auto}
 TOK=${TOK:-}
 WP=${WP:-llama31_multilingual_eval_belebele}
-PREF=${PREF:-cola_moe_acc}
-WGROUP=${WGROUP:-}
+PREF=${PREF:-${LM_EVAL_WANDB_PREFIX:-}}
+WGROUP=${WGROUP:-${LM_EVAL_WANDB_GROUP:-}}
 WJOB=${WJOB:-checkpoint_eval}
 WRESUME=${WRESUME:-allow}
 WMODE=${WMODE:-shared}
@@ -105,6 +126,12 @@ export PYTHONUNBUFFERED=1
 
 LABEL=$(basename "$CKPT")
 OUTFILE="${OUTDIR}/${LABEL}_lm_eval.jsonl"
+if [[ -z "${PREF}" ]]; then
+  PREF="$(basename "$(dirname "$ORIG_CKPT")")"
+fi
+if [[ -z "${WGROUP}" ]]; then
+  WGROUP="$(basename "$(dirname "$ORIG_CKPT")")"
+fi
 WANDB_NAME="${PREF}_${LABEL}"
 WANDB_ARGS="project=$WP,name=$WANDB_NAME"
 if [[ -n "${WGROUP}" ]]; then
@@ -160,6 +187,7 @@ else
     --model_args "$MODEL_ARGS" \
     --tasks "$TASKS" \
     --batch_size "$BS" \
+    ${LIMIT:+--limit "$LIMIT"} \
     --output_path "$OUTFILE" \
     --wandb_args "$WANDB_ARGS" \
     $EXTRA
