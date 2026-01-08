@@ -113,6 +113,18 @@ PY
   MODEL_ARGS="pretrained=$BASE,peft=$CKPT,tokenizer=$TOK_USE"
 fi
 
+DEVICE_MAP=""
+if [[ -n "${EXTRA:-}" ]]; then
+  if [[ "${EXTRA}" =~ (^|[[:space:]])--device-map[[:space:]]+([^[:space:]]+) ]]; then
+    DEVICE_MAP="${BASH_REMATCH[2]}"
+    EXTRA="$(echo "${EXTRA}" | sed -E 's/(^|[[:space:]])--device-map[[:space:]]+[^[:space:]]+//g')"
+    EXTRA="$(echo "${EXTRA}" | xargs)"
+  fi
+fi
+if [[ -n "${DEVICE_MAP}" && "${MODEL_ARGS}" != *"device_map="* ]]; then
+  MODEL_ARGS="${MODEL_ARGS},device_map=${DEVICE_MAP}"
+fi
+
 mkdir -p "$OUTDIR" logs
 module purge
 module load toolchain/foss/2024a system/CUDA/12.6.0 lib/NCCL/2.22.3-GCCcore-13.3.0-CUDA-12.6.0
