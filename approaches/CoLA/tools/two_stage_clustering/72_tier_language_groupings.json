@@ -1,8 +1,8 @@
 {
-  "1": {
+  "0": {
     "languages": [
-      "roh_Latn",
       "fur_Latn",
+      "roh_Latn",
       "wln_Latn",
       "cat_Latn",
       "glg_Latn",
@@ -13,37 +13,33 @@
     ],
     "subgroups": {
       "B0": [
-        "tam_Latn",
-        "mal_Latn",
-        "kan_Knda"
+        "fur_Latn",
+        "roh_Latn",
+        "wln_Latn"
       ],
       "B1": [
-        "vie_Latn",
-        "khm_Khmr",
-        "kha_Latn"
+        "cat_Latn",
+        "glg_Latn",
+        "pap_Latn"
       ],
       "B2": [
-        "jpn_Jpan"
-      ],
-      "B3": [
-        "kor_Hang"
-      ],
-      "B4": [
-        "nob_Latn"
+        "ita_Latn",
+        "nap_Latn",
+        "scn_Latn"
       ]
     },
     "metadata": {
-      "roh_Latn": {
-        "name": "Romansh",
-        "family": "Indo-European",
-        "resource_availability": "LOW",
-        "subset": "roh_Latn"
-      },
       "fur_Latn": {
         "name": "Friulian",
         "family": "Indo-European",
         "resource_availability": "LOW",
         "subset": "fur_Latn"
+      },
+      "roh_Latn": {
+        "name": "Romansh",
+        "family": "Indo-European",
+        "resource_availability": "LOW",
+        "subset": "roh_Latn"
       },
       "wln_Latn": {
         "name": "Walloon",
@@ -89,59 +85,63 @@
       }
     }
   },
-  "0": {
+  "1": {
     "languages": [
-      "tam_Latn",
-      "mal_Latn",
       "kan_Knda",
-      "vie_Latn",
-      "khm_Khmr",
+      "mal_Latn",
+      "tam_Latn",
       "kha_Latn",
+      "khm_Khmr",
+      "vie_Latn",
       "jpn_Jpan",
       "kor_Hang",
       "nob_Latn"
     ],
     "subgroups": {
       "B0": [
-        "roh_Latn",
-        "fur_Latn",
-        "wln_Latn"
+        "kan_Knda",
+        "mal_Latn",
+        "tam_Latn"
       ],
       "B1": [
-        "cat_Latn",
-        "glg_Latn",
-        "pap_Latn"
+        "kha_Latn",
+        "khm_Khmr",
+        "vie_Latn"
       ],
       "B2": [
-        "ita_Latn",
-        "nap_Latn",
-        "scn_Latn"
+        "jpn_Jpan"
+      ],
+      "B3": [
+        "kor_Hang"
+      ],
+      "B4": [
+        "nob_Latn"
       ]
     },
     "metadata": {
-      "tam_Latn": {
-        "name": "Tamil",
-        "family": "Dravidian",
-        "resource_availability": "UNKNOWN",
-        "subset": "tam_Latn"
-      },
-      "mal_Latn": {
-        "name": "Malayalam",
-        "family": "Dravidian",
-        "resource_availability": "UNKNOWN",
-        "subset": "mal_Latn"
-      },
       "kan_Knda": {
         "name": "Kannada",
         "family": "Dravidian",
         "resource_availability": "LOW",
         "subset": "kan_Knda"
       },
-      "vie_Latn": {
-        "name": "Vietnamese",
+      "mal_Latn": {
+        "name": "Malayalam",
+        "family": "Dravidian",
+        "resource_availability": "NaN",
+        "subset": "mal_Latn"
+      },
+      "tam_Latn": {
+        "name": "Tamil",
+        "family": "Dravidian",
+        "resource_availability": "NaN",
+        "subset": "tam_Latn"
+      },
+      "kha_Latn": {
+        "name": "Khasi",
         "family": "Austro-Asiatic",
-        "resource_availability": "HIGH",
-        "subset": "vie_Latn"
+        "resource_availability": "LOW",
+        "subset": "kha_Latn"
       },
       "khm_Khmr": {
         "name": "Khmer",
@@ -149,11 +149,11 @@
         "resource_availability": "LOW",
         "subset": "khm_Khmr"
       },
-      "kha_Latn": {
-        "name": "Khasi",
+      "vie_Latn": {
+        "name": "Vietnamese",
         "family": "Austro-Asiatic",
-        "resource_availability": "LOW",
-        "subset": "kha_Latn"
+        "resource_availability": "HIGH",
+        "subset": "vie_Latn"
       },
       "jpn_Jpan": {
         "name": "Japanese",
@@ -177,43 +177,37 @@
   },
   "2": {
     "languages": [
-      "arb_Arab",
-      "mlt_Latn",
-      "aeb_Arab",
-      "ars_Arab",
-      "apc_Arab",
       "acm_Arab",
-      "heb_Hebr",
+      "aeb_Arab",
+      "apc_Arab",
+      "arb_Arab",
+      "ars_Arab",
       "ary_Arab",
-      "hbo_Hebr"
+      "mlt_Latn",
+      "hbo_Hebr",
+      "heb_Hebr"
     ],
     "subgroups": {
       "B0": [
-        "arb_Arab",
-        "mlt_Latn",
-        "aeb_Arab",
-        "ars_Arab",
-        "apc_Arab",
         "acm_Arab",
-        "ary_Arab"
+        "aeb_Arab",
+        "apc_Arab",
+        "arb_Arab",
+        "ars_Arab",
+        "ary_Arab",
+        "mlt_Latn"
       ],
       "B1": [
-        "heb_Hebr",
-        "hbo_Hebr"
+        "hbo_Hebr",
+        "heb_Hebr"
       ]
     },
     "metadata": {
-      "arb_Arab": {
-        "name": "Standard Arabic",
-        "family": "Afro-Asiatic",
-        "resource_availability": "HIGH",
-        "subset": "arb_Arab"
-      },
-      "mlt_Latn": {
-        "name": "Maltese",
+      "acm_Arab": {
+        "name": "Mesopotamian Arabic",
         "family": "Afro-Asiatic",
         "resource_availability": "LOW",
-        "subset": "mlt_Latn"
+        "subset": "acm_Arab"
       },
       "aeb_Arab": {
         "name": "Tunisian Arabic",
@@ -221,29 +215,23 @@
         "resource_availability": "LOW",
         "subset": "aeb_Arab"
       },
-      "ars_Arab": {
-        "name": "Najdi Arabic",
-        "family": "Afro-Asiatic",
-        "resource_availability": "LOW",
-        "subset": "ars_Arab"
-      },
       "apc_Arab": {
         "name": "Levantine Arabic",
         "family": "Afro-Asiatic",
         "resource_availability": "LOW",
         "subset": "apc_Arab"
       },
-      "acm_Arab": {
-        "name": "Mesopotamian Arabic",
-        "family": "Afro-Asiatic",
-        "resource_availability": "LOW",
-        "subset": "acm_Arab"
-      },
-      "heb_Hebr": {
-        "name": "Hebrew",
+      "arb_Arab": {
+        "name": "Standard Arabic",
         "family": "Afro-Asiatic",
         "resource_availability": "HIGH",
-        "subset": "heb_Hebr"
+        "subset": "arb_Arab"
+      },
+      "ars_Arab": {
+        "name": "Najdi Arabic",
+        "family": "Afro-Asiatic",
+        "resource_availability": "LOW",
+        "subset": "ars_Arab"
       },
       "ary_Arab": {
         "name": "Moroccan Arabic",
@@ -251,22 +239,34 @@
         "resource_availability": "LOW",
         "subset": "ary_Arab"
       },
+      "mlt_Latn": {
+        "name": "Maltese",
+        "family": "Afro-Asiatic",
+        "resource_availability": "LOW",
+        "subset": "mlt_Latn"
+      },
       "hbo_Hebr": {
         "name": "Ancient Hebrew",
         "family": "Afro-Asiatic",
         "resource_availability": "LOW",
         "subset": "hbo_Hebr"
+      },
+      "heb_Hebr": {
+        "name": "Hebrew",
+        "family": "Afro-Asiatic",
+        "resource_availability": "HIGH",
+        "subset": "heb_Hebr"
       }
     }
   },
   "3": {
     "languages": [
       "bod_Tibt",
-      "lus_Latn",
       "dzo_Tibt",
+      "lus_Latn",
       "mya_Mymr",
-      "new_Deva",
-      "kac_Latn"
+      "kac_Latn",
+      "new_Deva"
     ],
     "subgroups": {
       "B0": [
@@ -280,8 +280,8 @@
         "mya_Mymr"
       ],
       "B3": [
-        "new_Deva",
-        "kac_Latn"
+        "kac_Latn",
+        "new_Deva"
       ]
     },
     "metadata": {
@@ -291,17 +291,17 @@
         "resource_availability": "LOW",
         "subset": "bod_Tibt"
       },
-      "lus_Latn": {
-        "name": "Lushai",
-        "family": "Sino-Tibetan",
-        "resource_availability": "LOW",
-        "subset": "lus_Latn"
-      },
       "dzo_Tibt": {
         "name": "Dzongkha",
         "family": "Sino-Tibetan",
         "resource_availability": "LOW",
         "subset": "dzo_Tibt"
+      },
+      "lus_Latn": {
+        "name": "Lushai",
+        "family": "Sino-Tibetan",
+        "resource_availability": "LOW",
+        "subset": "lus_Latn"
       },
       "mya_Mymr": {
         "name": "Burmese",
@@ -309,25 +309,25 @@
         "resource_availability": "LOW",
         "subset": "mya_Mymr"
       },
-      "new_Deva": {
-        "name": "Newari",
-        "family": "Sino-Tibetan",
-        "resource_availability": "LOW",
-        "subset": "new_Deva"
-      },
       "kac_Latn": {
         "name": "Kachin",
         "family": "Sino-Tibetan",
         "resource_availability": "LOW",
         "subset": "kac_Latn"
+      },
+      "new_Deva": {
+        "name": "Newari",
+        "family": "Sino-Tibetan",
+        "resource_availability": "LOW",
+        "subset": "new_Deva"
       }
     }
   },
   "4": {
     "languages": [
       "che_Cyrl",
-      "ava_Cyrl",
-      "inh_Cyrl"
+      "inh_Cyrl",
+      "ava_Cyrl"
     ],
     "subgroups": {
       "B0": [
@@ -345,50 +345,64 @@
         "resource_availability": "LOW",
         "subset": "che_Cyrl"
       },
-      "ava_Cyrl": {
-        "name": "Avaric",
-        "family": "Nakh-Daghestanian",
-        "resource_availability": "LOW",
-        "subset": "ava_Cyrl"
-      },
       "inh_Cyrl": {
         "name": "Ingush",
         "family": "Nakh-Daghestanian",
         "resource_availability": "LOW",
         "subset": "inh_Cyrl"
+      },
+      "ava_Cyrl": {
+        "name": "Avaric",
+        "family": "Nakh-Daghestanian",
+        "resource_availability": "LOW",
+        "subset": "ava_Cyrl"
       }
     }
   },
-  "6": {
+  "5": {
     "languages": [
+      "nde_Latn",
+      "tso_Latn",
       "xho_Latn",
       "zul_Latn",
-      "nde_Latn",
       "kin_Latn",
       "run_Latn",
       "lug_Latn",
       "nya_Latn",
-      "sot_Latn",
-      "tso_Latn"
+      "sot_Latn"
     ],
     "subgroups": {
       "B0": [
-        "ind_Latn",
-        "zsm_Arab",
-        "bew_Latn"
+        "nde_Latn",
+        "tso_Latn",
+        "xho_Latn",
+        "zul_Latn"
       ],
       "B1": [
-        "smo_Latn",
-        "fij_Latn",
-        "ton_Latn"
+        "kin_Latn",
+        "run_Latn"
       ],
       "B2": [
-        "ceb_Latn",
-        "hil_Latn",
-        "bcl_Latn"
+        "lug_Latn"
+      ],
+      "B3": [
+        "nya_Latn",
+        "sot_Latn"
       ]
     },
     "metadata": {
+      "nde_Latn": {
+        "name": "North Ndebele",
+        "family": "Niger-Congo",
+        "resource_availability": "LOW",
+        "subset": "nde_Latn"
+      },
+      "tso_Latn": {
+        "name": "Tsonga",
+        "family": "Niger-Congo",
+        "resource_availability": "LOW",
+        "subset": "tso_Latn"
+      },
       "xho_Latn": {
         "name": "Xhosa",
         "family": "Niger-Congo",
@@ -400,12 +414,6 @@
         "family": "Niger-Congo",
         "resource_availability": "LOW",
         "subset": "zul_Latn"
-      },
-      "nde_Latn": {
-        "name": "North Ndebele",
-        "family": "Niger-Congo",
-        "resource_availability": "LOW",
-        "subset": "nde_Latn"
       },
       "kin_Latn": {
         "name": "Kinyarwanda",
@@ -436,44 +444,45 @@
         "family": "Niger-Congo",
         "resource_availability": "LOW",
         "subset": "sot_Latn"
-      },
-      "tso_Latn": {
-        "name": "Tsonga",
-        "family": "Niger-Congo",
-        "resource_availability": "LOW",
-        "subset": "tso_Latn"
       }
     }
   },
-  "7": {
+  "6": {
     "languages": [
+      "bew_Latn",
       "ind_Latn",
       "zsm_Arab",
-      "bew_Latn",
-      "smo_Latn",
       "fij_Latn",
+      "smo_Latn",
       "ton_Latn",
+      "bcl_Latn",
       "ceb_Latn",
-      "hil_Latn",
-      "bcl_Latn"
+      "hil_Latn"
     ],
     "subgroups": {
       "B0": [
-        "hun_Latn",
-        "udm_Cyrl",
-        "kpv_Cyrl"
+        "bew_Latn",
+        "ind_Latn",
+        "zsm_Arab"
       ],
       "B1": [
-        "sme_Latn"
+        "fij_Latn",
+        "smo_Latn",
+        "ton_Latn"
       ],
       "B2": [
-        "mhr_Cyrl"
-      ],
-      "B3": [
-        "myv_Cyrl"
+        "bcl_Latn",
+        "ceb_Latn",
+        "hil_Latn"
       ]
     },
     "metadata": {
+      "bew_Latn": {
+        "name": "Betawi",
+        "family": "Creole",
+        "resource_availability": "LOW",
+        "subset": "bew_Latn"
+      },
       "ind_Latn": {
         "name": "Indonesian",
         "family": "Austronesian",
@@ -483,20 +492,8 @@
       "zsm_Arab": {
         "name": "Standard Malay",
         "family": "Austronesian",
-        "resource_availability": "UNKNOWN",
+        "resource_availability": "NaN",
         "subset": "zsm_Arab"
-      },
-      "bew_Latn": {
-        "name": "Betawi",
-        "family": "Creole",
-        "resource_availability": "LOW",
-        "subset": "bew_Latn"
-      },
-      "smo_Latn": {
-        "name": "Samoan",
-        "family": "Austronesian",
-        "resource_availability": "LOW",
-        "subset": "smo_Latn"
       },
       "fij_Latn": {
         "name": "Fijian",
@@ -504,11 +501,23 @@
         "resource_availability": "LOW",
         "subset": "fij_Latn"
       },
+      "smo_Latn": {
+        "name": "Samoan",
+        "family": "Austronesian",
+        "resource_availability": "LOW",
+        "subset": "smo_Latn"
+      },
       "ton_Latn": {
         "name": "Tonga (Tonga Islands)",
         "family": "Austronesian",
         "resource_availability": "LOW",
         "subset": "ton_Latn"
+      },
+      "bcl_Latn": {
+        "name": "Central Bikol",
+        "family": "Austronesian",
+        "resource_availability": "LOW",
+        "subset": "bcl_Latn"
       },
       "ceb_Latn": {
         "name": "Cebuano",
@@ -521,37 +530,32 @@
         "family": "Austronesian",
         "resource_availability": "LOW",
         "subset": "hil_Latn"
-      },
-      "bcl_Latn": {
-        "name": "Central Bikol",
-        "family": "Austronesian",
-        "resource_availability": "LOW",
-        "subset": "bcl_Latn"
       }
     }
   },
-  "8": {
+  "7": {
     "languages": [
       "hun_Latn",
-      "udm_Cyrl",
       "kpv_Cyrl",
+      "udm_Cyrl",
       "sme_Latn",
       "mhr_Cyrl",
       "myv_Cyrl"
     ],
     "subgroups": {
       "B0": [
-        "kaz_Cyrl",
-        "kir_Cyrl",
-        "bak_Cyrl",
-        "tat_Cyrl",
-        "crh_Cyrl"
+        "hun_Latn",
+        "kpv_Cyrl",
+        "udm_Cyrl"
       ],
       "B1": [
-        "uzn_Cyrl",
-        "tuk_Arab",
-        "azb_Arab",
-        "tur_Latn"
+        "sme_Latn"
+      ],
+      "B2": [
+        "mhr_Cyrl"
+      ],
+      "B3": [
+        "myv_Cyrl"
       ]
     },
     "metadata": {
@@ -561,17 +565,17 @@
         "resource_availability": "HIGH",
         "subset": "hun_Latn"
       },
-      "udm_Cyrl": {
-        "name": "Udmurt",
-        "family": "Uralic",
-        "resource_availability": "LOW",
-        "subset": "udm_Cyrl"
-      },
       "kpv_Cyrl": {
         "name": "Komi-Zyrian",
         "family": "Uralic",
         "resource_availability": "LOW",
         "subset": "kpv_Cyrl"
+      },
+      "udm_Cyrl": {
+        "name": "Udmurt",
+        "family": "Uralic",
+        "resource_availability": "LOW",
+        "subset": "udm_Cyrl"
       },
       "sme_Latn": {
         "name": "Northern Sami",
@@ -593,20 +597,46 @@
       }
     }
   },
-  "13": {
+  "8": {
     "languages": [
+      "bak_Cyrl",
+      "crh_Cyrl",
       "kaz_Cyrl",
       "kir_Cyrl",
-      "bak_Cyrl",
-      "uzn_Cyrl",
-      "tuk_Arab",
-      "azb_Arab",
-      "tur_Latn",
       "tat_Cyrl",
-      "crh_Cyrl"
+      "azb_Arab",
+      "tuk_Arab",
+      "tur_Latn",
+      "uzn_Cyrl"
     ],
-    "subgroups": {},
+    "subgroups": {
+      "B0": [
+        "bak_Cyrl",
+        "crh_Cyrl",
+        "kaz_Cyrl",
+        "kir_Cyrl",
+        "tat_Cyrl"
+      ],
+      "B1": [
+        "azb_Arab",
+        "tuk_Arab",
+        "tur_Latn",
+        "uzn_Cyrl"
+      ]
+    },
     "metadata": {
+      "bak_Cyrl": {
+        "name": "Bashkir",
+        "family": "Turkic",
+        "resource_availability": "LOW",
+        "subset": "bak_Cyrl"
+      },
+      "crh_Cyrl": {
+        "name": "Crimean Tatar",
+        "family": "Turkic",
+        "resource_availability": "NaN",
+        "subset": "crh_Cyrl"
+      },
       "kaz_Cyrl": {
         "name": "Kazakh",
         "family": "Turkic",
@@ -619,23 +649,11 @@
         "resource_availability": "LOW",
         "subset": "kir_Cyrl"
       },
-      "bak_Cyrl": {
-        "name": "Bashkir",
+      "tat_Cyrl": {
+        "name": "Tatar",
         "family": "Turkic",
         "resource_availability": "LOW",
-        "subset": "bak_Cyrl"
-      },
-      "uzn_Cyrl": {
-        "name": "Northern Uzbek",
-        "family": "Turkic",
-        "resource_availability": "UNKNOWN",
-        "subset": "uzn_Cyrl"
-      },
-      "tuk_Arab": {
-        "name": "Turkmen",
-        "family": "Turkic",
-        "resource_availability": "UNKNOWN",
-        "subset": "tuk_Arab"
+        "subset": "tat_Cyrl"
       },
       "azb_Arab": {
         "name": "South Azerbaijani",
@@ -643,45 +661,53 @@
         "resource_availability": "LOW",
         "subset": "azb_Arab"
       },
+      "tuk_Arab": {
+        "name": "Turkmen",
+        "family": "Turkic",
+        "resource_availability": "NaN",
+        "subset": "tuk_Arab"
+      },
       "tur_Latn": {
         "name": "Turkish",
         "family": "Turkic",
         "resource_availability": "HIGH",
         "subset": "tur_Latn"
       },
-      "tat_Cyrl": {
-        "name": "Tatar",
+      "uzn_Cyrl": {
+        "name": "Northern Uzbek",
         "family": "Turkic",
-        "resource_availability": "LOW",
-        "subset": "tat_Cyrl"
-      },
-      "crh_Cyrl": {
-        "name": "Crimean Tatar",
-        "family": "Turkic",
-        "resource_availability": "UNKNOWN",
-        "subset": "crh_Cyrl"
+        "resource_availability": "NaN",
+        "subset": "uzn_Cyrl"
       }
     }
   },
-  "14": {
+  "9": {
     "languages": [
-      "tha_Thai",
       "lao_Laoo",
+      "tha_Thai",
       "shn_Mymr"
     ],
-    "subgroups": {},
+    "subgroups": {
+      "B0": [
+        "lao_Laoo",
+        "tha_Thai"
+      ],
+      "B1": [
+        "shn_Mymr"
+      ]
+    },
     "metadata": {
-      "tha_Thai": {
-        "name": "Thai",
-        "family": "Kra-Dai",
-        "resource_availability": "HIGH",
-        "subset": "tha_Thai"
-      },
       "lao_Laoo": {
         "name": "Lao",
         "family": "Kra-Dai",
         "resource_availability": "LOW",
         "subset": "lao_Laoo"
+      },
+      "tha_Thai": {
+        "name": "Thai",
+        "family": "Kra-Dai",
+        "resource_availability": "HIGH",
+        "subset": "tha_Thai"
       },
       "shn_Mymr": {
         "name": "Shan",

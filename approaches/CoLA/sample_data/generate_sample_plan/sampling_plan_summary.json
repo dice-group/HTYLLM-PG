@@ -3,32 +3,32 @@
     {
       "tier": 1,
       "languages": 12,
-      "token_budget": 6000000000,
+      "token_budget": 1200000000,
       "alpha": 0.3,
-      "tokens_requested": 4269821106,
-      "tokens_shortfall": 1730178894.086379,
+      "tokens_requested": 1044953236,
+      "tokens_shortfall": 155046764.12899232,
       "missing_languages": [],
-      "plan_path": "/home/ubuntu/dice_repos/HTYLLM-PG/approaches/CoLA/sample_data/sampling_plan_tier1_12langs.csv"
+      "plan_path": "sample_data/generate_sample_plan/sampling_plan_tier1_12langs.csv"
     },
     {
       "tier": 2,
       "languages": 72,
-      "token_budget": 24000000000,
+      "token_budget": 4800000000,
       "alpha": 0.3,
-      "tokens_requested": 19996771864,
-      "tokens_shortfall": 4003228136.288559,
+      "tokens_requested": 4537468849,
+      "tokens_shortfall": 262531151.19543266,
       "missing_languages": [],
-      "plan_path": "/home/ubuntu/dice_repos/HTYLLM-PG/approaches/CoLA/sample_data/sampling_plan_tier2_72langs.csv"
+      "plan_path": "sample_data/generate_sample_plan/sampling_plan_tier2_72langs.csv"
     },
     {
       "tier": 3,
       "languages": 200,
-      "token_budget": 60000000000,
+      "token_budget": 12000000000,
       "alpha": 0.3,
-      "tokens_requested": 53055491293,
-      "tokens_shortfall": 6944508706.748184,
+      "tokens_requested": 11624745810,
+      "tokens_shortfall": 375254189.88757133,
       "missing_languages": [],
-      "plan_path": "/home/ubuntu/dice_repos/HTYLLM-PG/approaches/CoLA/sample_data/sampling_plan_tier3_200langs.csv"
+      "plan_path": "sample_data/generate_sample_plan/sampling_plan_tier3_200langs.csv"
     }
   ]
 }

@@ -1,252 +1,380 @@
 {
     "languages": {
-        "en": {
+        "english": {
             "name": "English",
             "family": "Germanic"
         },
-        "de": {
+        "deu_Latn": {
             "name": "German",
             "family": "Germanic"
         },
-        "nl": {
+        "nld_Latn": {
             "name": "Dutch",
             "family": "Germanic"
         },
-        "af": {
-            "name": "Afrikaans",
-            "family": "Germanic"
-        },
-        "da": {
+        "dan_Latn": {
             "name": "Danish",
             "family": "Germanic"
         },
-        "sv": {
+        "swe_Latn": {
             "name": "Swedish",
             "family": "Germanic"
         },
-        "no": {
+        "nor_Latn": {
             "name": "Norwegian",
             "family": "Germanic"
         },
-        "is": {
-            "name": "Icelandic",
-            "family": "Germanic"
-        },
-        "es": {
+        "spa_Latn": {
             "name": "Spanish",
             "family": "Italic"
         },
-        "fr": {
+        "fra_Latn": {
             "name": "French",
             "family": "Italic"
         },
-        "it": {
+        "ita_Latn": {
             "name": "Italian",
             "family": "Italic"
         },
-        "pt": {
+        "por_Latn": {
             "name": "Portuguese",
             "family": "Italic"
         },
-        "ca": {
+        "cat_Latn": {
             "name": "Catalan",
             "family": "Italic"
         },
-        "ro": {
+        "ron_Latn": {
             "name": "Romanian",
             "family": "Italic"
         },
-        "gl": {
-            "name": "Galician",
+        "srd_Latn": {
+            "name": "Sardinian",
             "family": "Italic"
         },
-        "ru": {
+        "rus_Cyrl": {
             "name": "Russian",
             "family": "Balto-Slavic"
         },
-        "uk": {
+        "ukr_Cyrl": {
             "name": "Ukrainian",
             "family": "Balto-Slavic"
         },
-        "pl": {
+        "pol_Latn": {
             "name": "Polish",
             "family": "Balto-Slavic"
         },
-        "cs": {
+        "ces_Latn": {
             "name": "Czech",
             "family": "Balto-Slavic"
         },
-        "bg": {
+        "bul_Cyrl": {
             "name": "Bulgarian",
             "family": "Balto-Slavic"
         },
-        "sk": {
+        "slk_Latn": {
             "name": "Slovak",
             "family": "Balto-Slavic"
         },
-        "sl": {
+        "slv_Latn": {
             "name": "Slovenian",
             "family": "Balto-Slavic"
         },
-        "lt": {
+        "srp_Cyrl": {
+            "name": "Serbian",
+            "family": "Balto-Slavic"
+        },
+        "lit_Latn": {
             "name": "Lithuanian",
             "family": "Balto-Slavic"
         },
-        "lv": {
+        "lav_Latn": {
             "name": "Latvian",
             "family": "Balto-Slavic"
         },
-        "hi": {
+        "hin_Deva": {
             "name": "Hindi",
             "family": "Indo-Iranian"
         },
-        "ne": {
+        "hin_Latn": {
+            "name": "Hindi (Latin)",
+            "family": "Indo-Iranian"
+        },
+        "nep_Deva": {
             "name": "Nepali",
             "family": "Indo-Iranian"
         },
-        "mr": {
+        "mar_Deva": {
             "name": "Marathi",
             "family": "Indo-Iranian"
         },
-        "sa": {
-            "name": "Sanskrit",
-            "family": "Indo-Iranian"
-        },
-        "fa": {
+        "fas_Arab": {
             "name": "Persian",
             "family": "Indo-Iranian"
         },
-        "ur": {
+        "urd_Arab": {
             "name": "Urdu",
             "family": "Indo-Iranian"
         },
-        "bn": {
+        "ben_Beng": {
             "name": "Bengali",
             "family": "Indo-Iranian"
         },
-        "pa": {
+        "ben_Latn": {
+            "name": "Bengali (Latin)",
+            "family": "Indo-Iranian"
+        },
+        "pan_Guru": {
             "name": "Punjabi",
             "family": "Indo-Iranian"
         },
-        "gu": {
+        "guj_Gujr": {
             "name": "Gujarati",
             "family": "Indo-Iranian"
         },
-        "zh": {
+        "asm_Beng": {
+            "name": "Assamese",
+            "family": "Indo-Iranian"
+        },
+        "ory_Orya": {
+            "name": "Odia",
+            "family": "Indo-Iranian"
+        },
+        "sdh_Arab": {
+            "name": "Southern Kurdish",
+            "family": "Indo-Iranian"
+        },
+        "zho_Hani": {
             "name": "Chinese",
             "family": "Sino-Tibetan"
         },
-        "bo": {
+        "wuu_Hani": {
+            "name": "Wu Chinese",
+            "family": "Sino-Tibetan"
+        },
+        "bod_Tibt": {
             "name": "Tibetan",
             "family": "Sino-Tibetan"
         },
-        "my": {
+        "dzo_Tibt": {
+            "name": "Dzongkha",
+            "family": "Sino-Tibetan"
+        },
+        "mya_Mymr": {
             "name": "Burmese",
             "family": "Sino-Tibetan"
         },
-        "ja": {
+        "jpn_Jpan": {
             "name": "Japanese",
             "family": "Japonic"
         },
-        "ko": {
+        "kor_Hang": {
             "name": "Korean",
             "family": "Koreanic"
         },
-        "ar": {
+        "ara_Arab": {
             "name": "Arabic",
             "family": "West Semitic"
         },
-        "he": {
+        "arz_Arab": {
+            "name": "Egyptian Arabic",
+            "family": "West Semitic"
+        },
+        "heb_Hebr": {
             "name": "Hebrew",
             "family": "West Semitic"
         },
-        "am": {
+        "hbo_Hebr": {
+            "name": "Ancient Hebrew",
+            "family": "West Semitic"
+        },
+        "amh_Ethi": {
             "name": "Amharic",
             "family": "West Semitic"
         },
-        "vi": {
+        "tig_Ethi": {
+            "name": "Tigre",
+            "family": "West Semitic"
+        },
+        "syc_Syrc": {
+            "name": "Classical Syriac",
+            "family": "West Semitic"
+        },
+        "vie_Latn": {
             "name": "Vietnamese",
             "family": "Austroasiatic"
         },
-        "th": {
+        "tha_Thai": {
             "name": "Thai",
             "family": "Tai-Kadai"
         },
-        "lo": {
+        "lao_Laoo": {
             "name": "Lao",
             "family": "Tai-Kadai"
         },
-        "tr": {
+        "tur_Latn": {
             "name": "Turkish",
             "family": "Turkic"
         },
-        "az": {
-            "name": "Azerbaijani",
+        "azj_Cyrl": {
+            "name": "North Azerbaijani",
             "family": "Turkic"
         },
-        "kk": {
+        "kaz_Cyrl": {
             "name": "Kazakh",
             "family": "Turkic"
         },
-        "uz": {
-            "name": "Uzbek",
+        "uzs_Arab": {
+            "name": "Southern Uzbek",
             "family": "Turkic"
         },
-        "id": {
+        "tat_Latn": {
+            "name": "Tatar",
+            "family": "Turkic"
+        },
+        "sah_Cyrl": {
+            "name": "Yakut",
+            "family": "Turkic"
+        },
+        "ind_Latn": {
             "name": "Indonesian",
             "family": "Austronesian"
         },
-        "ms": {
-            "name": "Malay",
+        "zsm_Latn": {
+            "name": "Standard Malay",
             "family": "Austronesian"
         },
-        "tl": {
+        "tgl_Latn": {
             "name": "Tagalog",
             "family": "Austronesian"
         },
-        "sw": {
+        "jav_Latn": {
+            "name": "Javanese",
+            "family": "Austronesian"
+        },
+        "bug_Latn": {
+            "name": "Buginese",
+            "family": "Austronesian"
+        },
+        "swa_Latn": {
             "name": "Swahili",
             "family": "Niger-Congo"
         },
-        "yo": {
+        "yor_Latn": {
             "name": "Yoruba",
             "family": "Niger-Congo"
         },
-        "hu": {
+        "nya_Latn": {
+            "name": "Nyanja",
+            "family": "Niger-Congo"
+        },
+        "tso_Latn": {
+            "name": "Tsonga",
+            "family": "Niger-Congo"
+        },
+        "hun_Latn": {
             "name": "Hungarian",
             "family": "Uralic"
         },
-        "fi": {
+        "fin_Latn": {
             "name": "Finnish",
             "family": "Uralic"
         },
-        "et": {
+        "est_Latn": {
             "name": "Estonian",
             "family": "Uralic"
         },
-        "ka": {
+        "ekk_Latn": {
+            "name": "Standard Estonian",
+            "family": "Uralic"
+        },
+        "mhr_Cyrl": {
+            "name": "Eastern Mari",
+            "family": "Uralic"
+        },
+        "koi_Cyrl": {
+            "name": "Komi-Permyak",
+            "family": "Uralic"
+        },
+        "sma_Latn": {
+            "name": "Southern Sami",
+            "family": "Uralic"
+        },
+        "kat_Geor": {
             "name": "Georgian",
             "family": "Kartvelian"
         },
-        "hy": {
+        "hye_Armn": {
             "name": "Armenian",
             "family": "Indo-European-Other"
         },
-        "sq": {
+        "sqi_Latn": {
             "name": "Albanian",
             "family": "Indo-European-Other"
         },
-        "el": {
+        "ell_Grek": {
             "name": "Greek",
             "family": "Indo-European-Other"
         },
-        "eu": {
+        "eus_Latn": {
             "name": "Basque",
             "family": "Language-Isolate"
         },
-        "mt": {
-            "name": "Maltese",
-            "family": "West Semitic"
+        "tel_Telu": {
+            "name": "Telugu",
+            "family": "Dravidian"
+        },
+        "tel_Latn": {
+            "name": "Telugu (Latin)",
+            "family": "Dravidian"
+        },
+        "tam_Taml": {
+            "name": "Tamil",
+            "family": "Dravidian"
+        },
+        "kan_Knda": {
+            "name": "Kannada",
+            "family": "Dravidian"
+        },
+        "tcy_Knda": {
+            "name": "Tulu",
+            "family": "Dravidian"
+        },
+        "mal_Mlym": {
+            "name": "Malayalam",
+            "family": "Dravidian"
+        },
+        "cym_Latn": {
+            "name": "Welsh",
+            "family": "Celtic"
+        },
+        "gle_Latn": {
+            "name": "Irish",
+            "family": "Celtic"
+        },
+        "gla_Latn": {
+            "name": "Scottish Gaelic",
+            "family": "Celtic"
+        },
+        "ang_Latn": {
+            "name": "Old English",
+            "family": "Germanic-Historical"
+        },
+        "orv_Cyrl": {
+            "name": "Old Russian",
+            "family": "Balto-Slavic-Historical"
+        },
+        "prg_Latn": {
+            "name": "Prussian",
+            "family": "Balto-Slavic-Historical"
+        },
+        "jbo_Latn": {
+            "name": "Lojban",
+            "family": "Constructed"
+        },
+        "ile_Latn": {
+            "name": "Interlingue",
+            "family": "Constructed"
         }
     },
     "family_colors": {
@@ -266,6 +394,11 @@
         "Uralic": "#c49c94",
         "Kartvelian": "#f7b6d2",
         "Indo-European-Other": "#dbdb8d",
-        "Language-Isolate": "#9c9ede"
+        "Language-Isolate": "#9c9ede",
+        "Dravidian": "#e7cb94",
+        "Celtic": "#a55194",
+        "Germanic-Historical": "#6baed6",
+        "Balto-Slavic-Historical": "#74c476",
+        "Constructed": "#fd8d3c"
     }
 }

@@ -7,8 +7,12 @@
     ],
     "subgroups": {
       "B0": [
-        "roh_Latn",
-        "fur_Latn",
+        "roh_Latn"
+      ],
+      "B1": [
+        "fur_Latn"
+      ],
+      "B2": [
         "wln_Latn"
       ]
     },
@@ -41,8 +45,12 @@
     ],
     "subgroups": {
       "B0": [
-        "arb_Arab",
-        "mlt_Latn",
+        "arb_Arab"
+      ],
+      "B1": [
+        "mlt_Latn"
+      ],
+      "B2": [
         "aeb_Arab"
       ]
     },
@@ -75,8 +83,12 @@
     ],
     "subgroups": {
       "B0": [
-        "xho_Latn",
-        "zul_Latn",
+        "xho_Latn"
+      ],
+      "B1": [
+        "zul_Latn"
+      ],
+      "B2": [
         "nde_Latn"
       ]
     },
@@ -109,8 +121,12 @@
     ],
     "subgroups": {
       "B0": [
-        "hun_Latn",
-        "udm_Cyrl",
+        "hun_Latn"
+      ],
+      "B1": [
+        "udm_Cyrl"
+      ],
+      "B2": [
         "kpv_Cyrl"
       ]
     },

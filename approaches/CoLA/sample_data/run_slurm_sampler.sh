@@ -9,9 +9,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-
+SCRIPT_DIR="$(pwd)"
 PLAN_INPUT="${1:-/scratch/hpc-prf-merlin/joel/HTYLLM-PG/approaches/CoLA/sample_data/generate_sample_plan/sampling_plan_tier3_200langs.csv}"
 TOKENIZER_FLAG="${2:-}"
 PLAN_CSV="$(realpath "${PLAN_INPUT}")"
@@ -20,6 +18,8 @@ MAX_SAMPLE="${MAX_SAMPLE:-}"
 
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p "logs"
+
+cd "${SCRIPT_DIR}"
 
 CLI_ARGS=( "${PLAN_CSV}" "${OUTPUT_DIR}" )
 [[ -n "${MAX_SAMPLE}" ]] && CLI_ARGS+=( "--max-sample" "${MAX_SAMPLE}" )

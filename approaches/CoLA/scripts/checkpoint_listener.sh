@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --time=36:30:00
+#SBATCH --time=168:00:00
 #SBATCH --output=logs/checkpoint_listener_%j.log
 
 # This script can run either via `sbatch checkpoint_listener.sh ...`
@@ -28,6 +28,10 @@ Options:
   --output-dir DIR     Where to save eval outputs (default: watch-dir/lm_eval)
   --wandb-project NAME W&B project (default: llama31_multilingual_eval_belebele)
   --wandb-prefix PREF  W&B prefix (default: cola_moe_acc)
+  --wandb-group NAME   W&B group to tie checkpoint runs together (default: watch-dir basename)
+  --wandb-id FILE|ID   W&B run id or file containing the id (default: watch-dir/.wandb_eval_run_id)
+  --wandb-resume MODE  W&B resume mode (default: allow)
+  --wandb-mode MODE    W&B mode (default: shared)
   --extra-args "ARGS"  Extra args for lm_eval
   --poll-interval SEC  Scan interval (default: 120)
   --state-file FILE    Track processed ckpts (default: watch-dir/.lm_eval_submitted)
@@ -41,6 +45,10 @@ TOK=""
 POLL=120
 WANDB_PROJ="llama31_multilingual_eval_belebele"
 WANDB_PREF="cola_moe_acc"
+WANDB_GROUP=""
+WANDB_ID=""
+WANDB_RESUME="allow"
+WANDB_MODE="shared"
 EXTRA=""
 WATCH=""
 SCRIPT=""
@@ -58,6 +66,10 @@ while [[ $# -gt 0 ]]; do
     --output-dir) OUT=$2; shift 2; continue;;
     --wandb-project) WANDB_PROJ=$2; shift 2; continue;;
     --wandb-prefix) WANDB_PREF=$2; shift 2; continue;;
+    --wandb-group) WANDB_GROUP=$2; shift 2; continue;;
+    --wandb-id) WANDB_ID=$2; shift 2; continue;;
+    --wandb-resume) WANDB_RESUME=$2; shift 2; continue;;
+    --wandb-mode) WANDB_MODE=$2; shift 2; continue;;
     --extra-args) EXTRA=$2; shift 2; continue;;
     --poll-interval) POLL=$2; shift 2; continue;;
     --state-file) STATE=$2; shift 2; continue;;
@@ -75,6 +87,31 @@ WATCH_LABEL=$(basename "$WATCH")
 OUT=${OUT:-"$WATCH/lm_eval"}
 STATE=${STATE:-"$WATCH/.lm_eval_submitted"}
 STOP=${STOP:-"$WATCH/.training_complete"}
+WANDB_GROUP=${WANDB_GROUP:-"$WATCH_LABEL"}
+WANDB_ID=${WANDB_ID:-"$WATCH/.wandb_eval_run_id"}
+
+resolve_wandb_id() {
+  local id_spec=$1
+  if [[ -f "$id_spec" ]]; then
+    local existing
+    existing=$(cat "$id_spec" | tr -d '[:space:]')
+    if [[ -n "$existing" ]]; then
+      echo "$existing"
+      return 0
+    fi
+  fi
+  if [[ "$id_spec" == */* || "$id_spec" == *.* ]]; then
+    local new_id
+    new_id=$(date +%s%N)
+    new_id="eval_${WATCH_LABEL}_${new_id}"
+    echo "$new_id" > "$id_spec"
+    echo "$new_id"
+    return 0
+  fi
+  echo "$id_spec"
+}
+
+WANDB_RUN_ID=$(resolve_wandb_id "$WANDB_ID")
 
 mkdir -p "$OUT" logs
 touch "$STATE"
@@ -82,27 +119,138 @@ touch "$STATE"
 processed() { grep -Fxq "$1" "$STATE"; }
 mark() { echo "$1" >> "$STATE"; }
 
+SPLIT_ENABLE=${LM_EVAL_SPLIT_ENABLE:-false}
+BELEBELE_CHUNKS=${LM_EVAL_BELEBELE_CHUNKS:-4}
+
+build_task_groups() {
+  local tasks_csv=$1
+  local -a all_tasks=()
+  local -a belebele=()
+  local -a others=()
+  local -a groups=()
+
+  IFS=',' read -r -a all_tasks <<< "$tasks_csv"
+  for t in "${all_tasks[@]}"; do
+    if [[ "$t" == belebele_* ]]; then
+      belebele+=("$t")
+    elif [[ -n "$t" ]]; then
+      others+=("$t")
+    fi
+  done
+
+  if [[ "${SPLIT_ENABLE}" != "true" || ${#belebele[@]} -eq 0 ]]; then
+    groups+=("all|$tasks_csv")
+    printf "%s\n" "${groups[@]}"
+    return
+  fi
+
+  local chunk_count=${BELEBELE_CHUNKS}
+  [[ "$chunk_count" -lt 1 ]] && chunk_count=1
+  local chunk_size=$(( ( ${#belebele[@]} + chunk_count - 1 ) / chunk_count ))
+  local idx=0
+  for ((i=0; i<${#belebele[@]}; i+=chunk_size)); do
+    local slice=("${belebele[@]:i:chunk_size}")
+    local slice_csv
+    slice_csv=$(IFS=,; echo "${slice[*]}")
+    idx=$((idx + 1))
+    groups+=("belebele_chunk${idx}|${slice_csv}")
+  done
+
+  for t in "${others[@]}"; do
+    if [[ "$t" == "xnli" ]]; then
+      groups+=("xnli|xnli")
+    else
+      groups+=("other|$t")
+    fi
+  done
+
+  printf "%s\n" "${groups[@]}"
+}
+
+resolve_eval_target() {
+  local ckpt_path=$1
+  local adapter_path="${ckpt_path}_adapter"
+  local adapter_sharded="${ckpt_path}_adapter_sharded"
+  if [[ -f "${ckpt_path}/adapter_config.json" ]]; then
+    if [[ -f "${ckpt_path}/adapter_model.safetensors" || -f "${ckpt_path}/adapter_model.bin" ]]; then
+      echo "${ckpt_path}"
+      return
+    fi
+  fi
+  if [[ -f "${adapter_path}/adapter_config.json" ]]; then
+    if [[ -f "${adapter_path}/adapter_model.safetensors" || -f "${adapter_path}/adapter_model.bin" ]]; then
+      echo "${adapter_path}"
+      return
+    fi
+  fi
+  if [[ -d "${adapter_sharded}" ]]; then
+    if [[ ! -f "${adapter_sharded}/.done" ]]; then
+      echo ""
+      return
+    fi
+    echo "${ckpt_path}"
+    return
+  fi
+  if [[ -f "${ckpt_path}/adapter_config.json" || -d "${adapter_path}" || -d "${adapter_sharded}" ]]; then
+    echo ""
+    return
+  fi
+  echo ""
+}
+
+is_old_enough() {
+  local path=$1
+  local min_age=${MIN_CKPT_AGE_SECONDS:-300}
+  if [[ "${min_age}" -le 0 ]]; then
+    return 0
+  fi
+  local now
+  now=$(date +%s)
+  local mtime
+  mtime=$(stat -c %Y "$path" 2>/dev/null || echo 0)
+  local age=$((now - mtime))
+  [[ "${age}" -ge "${min_age}" ]]
+}
+
 submit() {
   local ckpt_path=$1
-  echo "[INFO] eval for ${ckpt_path}"
+  local group_label=$2
+  local group_tasks=$3
+  echo "[INFO] eval for ${ckpt_path} (${group_label})"
   local ckpt_label
   ckpt_label=$(basename "${ckpt_path}")
-  local job_name="lm-eval_${WATCH_LABEL}_${ckpt_label}"
-  local job_log="logs/${job_name}_%j.log"
+  local job_name="lm-eval_${WATCH_LABEL}_${ckpt_label}_${group_label}"
+  local eval_out_dir="${OUT}/${ckpt_label}/${group_label}"
+  if [[ "${group_label}" == "all" ]]; then
+    eval_out_dir="${OUT}/${ckpt_label}"
+  fi
+  local job_log="${eval_out_dir}/${job_name}_%j.log"
   local wandb_prefix="${WANDB_PREF}_${WATCH_LABEL}"
+  local adapter_path="${ckpt_path}_adapter"
+  local adapter_sharded="${ckpt_path}_adapter_sharded"
+  mkdir -p "${eval_out_dir}"
   sbatch \
     --job-name="${job_name}" \
     --output="${job_log}" \
     "$SCRIPT" \
     --checkpoint "${ckpt_path}" \
-    --output-dir "$OUT" \
-    --tasks "$TASKS" \
+    --output-dir "${eval_out_dir}" \
+    --tasks "${group_tasks}" \
     --batch-size "$BS" \
     --wandb-project "$WANDB_PROJ" \
     --wandb-prefix "${wandb_prefix}" \
+    --wandb-group "${WANDB_GROUP}" \
+    --wandb-id "${WANDB_RUN_ID}" \
+    --wandb-resume "${WANDB_RESUME}" \
+    --wandb-mode "${WANDB_MODE}" \
     ${TOK:+--tokenizer "$TOK"} \
     ${EXTRA:+--extra-args "$EXTRA"} \
-  && mark "${ckpt_path}"
+  && {
+    mark "${ckpt_path}|${group_label}"
+    if [[ -d "${adapter_sharded}" && "${ckpt_path}" != *"_adapter" && "${ckpt_path}" != *"_adapter_sharded" ]]; then
+      mark "${adapter_path}|${group_label}"
+    fi
+  }
 }
 
 echo "[INFO] Watching $WATCH"
@@ -111,11 +259,32 @@ while true; do
   mapfile -t CKPTS < <(find "$WATCH" -maxdepth 1 -type d -name 'checkpoint-*' | sort -V)
 
   for ckpt in "${CKPTS[@]}"; do
-    processed "$ckpt" || submit "$ckpt"
+    eval_target=$(resolve_eval_target "$ckpt")
+    [[ -z "$eval_target" ]] && continue
+    if ! is_old_enough "$ckpt"; then
+      continue
+    fi
+    mapfile -t TASK_GROUPS < <(build_task_groups "$TASKS")
+    for group in "${TASK_GROUPS[@]}"; do
+      IFS='|' read -r group_label group_tasks <<< "$group"
+      processed "${eval_target}|${group_label}" || submit "$eval_target" "$group_label" "$group_tasks"
+    done
   done
 
   if [[ -f "$STOP" ]]; then
-    processed "$WATCH" || submit "$WATCH"
+    if [[ ${#CKPTS[@]} -gt 0 ]]; then
+      last_ckpt="${CKPTS[-1]}"
+      eval_target=$(resolve_eval_target "$last_ckpt")
+      if [[ -n "$eval_target" ]]; then
+        mapfile -t TASK_GROUPS < <(build_task_groups "$TASKS")
+        for group in "${TASK_GROUPS[@]}"; do
+          IFS='|' read -r group_label group_tasks <<< "$group"
+          processed "${eval_target}|${group_label}" || submit "$eval_target" "$group_label" "$group_tasks"
+        done
+      fi
+    else
+      processed "$WATCH" || submit "$WATCH"
+    fi
     echo "[INFO] Training done, exiting."
     exit 0
   fi

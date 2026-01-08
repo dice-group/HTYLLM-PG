@@ -18,11 +18,11 @@ The decisions for that are documented in `docs/decide_token_budget.md`.
 """
 
 ALPHA = 0.3
-# Tier id -> total token budget
+# Tier id -> total token budget (empirically adjusted, see docs/decide_token_budget.md)
 TOKEN_BUDGETS = {
-    1: 6_000_000_000,   # 12-language tier
-    2: 24_000_000_000,  # 72-95 language tier
-    3: 60_000_000_000,  # 200-language tier
+    1: 1_200_000_000,   # 12-language tier (~2 days on 2×H100 @ ~3.5k tok/s/GPU)
+    2: 4_800_000_000,   # 72-95 language tier (~4 days on 4×H100)
+    3: 12_000_000_000,  # 200-language tier (~5 days on 8×H100)
 }
 TIER_FILENAMES = {
     1: "12_tier_language_groupings.json",

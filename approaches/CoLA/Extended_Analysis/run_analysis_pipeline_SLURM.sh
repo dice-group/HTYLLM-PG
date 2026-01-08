@@ -2,12 +2,12 @@
 #SBATCH --job-name=expert_routing_analysis
 #SBATCH --output=logs/routing_analysis_%j.out
 #SBATCH --error=logs/routing_analysis_%j.err
-#SBATCH --time=12:00:00
+#SBATCH --time=35:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=256G
+#SBATCH --gres=gpu:h100:1
 #SBATCH --partition=gpu
 
 # Expert Routing Analysis - Slurm Version
@@ -49,14 +49,14 @@ python -c "import torch; print('CUDA available:', torch.cuda.is_available()); pr
 
 # Configuration from command line or defaults
 BASE_MODEL="meta-llama/Llama-3.1-8B"
-CHECKPOINT="/scratch/hpc-prf-merlin/sashreek/moe_study/saves/hydralora_moe_llama31_8b_acc"
-ADAPTER_TYPE="hydralora"
-VALIDATION_DATA="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/samples"
-LANGUAGES="en,es,hi,ru,fi"
-NUM_SEQUENCES="10000"
+CHECKPOINT="/scratch/hpc-prf-merlin/project_data/moe_study/saves/cola_moe_llama31_8b_acc/pissa/checkpoint-6000"
+ADAPTER_TYPE="cola"
+VALIDATION_DATA="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/sharded_samples"
+LANGUAGES="english,rus_Cyrl,spa_Latn,fas_Arab,fin_Latn,hin_Deva,slv_Latn,ekk_Latn,zsm_Latn,srp_Cyrl,kat_Geor,tel_Telu"
+NUM_SEQUENCES="100"
 NUM_LAYERS="32"
 NUM_EXPERTS="4"
-BATCH_SIZE="8"
+BATCH_SIZE="16"
 
 # Derived paths
 CHECKPOINT_NAME=$(basename "$CHECKPOINT")
@@ -135,7 +135,7 @@ srun python tool/generate_analysis_report.py \
 echo ""
 
 echo "========================================="
-echo "✓ Analysis Complete!"
+echo "Analysis Complete!"
 echo "========================================="
 echo "Finished at: $(date)"
 echo ""

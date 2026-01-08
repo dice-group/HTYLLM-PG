@@ -113,7 +113,7 @@ accelerate launch \
   --stage sft \
   --do_train \
   --do_eval \
-  --evaluation_strategy steps \
+  --eval_strategy steps \
   --eval_steps ${EVAL_STEPS} \
   --run_name "${RUN_NAME}" \
   --model_name_or_path "${MODEL_NAME_OR_PATH}" \

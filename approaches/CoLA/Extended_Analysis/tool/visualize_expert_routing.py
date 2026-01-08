@@ -40,32 +40,50 @@ def create_routing_heatmap(
     languages: List[str],
     num_layers: int,
     num_experts: int,
-    output_file: Path
+    output_file: Path,
+    color_scheme: str = 'modern'
 ):
     """
-    Create heatmap with blue-white-yellow-red color scheme.
+    Create heatmap with white-green-yellow-red-black color scheme.
     
     routing_matrix: numpy array [num_languages, num_layers, num_experts]
                     MUST be normalized using layer-wise normalization!
     languages: list of language codes
+    color_scheme: 'classic' (blue-white-yellow-red) or 'modern' (white-green-yellow-red-black)
     """
-    logger.info("Creating routing heatmap")
+    logger.info(f"Creating routing heatmap with {color_scheme} color scheme")
     
     # Reshape to [languages, layers*experts]
     heatmap_data = routing_matrix.reshape(len(languages), -1)
     
-    # Blue-white-yellow-red color scheme
-    colors = ['blue', 'white', 'yellow', 'red', 'red']
-    positions = [0, 1.0/num_experts, 2.0/num_experts, 0.75, 1.0]
-    lola_cmap = LinearSegmentedColormap.from_list('lola', list(zip(positions, colors)))
+    # white-green-yellow-red-black color scheme
+    if color_scheme == 'modern':
+        # white-green-yellow-red-black (newer, more vibrant)
+        colors = ['white', 'lightgreen', 'yellow', 'lightcoral', 'red', 'black']
+        # Ensure positions are strictly increasing by capping 4/experts at 0.7 max
+        pos_4 = min(4.0/num_experts, 0.7)
+        positions = [0, 1.0/num_experts, 2.0/num_experts, pos_4, 0.75, 1.0]
+        tick_positions = [0, 1.0/num_experts, 2.0/num_experts, pos_4, 0.5, 1.0]
+        tick_labels = ['0', f'1/{num_experts}', f'2/{num_experts}', f'4/{num_experts}', '1/2', '1']
+    else:  # classic
+        # blue-white-yellow-red
+        colors = ['blue', 'white', 'yellow', 'red', 'red']
+        positions = [0, 1.0/num_experts, 2.0/num_experts, 0.75, 1.0]
+        tick_positions = [0, 1.0/num_experts, 2.0/num_experts, 0.5, 1.0]
+        tick_labels = ['0', f'1/{num_experts}', f'2/{num_experts}', '1/2', '1']
     
-    # Create figure (1600x1200 for publication quality)
-    fig, ax = plt.subplots(figsize=(20, 12))
+    custom_cmap = LinearSegmentedColormap.from_list('custom', list(zip(positions, colors)))
+    
+    # Create figure (4000x1700 for heatmap2, 1600x1200 for classic)
+    if color_scheme == 'modern':
+        fig, ax = plt.subplots(figsize=(25, 10.625))  # 16:9 aspect ratio
+    else:
+        fig, ax = plt.subplots(figsize=(20, 12))
     
     # Heatmap with color scheme and range
     im = ax.imshow(
         heatmap_data,
-        cmap=lola_cmap,
+        cmap=custom_cmap,
         aspect='auto',
         vmin=0,  # [0, 1] range for normalized data
         vmax=1,
@@ -91,8 +109,8 @@ def create_routing_heatmap(
     # Colorbar with tick marks
     cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     cbar.set_label('Routing Ratio (normalized per layer)', fontsize=12)
-    cbar.set_ticks([0, 1.0/num_experts, 2.0/num_experts, 0.5, 1.0])
-    cbar.set_ticklabels(['0', f'1/{num_experts}', f'2/{num_experts}', '1/2', '1'])
+    cbar.set_ticks(tick_positions)
+    cbar.set_ticklabels(tick_labels)
     
     # Add layer labels at top
     for layer in range(num_layers):
@@ -135,17 +153,84 @@ def create_tsne_clustering(
     # Replace NaN with 0
     routing_matrix_flat = np.nan_to_num(routing_matrix_flat, nan=0.0)
     
+    # Validate data before t-SNE
+    n_samples = len(routing_matrix_flat)
+    
+    # Check for all zeros
+    if np.allclose(routing_matrix_flat, 0):
+        logger.error("Routing matrix is all zeros - cannot perform t-SNE")
+        logger.error("This suggests no routing data was collected. Check that:")
+        logger.error("  1. Your model has MoE/routing layers")
+        logger.error("  2. Forward hooks attached correctly")
+        logger.error("  3. Inference ran successfully")
+        # Create empty plot with error message
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, 
+                'ERROR: No routing data available\n(all values are zero)',
+                ha='center', va='center', fontsize=14, color='red',
+                transform=ax.transAxes)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis('off')
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.close()
+        return
+    
+    # Check for constant values (no variance)
+    if np.std(routing_matrix_flat) < 1e-10:
+        logger.error("Routing matrix has no variance - cannot perform t-SNE")
+        logger.error("All routing values are identical")
+        # Create empty plot with error message
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, 
+                'ERROR: No variance in routing data\n(all values are identical)',
+                ha='center', va='center', fontsize=14, color='red',
+                transform=ax.transAxes)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis('off')
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.close()
+        return
+    
+    # Adaptive perplexity based on number of samples
+    # t-SNE requires perplexity < n_samples
+    perplexity = min(30.0, max(2.0, n_samples - 1))
+    
+    if n_samples < 5:
+        logger.warning(f"Very few samples ({n_samples}), t-SNE may not be meaningful")
+    
+    logger.info(f"Using perplexity={perplexity} for {n_samples} languages")
+    logger.info(f"Data range: [{routing_matrix_flat.min():.4f}, {routing_matrix_flat.max():.4f}]")
+    logger.info(f"Data std: {routing_matrix_flat.std():.4f}")
+    
     # t-SNE parameters
     logger.info("Running t-SNE (this may take a minute)...")
-    tsne = TSNE(
-        n_components=2,
-        learning_rate=250.0,  # Higher than default 200 for better convergence
-        init='pca',            # PCA initialization for stability
-        perplexity=30.0,       # Standard perplexity value
-        random_state=42        # For reproducibility
-    )
-    
-    embedded = tsne.fit_transform(routing_matrix_flat.astype(np.float32))
+    try:
+        tsne = TSNE(
+            n_components=2,
+            learning_rate=250.0,
+            init='pca',
+            perplexity=perplexity,
+            random_state=42,
+            max_iter=1000  # Limit iterations to prevent hanging
+        )
+        
+        embedded = tsne.fit_transform(routing_matrix_flat.astype(np.float32))
+    except Exception as e:
+        logger.error(f"t-SNE failed: {e}")
+        # Create error plot
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.text(0.5, 0.5, 
+                f'ERROR: t-SNE computation failed\n{str(e)}',
+                ha='center', va='center', fontsize=12, color='red',
+                transform=ax.transAxes)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis('off')
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.close()
+        return
     
     # Get language family info
     lang_family_map = language_families.get('languages', {})
@@ -280,6 +365,13 @@ def main():
         help='Create layer entropy plot'
     )
     parser.add_argument(
+        '--color_scheme',
+        type=str,
+        choices=['classic', 'modern'],
+        default='modern',
+        help='Heatmap color scheme: classic (blue-white-yellow-red) or modern (white-green-yellow-red-black)'
+    )
+    parser.add_argument(
         '--create_all',
         action='store_true',
         help='Create all visualizations'
@@ -318,7 +410,8 @@ def main():
             languages,
             num_layers,
             num_experts,
-            args.output_dir / 'routing_heatmap.png'
+            args.output_dir / 'routing_heatmap.png',
+            color_scheme=args.color_scheme
         )
     
     if args.create_tsne:
