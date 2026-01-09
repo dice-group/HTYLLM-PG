@@ -29,7 +29,8 @@ LOG_ROOT="/scratch/hpc-prf-merlin/joel/HTYLLM-PG/approaches/CoLA/scripts/listene
 SCRIPT=""
 SYNC_INTERVAL=120
 SYNC_PROJECT="htyllm-adapter-lpr-200_lang_cola_eval"
-SYNC_SUFFIX="${LM_EVAL_SUMMARY_SUFFIX:-_summary}"
+SYNC_SUFFIX=""
+SUMMARY_PROJECT_SUFFIX="${LM_EVAL_SUMMARY_SUFFIX:-_summary}"
 SYNC_SCRIPT=""
 SYNC_PYTHON="python3"
 ROOTS_FILE=""
@@ -174,9 +175,9 @@ sync_summaries() {
       local args="project=${SYNC_PROJECT},name=${run_label}"
       echo "[INFO] summary sync run_dir=${run_dir} wandb_args=${args}"
       if [[ -n "$SYNC_SUFFIX" ]]; then
-        "$SYNC_PYTHON" "$SYNC_SCRIPT" --run-dir "$run_dir" --wandb-args "$args" --suffix "$SYNC_SUFFIX" || true
+        WANDB_SUMMARY_SUFFIX="${SUMMARY_PROJECT_SUFFIX}" "$SYNC_PYTHON" "$SYNC_SCRIPT" --run-dir "$run_dir" --wandb-args "$args" --suffix "$SYNC_SUFFIX" || true
       else
-        "$SYNC_PYTHON" "$SYNC_SCRIPT" --run-dir "$run_dir" --wandb-args "$args" || true
+        WANDB_SUMMARY_SUFFIX="${SUMMARY_PROJECT_SUFFIX}" "$SYNC_PYTHON" "$SYNC_SCRIPT" --run-dir "$run_dir" --wandb-args "$args" || true
       fi
     done
   done < <(load_roots)

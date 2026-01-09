@@ -43,7 +43,9 @@ def _init_run(run_id_dir: Path, suffix: str, wandb_args_dict: dict) -> "wandb.sd
         run_id_path.write_text(run_id)
     import wandb
 
-    base_name = wandb_args_dict.get("name") or "eval"
+    base_name = wandb_args_dict.get("name")
+    if not base_name or base_name in {"eval", "summary"}:
+        base_name = run_id_dir.parent.name or "eval"
     return wandb.init(
         id=run_id,
         resume="allow",
