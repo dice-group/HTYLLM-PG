@@ -75,6 +75,7 @@ USE_LANG_WRAPPER=${LM_EVAL_USE_LANG_WRAPPER:-auto}
 LOG_ROUTER_METRICS=${LM_EVAL_LOG_ROUTER_METRICS:-true}
 LIMIT=${LM_EVAL_LIMIT:-}
 ENABLE_SUMMARY=${LM_EVAL_ENABLE_SUMMARY:-true}
+SUMMARY_UPLOAD=${LM_EVAL_SUMMARY_UPLOAD:-local}
 
 [[ -z "${CKPT:-}" || -z "${OUTDIR:-}" ]] && { echo "--checkpoint and --output-dir required"; exit 1; }
 [[ ! -d "$CKPT" ]] && { echo "Checkpoint not found: $CKPT"; exit 1; }
@@ -207,7 +208,7 @@ if [[ "${ENABLE_SUMMARY}" == "true" ]]; then
     if [[ -n "${WMODE}" ]]; then
       WANDB_SUMMARY_ARGS="${WANDB_SUMMARY_ARGS},mode=${WMODE}"
     fi
-    python3 "${REPO_ROOT}/scripts/wandb_summary_job.py" \
+    WANDB_SUMMARY_UPLOAD="${SUMMARY_UPLOAD}" python3 "${REPO_ROOT}/scripts/wandb_summary_job.py" \
       --checkpoint "${CKPT}" \
       --output-dir "${OUTDIR}" \
       --wandb-args "${WANDB_SUMMARY_ARGS}"

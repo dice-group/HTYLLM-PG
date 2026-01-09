@@ -6,6 +6,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --time=168:00:00
+#SBATCH --output=listener_logs/listener_%j.log
 
 # Unified checkpoint listener: scans multiple roots and submits lm-eval jobs for new adapters.
 # Options: --watch-root/--roots-file, --tasks/--limit, --marker-tag/--force.
@@ -22,9 +23,15 @@ MIN_AGE=300
 OUT_SUBDIR="lm_eval"
 IGNORE_EXISTING=false
 FORCE=false
+FORCE_ONCE=false
 LIMIT=""
 LOG_ROOT="/scratch/hpc-prf-merlin/joel/HTYLLM-PG/approaches/CoLA/scripts/listener_logs"
 SCRIPT=""
+SYNC_INTERVAL=120
+SYNC_PROJECT="htyllm-adapter-lpr-200_lang_cola_eval"
+SYNC_SUFFIX=""
+SYNC_SCRIPT=""
+SYNC_PYTHON="python3"
 ROOTS_FILE=""
 WATCH_ROOTS=(
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/" # watch all
@@ -53,9 +60,14 @@ while [[ $# -gt 0 ]]; do
     --min-age) MIN_AGE=$2; shift 2; continue;;
     --limit) LIMIT=$2; shift 2; continue;;
     --log-root) LOG_ROOT=$2; shift 2; continue;;
+    --sync-interval) SYNC_INTERVAL=$2; shift 2; continue;;
+    --sync-project) SYNC_PROJECT=$2; shift 2; continue;;
+    --sync-suffix) SYNC_SUFFIX=$2; shift 2; continue;;
+    --sync-script) SYNC_SCRIPT=$2; shift 2; continue;;
+    --sync-python) SYNC_PYTHON=$2; shift 2; continue;;
     --marker-tag) MARK_TAG=$2; shift 2; continue;;
     --ignore-existing) IGNORE_EXISTING=true; shift; continue;;
-    --force) FORCE=true; shift; continue;;
+    --force) FORCE=true; FORCE_ONCE=true; shift; continue;;
     *) echo "Unknown option $1"; exit 1;;
   esac
 done
@@ -89,6 +101,31 @@ if [[ -z "$SCRIPT" || ! -f "$SCRIPT" ]]; then
   fi
 fi
 
+find_sync_script() {
+  local base=$1
+  local cand=""
+  while [[ -n "$base" && "$base" != "/" ]]; do
+    cand="${base}/scripts/wandb_summary_sync.py"
+    [[ -f "$cand" ]] && { echo "$cand"; return 0; }
+    cand="${base}/approaches/CoLA/scripts/wandb_summary_sync.py"
+    [[ -f "$cand" ]] && { echo "$cand"; return 0; }
+    base=$(dirname "$base")
+  done
+  return 1
+}
+
+if [[ -z "$SYNC_SCRIPT" ]]; then
+  if [[ -n "${SLURM_SUBMIT_DIR:-}" ]]; then
+    SYNC_SCRIPT="$(find_sync_script "$SLURM_SUBMIT_DIR")" || true
+  fi
+  if [[ -z "$SYNC_SCRIPT" && -n "${REPO_ROOT:-}" ]]; then
+    SYNC_SCRIPT="$(find_sync_script "$REPO_ROOT")" || true
+  fi
+  if [[ -z "$SYNC_SCRIPT" ]]; then
+    SYNC_SCRIPT="$(find_sync_script "$(pwd)")" || true
+  fi
+fi
+
 [[ ${#WATCH_ROOTS[@]} -eq 0 && -z "$ROOTS_FILE" ]] && { echo "Provide --watch-root or --roots-file"; exit 1; }
 
 if [[ -z "$MARK_TAG" ]]; then
@@ -100,7 +137,9 @@ listener_log="${LOG_ROOT}/listener.log"
 if [[ -n "${SLURM_JOB_ID:-}" ]]; then
   listener_log="${LOG_ROOT}/listener_${SLURM_JOB_ID}.log"
 fi
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then
 exec > >(tee -a "$listener_log") 2>&1
+fi
 
 load_roots() {
   local -a roots=()
@@ -115,6 +154,32 @@ load_roots() {
     done < "$ROOTS_FILE"
   fi
   printf "%s\n" "${roots[@]}"
+}
+
+sync_summaries() {
+  [[ "$SYNC_INTERVAL" -le 0 ]] && return 0
+  [[ -z "$SYNC_SCRIPT" || ! -f "$SYNC_SCRIPT" ]] && { echo "[WARN] sync script not found; skipping"; return 0; }
+  declare -A seen_runs=()
+  while IFS= read -r root; do
+    [[ -z "$root" ]] && continue
+    mapfile -t RUN_DIRS < <(find "$root" -maxdepth 2 -type d -name "$OUT_SUBDIR" | sort -V)
+    for run_dir in "${RUN_DIRS[@]}"; do
+      [[ -z "$run_dir" ]] && continue
+      if [[ -n "${seen_runs[$run_dir]+x}" ]]; then
+        continue
+      fi
+      seen_runs["$run_dir"]=1
+      local run_label
+      run_label=$(basename "$(dirname "$run_dir")")
+      local args="project=${SYNC_PROJECT},name=${run_label}"
+      echo "[INFO] summary sync run_dir=${run_dir} wandb_args=${args}"
+      if [[ -n "$SYNC_SUFFIX" ]]; then
+        "$SYNC_PYTHON" "$SYNC_SCRIPT" --run-dir "$run_dir" --wandb-args "$args" --suffix "$SYNC_SUFFIX" || true
+      else
+        "$SYNC_PYTHON" "$SYNC_SCRIPT" --run-dir "$run_dir" --wandb-args "$args" || true
+      fi
+    done
+  done < <(load_roots)
 }
 
 is_old_enough() {
@@ -156,12 +221,19 @@ is_seen() {
   fi
   local eval_dir
   eval_dir="$(dirname "$target")/${OUT_SUBDIR}/$(basename "$target")"
-  [[ -f "${target}/.eval_submitted_${MARK_TAG}" \
+  local marker_present=false
+  if [[ -f "${target}/.eval_submitted_${MARK_TAG}" \
       || -f "${target}/.eval_done_${MARK_TAG}" \
       || -f "${target}/.eval_failed_${MARK_TAG}" \
       || -f "${eval_dir}/.eval_submitted_${MARK_TAG}" \
       || -f "${eval_dir}/.eval_done_${MARK_TAG}" \
-      || -f "${eval_dir}/.eval_failed_${MARK_TAG}" ]]
+      || -f "${eval_dir}/.eval_failed_${MARK_TAG}" ]]; then
+    marker_present=true
+  fi
+  if [[ "$marker_present" == "true" && -d "${eval_dir}/.eval_lock_${MARK_TAG}" ]]; then
+    rmdir "${eval_dir}/.eval_lock_${MARK_TAG}" 2>/dev/null || true
+  fi
+  [[ "$marker_present" == "true" || -d "${eval_dir}/.eval_lock_${MARK_TAG}" ]]
 }
 
 submit_eval() {
@@ -185,6 +257,9 @@ submit_eval() {
   mkdir -p "$eval_out_dir"
   mkdir -p "$log_dir"
   local lock_dir="${eval_out_dir}/.eval_lock_${MARK_TAG}"
+  if [[ "$FORCE" == "true" && -d "$lock_dir" ]]; then
+    rmdir "$lock_dir" 2>/dev/null || true
+  fi
   if ! mkdir "$lock_dir" 2>/dev/null; then
     echo "[INFO] skip locked: ckpt=${target} marker=${MARK_TAG}"
     return
@@ -213,6 +288,7 @@ submit_eval() {
   if job_out=$("${sbatch_cmd[@]}"); then
     echo "[INFO] ${job_out} (ckpt=${target})"
     mark_seen "$target"
+    rmdir "$lock_dir" 2>/dev/null || true
   else
     rmdir "$lock_dir" 2>/dev/null || true
     echo "[WARN] sbatch failed for ckpt=${target}" >&2
@@ -234,12 +310,19 @@ fi
 echo "[INFO] Unified listener started."
 
 while true; do
+  declare -A seen_targets=()
   while IFS= read -r root; do
     [[ -z "$root" ]] && continue
-    mapfile -t CKPTS < <(find "$root" -type d -name 'checkpoint-*' | sort -V)
+    mapfile -t CKPTS < <(
+      find "$root" -type f -path '*/checkpoint-*_adapter/adapter_config.json' -printf '%h\n' | sort -V
+    )
     for ckpt in "${CKPTS[@]}"; do
       target=$(resolve_adapter "$ckpt")
       [[ -z "$target" ]] && continue
+      if [[ -n "${seen_targets[$target]+x}" ]]; then
+        continue
+      fi
+      seen_targets["$target"]=1
       if is_seen "$target"; then
         echo "[INFO] skip already evaluated: ckpt=${target} marker=${MARK_TAG}"
         continue
@@ -248,5 +331,20 @@ while true; do
       submit_eval "$target"
     done
   done < <(load_roots)
+  if [[ "$SYNC_INTERVAL" -gt 0 ]]; then
+    now=$(date +%s)
+    if [[ -z "${LAST_SYNC_TS:-}" ]]; then
+      LAST_SYNC_TS=0
+    fi
+    if (( now - LAST_SYNC_TS >= SYNC_INTERVAL )); then
+      sync_summaries
+      LAST_SYNC_TS=$now
+    fi
+  fi
+  if [[ "$FORCE_ONCE" == "true" && "$FORCE" == "true" ]]; then
+    echo "[INFO] force mode applied once; disabling for subsequent polls"
+    FORCE=false
+    FORCE_ONCE=false
+  fi
   sleep "$POLL"
 done
