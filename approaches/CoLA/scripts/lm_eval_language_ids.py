@@ -13,7 +13,7 @@ import torch
 logger = logging.getLogger(__name__)
 
 
-_MODEL_CACHE: dict[tuple[str, str], object] = {}
+_MODEL_CACHE: dict[tuple[str, str, str, str, str], object] = {}
 
 
 def _log_adapter_stats(model: torch.nn.Module) -> None:
@@ -233,6 +233,27 @@ def _run_eval(
     device_map: Optional[str],
     run_suffix: Optional[str] = None,
 ):
+    force_move = os.environ.get("LM_EVAL_FORCE_DEVICE", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if device_map is not None:
+        force_move = False
+        logger.info("Device map set (%s); skipping manual .to()", device_map)
+    logger.info(
+        "Eval device: %s cuda_available=%s device_map=%s torch_dtype=%s force_move=%s",
+        device,
+        torch.cuda.is_available(),
+        device_map,
+        torch_dtype,
+        force_move,
+    )
+    logger.info(
+        "CUDA env: visible_devices=%s device_count=%s",
+        os.environ.get("CUDA_VISIBLE_DEVICES"),
+        torch.cuda.device_count(),
+    )
     # Ensure repo-local PEFT (with CoLA/Hydra) is used inside lm_eval.
     repo_root = Path(__file__).resolve().parents[1]
     peft_path = repo_root / "LLaMA-Factory" / "src"
@@ -278,7 +299,13 @@ def _run_eval(
         except Exception:  # noqa: BLE001
             pop_tracked_metrics = None
 
-    model_key = (pretrained, peft)
+    model_key = (
+        pretrained,
+        peft,
+        device,
+        str(device_map) if device_map is not None else "none",
+        str(torch_dtype) if torch_dtype is not None else "none",
+    )
     if model_key not in _MODEL_CACHE:
         load_kwargs = {"low_cpu_mem_usage": True}
         if torch_dtype is not None:
@@ -286,10 +313,46 @@ def _run_eval(
         if device_map is not None:
             load_kwargs["device_map"] = device_map
         base_model = AutoModelForCausalLM.from_pretrained(pretrained, **load_kwargs)
-        logger.info("Base model device: %s", next(base_model.parameters()).device)
+        try:
+            logger.info("Base model device: %s", next(base_model.parameters()).device)
+        except Exception:  # noqa: BLE001
+            logger.info("Base model device: <unknown>")
         peft_model = PeftModel.from_pretrained(base_model, peft, is_trainable=False)
+        try:
+            logger.info("PEFT model device before move: %s", next(peft_model.parameters()).device)
+        except Exception:  # noqa: BLE001
+            logger.info("PEFT model device before move: <unknown>")
+        if device.startswith("cuda") and torch.cuda.is_available() and force_move:
+            try:
+                peft_model = peft_model.to(device)
+                logger.info("Moved PEFT model to device: %s", device)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to move PEFT model to %s: %s", device, exc)
+        peft_model.eval()
+        try:
+            logger.info("PEFT model device after move: %s", next(peft_model.parameters()).device)
+        except Exception:  # noqa: BLE001
+            logger.info("PEFT model device after move: <unknown>")
         _log_adapter_stats(peft_model)
         _MODEL_CACHE[model_key] = peft_model
+    else:
+        peft_model = _MODEL_CACHE[model_key]
+        if device.startswith("cuda") and torch.cuda.is_available() and force_move:
+            try:
+                current_device = next(peft_model.parameters()).device
+            except Exception:  # noqa: BLE001
+                current_device = None
+            if current_device is not None and current_device.type != "cuda":
+                try:
+                    peft_model = peft_model.to(device)
+                    _MODEL_CACHE[model_key] = peft_model
+                    logger.info("Moved cached PEFT model to device: %s", device)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Failed to move cached PEFT model to %s: %s", device, exc)
+        try:
+            logger.info("Cached PEFT model device: %s", next(peft_model.parameters()).device)
+        except Exception:  # noqa: BLE001
+            logger.info("Cached PEFT model device: <unknown>")
 
     HFLMWithLang = _build_hflm_with_lang_class(HFLM)
     model = HFLMWithLang(
@@ -397,7 +460,16 @@ def main() -> int:
     torch_dtype = _parse_torch_dtype(args.torch_dtype)
     if torch_dtype is None and args.device.startswith("cuda"):
         torch_dtype = "auto"
-    device_map = _normalize_device_map(args.device_map)
+    device_map_raw = args.device_map
+    device_map = _normalize_device_map(device_map_raw)
+    if (
+        device_map is None
+        and device_map_raw is None
+        and args.device.startswith("cuda")
+        and torch.cuda.is_available()
+    ):
+        device_map = "auto"
+        logger.info("Defaulting device_map=auto for cuda eval")
 
     # Build HF model_args for lm_eval
     base_model = args.tokenizer

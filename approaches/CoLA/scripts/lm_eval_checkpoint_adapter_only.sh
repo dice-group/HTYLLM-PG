@@ -76,6 +76,8 @@ LOG_ROUTER_METRICS=${LM_EVAL_LOG_ROUTER_METRICS:-true}
 LIMIT=${LM_EVAL_LIMIT:-}
 ENABLE_SUMMARY=${LM_EVAL_ENABLE_SUMMARY:-true}
 SUMMARY_UPLOAD=${LM_EVAL_SUMMARY_UPLOAD:-local}
+FORCE_DEVICE=${LM_EVAL_FORCE_DEVICE:-true}
+SUMMARY_SUFFIX=${LM_EVAL_SUMMARY_SUFFIX:-_summary}
 
 [[ -z "${CKPT:-}" || -z "${OUTDIR:-}" ]] && { echo "--checkpoint and --output-dir required"; exit 1; }
 [[ ! -d "$CKPT" ]] && { echo "Checkpoint not found: $CKPT"; exit 1; }
@@ -166,22 +168,26 @@ elif [[ "$USE_LANG_WRAPPER" == "auto" && "$HAS_LANGUAGE_LIST" == "true" ]]; then
 fi
 
 if [[ "$USE_LANG" == "true" ]]; then
-  WRAPPER_ARGS=(
+WRAPPER_ARGS=(
     "--checkpoint" "$CKPT"
     "--tokenizer" "$TOK_USE"
     "--tasks" "$TASKS"
     "--batch-size" "$BS"
     "--output-dir" "$OUTDIR"
     "--mode" "$LANG_MODE"
+    "--device" "${LM_EVAL_DEVICE:-cuda}"
     "--wandb-args" "$WANDB_ARGS"
   )
   if [[ -n "$LIMIT" ]]; then
     WRAPPER_ARGS+=("--limit" "$LIMIT")
   fi
+  if [[ -n "${DEVICE_MAP}" ]]; then
+    WRAPPER_ARGS+=("--device-map" "$DEVICE_MAP")
+  fi
   if [[ "$LOG_ROUTER_METRICS" == "true" ]]; then
     WRAPPER_ARGS+=("--log-router-metrics")
   fi
-  python3 "${REPO_ROOT}/scripts/lm_eval_language_ids.py" "${WRAPPER_ARGS[@]}" $EXTRA
+  LM_EVAL_FORCE_DEVICE="${FORCE_DEVICE}" python3 "${REPO_ROOT}/scripts/lm_eval_language_ids.py" "${WRAPPER_ARGS[@]}" $EXTRA
 else
   lm_eval \
     --model hf \
@@ -208,7 +214,7 @@ if [[ "${ENABLE_SUMMARY}" == "true" ]]; then
     if [[ -n "${WMODE}" ]]; then
       WANDB_SUMMARY_ARGS="${WANDB_SUMMARY_ARGS},mode=${WMODE}"
     fi
-    WANDB_SUMMARY_UPLOAD="${SUMMARY_UPLOAD}" python3 "${REPO_ROOT}/scripts/wandb_summary_job.py" \
+    WANDB_SUMMARY_UPLOAD="${SUMMARY_UPLOAD}" WANDB_SUMMARY_SUFFIX="${SUMMARY_SUFFIX}" python3 "${REPO_ROOT}/scripts/wandb_summary_job.py" \
       --checkpoint "${CKPT}" \
       --output-dir "${OUTDIR}" \
       --wandb-args "${WANDB_SUMMARY_ARGS}"

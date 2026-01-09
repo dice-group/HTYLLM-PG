@@ -249,7 +249,13 @@ def _log_summary_series_wandb(
     summary_suffix = os.environ.get("WANDB_SUMMARY_SUFFIX", "").strip()
     if project and summary_suffix:
         wandb_args_dict["project"] = f"{project}{summary_suffix}"
-    base_name = wandb_args_dict.get("name") or "eval"
+    base_name = wandb_args_dict.get("name")
+    if not base_name or base_name in {"eval", "summary"}:
+        base_name = (
+            checkpoint_path.parent.name
+            or output_dir.parent.name
+            or "eval"
+        )
     print(
         f"[INFO] Summary job run base_name={base_name} project={wandb_args_dict.get('project')}",
         file=sys.stderr,
