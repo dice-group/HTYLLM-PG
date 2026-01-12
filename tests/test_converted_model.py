@@ -26,6 +26,18 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Initialize distributed backend for DeepSpeed MoE (required even for single GPU)
+import torch.distributed as dist
+if not dist.is_initialized():
+    try:
+        # Set device explicitly before init_process_group for NCCL
+        if torch.cuda.is_available():
+            torch.cuda.set_device(0)
+            
+        dist.init_process_group(backend="nccl", init_method="tcp://localhost:29500", world_size=1, rank=0)
+    except Exception as e:
+        print(f"Note: Could not initialize distributed backend: {e}")
+
 # Initialize CUDA and CUBLAS early to avoid initialization issues
 if torch.cuda.is_available():
     torch.cuda.init()
@@ -35,14 +47,6 @@ if torch.cuda.is_available():
     _ = torch.matmul(_warmup_a, _warmup_b)  # This actually initializes CUBLAS
     del _warmup_a, _warmup_b
     torch.cuda.synchronize()
-
-# Initialize distributed backend for DeepSpeed MoE (required even for single GPU)
-import torch.distributed as dist
-if not dist.is_initialized():
-    try:
-        dist.init_process_group(backend="nccl", init_method="tcp://localhost:29500", world_size=1, rank=0)
-    except Exception as e:
-        print(f"Note: Could not initialize distributed backend: {e}")
 
 # Check if we have a real model to test
 HF_MODEL_PATH = os.environ.get("HF_MODEL_PATH")
