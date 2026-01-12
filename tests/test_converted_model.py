@@ -374,10 +374,13 @@ class TestExpertRouting:
             with torch.no_grad():
                 output = model(tokens)
         except RuntimeError as e:
-            if "CUBLAS" in str(e) or "CUDA" in str(e):
-                print(f"  SKIPPED: CUDA context issue after multiple forward passes")
-                print(f"  This is a known DeepSpeed MoE limitation, not a model bug")
-                pytest.skip("CUBLAS error - run this test in isolation or first")
+            error_str = str(e)
+            print(f"\n  ERROR: {error_str}")
+            if "CUBLAS" in error_str or "CUDA" in error_str:
+                print(f"  This is likely a CUDA/CUBLAS compatibility issue.")
+                print(f"  Try: CUDA_LAUNCH_BLOCKING=1 to get a better stack trace")
+                if os.environ.get("SKIP_CUDA_ERRORS", "1") == "1":
+                    pytest.skip(f"CUBLAS/CUDA error: {error_str[:100]}")
             raise
         
         # Check if expert_counts is available
@@ -571,9 +574,13 @@ class TestSimpleGeneration:
             
             print("  [OK] Generation test complete")
         except RuntimeError as e:
-            if "CUBLAS" in str(e) or "CUDA" in str(e):
-                print(f"  SKIPPED: CUDA context issue after multiple forward passes")
-                pytest.skip("CUBLAS error - known DeepSpeed MoE limitation")
+            error_str = str(e)
+            print(f"\n  ERROR: {error_str}")
+            if "CUBLAS" in error_str or "CUDA" in error_str:
+                print(f"  This is likely a CUDA/CUBLAS compatibility issue.")
+                print(f"  Try: CUDA_LAUNCH_BLOCKING=1 to get a better stack trace")
+                if os.environ.get("SKIP_CUDA_ERRORS", "1") == "1":
+                    pytest.skip(f"CUBLAS/CUDA error: {error_str[:100]}")
             raise
     
     @requires_hf_model
@@ -623,9 +630,13 @@ class TestSimpleGeneration:
             
             print("  [OK] Next token prediction test complete")
         except RuntimeError as e:
-            if "CUBLAS" in str(e) or "CUDA" in str(e):
-                print(f"  SKIPPED: CUDA context issue after multiple forward passes")
-                pytest.skip("CUBLAS error - known DeepSpeed MoE limitation")
+            error_str = str(e)
+            print(f"\n  ERROR: {error_str}")
+            if "CUBLAS" in error_str or "CUDA" in error_str:
+                print(f"  This is likely a CUDA/CUBLAS compatibility issue.")
+                print(f"  Try: CUDA_LAUNCH_BLOCKING=1 to get a better stack trace")
+                if os.environ.get("SKIP_CUDA_ERRORS", "1") == "1":
+                    pytest.skip(f"CUBLAS/CUDA error: {error_str[:100]}")
             raise
 
 
@@ -683,6 +694,8 @@ if __name__ == "__main__":
     parser.add_argument("--config-path", type=str, help="Path to model config.json")
     parser.add_argument("--quick", action="store_true", help="Run only quick tests")
     parser.add_argument("--no-stop-on-fail", action="store_true", help="Don't stop on first failure")
+    parser.add_argument("--no-skip-cuda-errors", action="store_true", 
+                       help="Don't skip tests on CUDA errors (show full error instead)")
     args, extra_pytest_args = parser.parse_known_args()
     
     if args.model_path:
@@ -691,6 +704,8 @@ if __name__ == "__main__":
         os.environ["DS_CHECKPOINT_PATH"] = args.ds_checkpoint
     if args.config_path:
         os.environ["CONFIG_PATH"] = args.config_path
+    if args.no_skip_cuda_errors:
+        os.environ["SKIP_CUDA_ERRORS"] = "0"
     
     # Update global variables
     HF_MODEL_PATH = os.environ.get("HF_MODEL_PATH")
