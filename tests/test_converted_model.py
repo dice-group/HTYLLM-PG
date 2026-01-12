@@ -26,11 +26,15 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Initialize CUDA early to avoid CUBLAS issues
+# Initialize CUDA and CUBLAS early to avoid initialization issues
 if torch.cuda.is_available():
     torch.cuda.init()
-    # Warm up CUDA with a small operation
-    _ = torch.zeros(1, device="cuda")
+    # Warm up CUDA with tensor creation AND matrix multiplication (to init CUBLAS)
+    _warmup_a = torch.randn(8, 8, device="cuda")
+    _warmup_b = torch.randn(8, 8, device="cuda")
+    _ = torch.matmul(_warmup_a, _warmup_b)  # This actually initializes CUBLAS
+    del _warmup_a, _warmup_b
+    torch.cuda.synchronize()
 
 # Check if we have a real model to test
 HF_MODEL_PATH = os.environ.get("HF_MODEL_PATH")
