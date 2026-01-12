@@ -383,7 +383,22 @@ class TestExpertRouting:
             pytest.skip("Model not loaded")
         
         device = next(model.parameters()).device
+        model_dtype = next(model.parameters()).dtype
+        print(f"  Model device: {device}, dtype: {model_dtype}")
+        
+        # Check output_projection specifically
+        for name, module in model.named_modules():
+            if 'output_projection' in name:
+                print(f"  {name}: {module}")
+                if hasattr(module, 'weight'):
+                    print(f"    weight shape: {module.weight.shape}, dtype: {module.weight.dtype}, device: {module.weight.device}")
+        
         tokens = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]], device=device)
+        print(f"  Input tokens device: {tokens.device}, dtype: {tokens.dtype}")
+        
+        # Sync CUDA before forward pass
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         
         try:
             with torch.no_grad():
