@@ -26,6 +26,12 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Initialize CUDA early to avoid CUBLAS issues
+if torch.cuda.is_available():
+    torch.cuda.init()
+    # Warm up CUDA with a small operation
+    _ = torch.zeros(1, device="cuda")
+
 # Check if we have a real model to test
 HF_MODEL_PATH = os.environ.get("HF_MODEL_PATH")
 DS_CHECKPOINT_PATH = os.environ.get("DS_CHECKPOINT_PATH")
@@ -46,6 +52,54 @@ try:
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
     print("Warning: Transformers not available. Some tests will be skipped.")
+
+
+# ============================================================================
+# Shared model fixture to avoid loading model multiple times (causes CUDA issues)
+# ============================================================================
+_cached_model = None
+_cached_tokenizer = None
+
+
+def get_shared_model(device="cuda", dtype=torch.float32):
+    """Get or create a shared model instance to avoid CUDA context issues."""
+    global _cached_model
+    
+    if _cached_model is None and HF_MODEL_PATH and TRANSFORMERS_AVAILABLE:
+        print(f"  [Fixture] Loading model from {HF_MODEL_PATH}...")
+        _cached_model = AutoModelForCausalLM.from_pretrained(
+            HF_MODEL_PATH,
+            trust_remote_code=True,
+            torch_dtype=dtype,
+            device_map=device if torch.cuda.is_available() else "cpu"
+        )
+        _cached_model.eval()
+    
+    return _cached_model
+
+
+def get_shared_tokenizer():
+    """Get or create a shared tokenizer instance."""
+    global _cached_tokenizer
+    
+    if _cached_tokenizer is None and HF_MODEL_PATH and TRANSFORMERS_AVAILABLE:
+        _cached_tokenizer = AutoTokenizer.from_pretrained(HF_MODEL_PATH, trust_remote_code=True)
+        if _cached_tokenizer.pad_token is None:
+            _cached_tokenizer.pad_token = _cached_tokenizer.eos_token
+    
+    return _cached_tokenizer
+
+
+@pytest.fixture(scope="module")
+def shared_model():
+    """Pytest fixture for shared model - loads once per module."""
+    return get_shared_model()
+
+
+@pytest.fixture(scope="module")
+def shared_tokenizer():
+    """Pytest fixture for shared tokenizer."""
+    return get_shared_tokenizer()
 
 
 def requires_hf_model(func):
@@ -189,19 +243,15 @@ class TestLogitDistribution:
     @requires_hf_model
     @requires_transformers
     @requires_deepspeed
-    def test_logits_not_uniform(self):
+    def test_logits_not_uniform(self, shared_model):
         """Verify logits have non-trivial distribution (not all equal)."""
         print(f"\n[Test] Checking logit distribution...")
         
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = shared_model
+        if model is None:
+            pytest.skip("Model not loaded")
         
-        model = AutoModelForCausalLM.from_pretrained(
-            HF_MODEL_PATH,
-            trust_remote_code=True,
-            torch_dtype=torch.float32,
-            device_map=device
-        )
-        model.eval()
+        device = next(model.parameters()).device
         
         # Test with a few different inputs
         test_inputs = [
@@ -247,20 +297,15 @@ class TestLogitDistribution:
     @requires_hf_model
     @requires_transformers
     @requires_deepspeed
-    def test_logits_range(self):
+    def test_logits_range(self, shared_model):
         """Verify logits are in reasonable range (not exploded or collapsed)."""
         print(f"\n[Test] Checking logit range...")
         
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = shared_model
+        if model is None:
+            pytest.skip("Model not loaded")
         
-        model = AutoModelForCausalLM.from_pretrained(
-            HF_MODEL_PATH,
-            trust_remote_code=True,
-            torch_dtype=torch.float32,
-            device_map=device
-        )
-        model.eval()
-        
+        device = next(model.parameters()).device
         tokens = torch.tensor([[1, 2, 3, 4, 5]], device=device)
         
         with torch.no_grad():
@@ -291,20 +336,15 @@ class TestExpertRouting:
     @requires_hf_model
     @requires_transformers
     @requires_deepspeed
-    def test_expert_counts_non_trivial(self):
+    def test_expert_counts_non_trivial(self, shared_model):
         """Verify MoE layers are actually routing tokens to experts."""
         print(f"\n[Test] Checking expert routing...")
         
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = shared_model
+        if model is None:
+            pytest.skip("Model not loaded")
         
-        model = AutoModelForCausalLM.from_pretrained(
-            HF_MODEL_PATH,
-            trust_remote_code=True,
-            torch_dtype=torch.float32,
-            device_map=device
-        )
-        model.eval()
-        
+        device = next(model.parameters()).device
         tokens = torch.tensor([[1, 2, 3, 4, 5, 6, 7, 8]], device=device)
         
         with torch.no_grad():
@@ -338,16 +378,13 @@ class TestExpertRouting:
     @requires_hf_model  
     @requires_transformers
     @requires_deepspeed
-    def test_moe_layers_exist(self):
+    def test_moe_layers_exist(self, shared_model):
         """Verify MoE layers are present in the model."""
         print(f"\n[Test] Checking for MoE layers...")
         
-        model = AutoModelForCausalLM.from_pretrained(
-            HF_MODEL_PATH,
-            trust_remote_code=True,
-            torch_dtype=torch.float32,
-            device_map="cpu"
-        )
+        model = shared_model
+        if model is None:
+            pytest.skip("Model not loaded")
         
         moe_layers = []
         for name, module in model.named_modules():
@@ -484,23 +521,16 @@ class TestSimpleGeneration:
     @requires_hf_model
     @requires_transformers
     @requires_deepspeed
-    def test_generation_not_repetitive(self):
+    def test_generation_not_repetitive(self, shared_model, shared_tokenizer):
         """Verify generation doesn't just repeat the same token."""
         print(f"\n[Test] Checking generation quality...")
         
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = shared_model
+        tokenizer = shared_tokenizer
+        if model is None or tokenizer is None:
+            pytest.skip("Model or tokenizer not loaded")
         
-        tokenizer = AutoTokenizer.from_pretrained(HF_MODEL_PATH, trust_remote_code=True)
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-        
-        model = AutoModelForCausalLM.from_pretrained(
-            HF_MODEL_PATH,
-            trust_remote_code=True,
-            torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
-            device_map=device
-        )
-        model.eval()
+        device = next(model.parameters()).device
         
         # Test prompts
         test_prompts = ["The", "Hello", "1 2 3"]
@@ -539,21 +569,16 @@ class TestSimpleGeneration:
     @requires_hf_model
     @requires_transformers
     @requires_deepspeed
-    def test_next_token_prediction(self):
+    def test_next_token_prediction(self, shared_model, shared_tokenizer):
         """Test that top predictions are somewhat sensible."""
         print(f"\n[Test] Checking next token predictions...")
         
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = shared_model
+        tokenizer = shared_tokenizer
+        if model is None or tokenizer is None:
+            pytest.skip("Model or tokenizer not loaded")
         
-        tokenizer = AutoTokenizer.from_pretrained(HF_MODEL_PATH, trust_remote_code=True)
-        
-        model = AutoModelForCausalLM.from_pretrained(
-            HF_MODEL_PATH,
-            trust_remote_code=True,
-            torch_dtype=torch.float32,
-            device_map=device
-        )
-        model.eval()
+        device = next(model.parameters()).device
         
         # Test with simple input
         test_text = "The capital of France is"
