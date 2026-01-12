@@ -682,7 +682,8 @@ if __name__ == "__main__":
     parser.add_argument("--ds-checkpoint", type=str, help="Path to DS checkpoint for comparison")
     parser.add_argument("--config-path", type=str, help="Path to model config.json")
     parser.add_argument("--quick", action="store_true", help="Run only quick tests")
-    args = parser.parse_args()
+    parser.add_argument("--no-stop-on-fail", action="store_true", help="Don't stop on first failure")
+    args, extra_pytest_args = parser.parse_known_args()
     
     if args.model_path:
         os.environ["HF_MODEL_PATH"] = args.model_path
@@ -705,8 +706,13 @@ if __name__ == "__main__":
     print("=" * 60)
     
     # Run pytest
-    pytest_args = [__file__, "-v", "-x"]  # -x stops on first failure
+    pytest_args = [__file__, "-v"]
+    if not args.no_stop_on_fail:
+        pytest_args.append("-x")  # -x stops on first failure
     if args.quick:
         pytest_args.extend(["-k", "weight_sanity or logits_range"])
+    
+    # Pass through any extra pytest arguments (like -k, -s, etc.)
+    pytest_args.extend(extra_pytest_args)
     
     pytest.main(pytest_args)
