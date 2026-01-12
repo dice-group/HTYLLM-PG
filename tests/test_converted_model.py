@@ -36,6 +36,14 @@ if torch.cuda.is_available():
     del _warmup_a, _warmup_b
     torch.cuda.synchronize()
 
+# Initialize distributed backend for DeepSpeed MoE (required even for single GPU)
+import torch.distributed as dist
+if not dist.is_initialized():
+    try:
+        dist.init_process_group(backend="nccl", init_method="tcp://localhost:29500", world_size=1, rank=0)
+    except Exception as e:
+        print(f"Note: Could not initialize distributed backend: {e}")
+
 # Check if we have a real model to test
 HF_MODEL_PATH = os.environ.get("HF_MODEL_PATH")
 DS_CHECKPOINT_PATH = os.environ.get("DS_CHECKPOINT_PATH")
