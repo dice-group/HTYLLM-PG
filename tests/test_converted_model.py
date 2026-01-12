@@ -26,17 +26,29 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Initialize distributed backend for DeepSpeed MoE (required even for single GPU)
-import torch.distributed as dist
-if not dist.is_initialized():
-    try:
+# Setup DeepSpeed distributed environment before anything else
+try:
+    import deepspeed
+    DEEPSPEED_AVAILABLE = True
+except ImportError:
+    DEEPSPEED_AVAILABLE = False
+
+if DEEPSPEED_AVAILABLE:
+    # Set env vars if needed to simulate distributed environment for MoE
+    if "RANK" not in os.environ:
+        os.environ["RANK"] = "0"
+        os.environ["LOCAL_RANK"] = "0"
+        os.environ["WORLD_SIZE"] = "1"
+        os.environ["MASTER_ADDR"] = "127.0.0.1"
+        os.environ["MASTER_PORT"] = "29500"
+
+    if not deepspeed.comm.is_initialized():
         # Set device explicitly before init_process_group for NCCL
         if torch.cuda.is_available():
             torch.cuda.set_device(0)
             
-        dist.init_process_group(backend="nccl", init_method="tcp://localhost:29500", world_size=1, rank=0)
-    except Exception as e:
-        print(f"Note: Could not initialize distributed backend: {e}")
+        # Initialize distributed backend via DeepSpeed
+        deepspeed.init_distributed(dist_backend="nccl", auto_mpi_discovery=False)
 
 # Initialize CUDA and CUBLAS early to avoid initialization issues
 if torch.cuda.is_available():
