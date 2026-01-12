@@ -78,6 +78,17 @@ def get_shared_model(device="cuda", dtype=torch.float32):
             device_map=device if torch.cuda.is_available() else "cpu"
         )
         _cached_model.eval()
+        
+        # Re-initialize CUBLAS after model loading (DeepSpeed/Triton can disrupt it)
+        if torch.cuda.is_available():
+            print("  [Fixture] Re-initializing CUBLAS after model load...")
+            _device = next(_cached_model.parameters()).device
+            _a = torch.randn(64, 64, device=_device, dtype=dtype)
+            _b = torch.randn(64, 64, device=_device, dtype=dtype)
+            _ = torch.matmul(_a, _b)
+            del _a, _b
+            torch.cuda.synchronize()
+            print("  [Fixture] CUBLAS warmup complete")
     
     return _cached_model
 
