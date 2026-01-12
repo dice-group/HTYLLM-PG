@@ -139,24 +139,24 @@ class TestWeightSanity:
     
     @requires_hf_model
     @requires_transformers
-    def test_no_nan_or_inf_weights(self):
+    @requires_deepspeed
+    def test_no_nan_or_inf_weights(self, shared_model):
         """Verify no NaN or Inf values in model weights."""
-        print(f"\n[Test] Loading model from {HF_MODEL_PATH}...")
+        print(f"\n[Test] Checking for NaN/Inf in weights...")
         
-        model = AutoModelForCausalLM.from_pretrained(
-            HF_MODEL_PATH,
-            trust_remote_code=True,
-            torch_dtype=torch.float32,  # Use float32 for accurate checks
-            device_map="cpu"  # Load on CPU for checking
-        )
+        model = shared_model
+        if model is None:
+            pytest.skip("Model not loaded")
         
         nan_params = []
         inf_params = []
         
         for name, param in model.named_parameters():
-            if torch.isnan(param).any():
+            # Move to CPU for checking to avoid CUDA issues
+            param_cpu = param.detach().cpu()
+            if torch.isnan(param_cpu).any():
                 nan_params.append(name)
-            if torch.isinf(param).any():
+            if torch.isinf(param_cpu).any():
                 inf_params.append(name)
         
         if nan_params:
@@ -170,26 +170,25 @@ class TestWeightSanity:
     
     @requires_hf_model
     @requires_transformers
-    def test_weight_statistics(self):
+    @requires_deepspeed
+    def test_weight_statistics(self, shared_model):
         """Check that weight statistics are reasonable (not all zeros, reasonable variance)."""
         print(f"\n[Test] Checking weight statistics...")
         
-        model = AutoModelForCausalLM.from_pretrained(
-            HF_MODEL_PATH,
-            trust_remote_code=True,
-            torch_dtype=torch.float32,
-            device_map="cpu"
-        )
+        model = shared_model
+        if model is None:
+            pytest.skip("Model not loaded")
         
         zero_params = []
         low_variance_params = []
         
         for name, param in model.named_parameters():
             if param.numel() > 1:  # Skip scalar parameters
-                if (param == 0).all():
+                param_cpu = param.detach().cpu()
+                if (param_cpu == 0).all():
                     zero_params.append(name)
-                elif param.std() < 1e-8:
-                    low_variance_params.append((name, param.std().item()))
+                elif param_cpu.std() < 1e-8:
+                    low_variance_params.append((name, param_cpu.std().item()))
         
         if zero_params:
             print(f"  WARNING: All-zero parameters: {zero_params[:5]}")
@@ -205,16 +204,14 @@ class TestWeightSanity:
     
     @requires_hf_model
     @requires_transformers
-    def test_parameter_count_matches_config(self):
+    @requires_deepspeed
+    def test_parameter_count_matches_config(self, shared_model):
         """Verify parameter count is consistent with model config."""
         print(f"\n[Test] Verifying parameter count...")
         
-        model = AutoModelForCausalLM.from_pretrained(
-            HF_MODEL_PATH,
-            trust_remote_code=True,
-            torch_dtype=torch.float32,
-            device_map="cpu"
-        )
+        model = shared_model
+        if model is None:
+            pytest.skip("Model not loaded")
         
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -618,18 +615,15 @@ class TestVocabSizeConsistency:
     
     @requires_hf_model
     @requires_transformers
-    def test_vocab_size_matches(self):
+    @requires_deepspeed
+    def test_vocab_size_matches(self, shared_model, shared_tokenizer):
         """Verify tokenizer and model vocab sizes match."""
         print(f"\n[Test] Checking vocab size consistency...")
         
-        tokenizer = AutoTokenizer.from_pretrained(HF_MODEL_PATH, trust_remote_code=True)
-        
-        model = AutoModelForCausalLM.from_pretrained(
-            HF_MODEL_PATH,
-            trust_remote_code=True,
-            torch_dtype=torch.float32,
-            device_map="cpu"
-        )
+        model = shared_model
+        tokenizer = shared_tokenizer
+        if model is None or tokenizer is None:
+            pytest.skip("Model or tokenizer not loaded")
         
         tokenizer_vocab_size = len(tokenizer)
         model_vocab_size = model.config.vocab_size
