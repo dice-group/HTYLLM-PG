@@ -7,6 +7,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Iterable, Optional
+from lm_eval.tasks import TaskManager
 
 import torch
 
@@ -149,6 +150,13 @@ def _task_to_lang_code(task: str) -> Optional[str]:
     # take suffix after first underscore, e.g. belebele_eng_Latn -> eng_Latn
     if "_" not in task:
         return None
+    if task.startswith("flores"):  # expected format: "flores_src-tgt" 
+        rest = task.replace("flores_", "")
+        if "-" in rest:
+            # translation usually requires the TARGET language ID
+            _, target = rest.split("-", 1)
+            return target
+        return rest # Fallback if no hyphen
     return task.split("_", 1)[1]
 
 
@@ -232,12 +240,14 @@ def _run_eval(
     torch_dtype,
     device_map: Optional[str],
     run_suffix: Optional[str] = None,
+    include_path: Optional[str] = None,
 ):
     force_move = os.environ.get("LM_EVAL_FORCE_DEVICE", "true").strip().lower() in {
         "1",
         "true",
         "yes",
     }
+    task_manager = TaskManager(include_path=include_path)
     if device_map is not None:
         force_move = False
         logger.info("Device map set (%s); skipping manual .to()", device_map)
@@ -370,6 +380,7 @@ def _run_eval(
         device=device,
         limit=limit,
         log_samples=log_samples,
+        task_manager=task_manager,
     )
 
     if results is None:
@@ -439,6 +450,7 @@ def main() -> int:
     parser.add_argument("--log-samples", action="store_true", help="Log lm_eval samples in results/W&B")
     parser.add_argument("--log-router-metrics", action="store_true", help="Log CoLA/Hydra router metrics from PEFT")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--include-path", type=str, default=None, help="Additional path to include if there are external tasks")
     args = parser.parse_args()
     logging.basicConfig(
         level=logging.INFO,
@@ -499,6 +511,7 @@ def main() -> int:
             torch_dtype=torch_dtype,
             device_map=device_map,
             run_suffix="no_ids",
+            include_path=args.include_path,
         )
 
     if args.mode in ("with_ids", "both"):
@@ -527,6 +540,7 @@ def main() -> int:
                 torch_dtype=torch_dtype,
                 device_map=device_map,
                 run_suffix=f"with_ids_{task}",
+                include_path=args.include_path,
             )
 
     print("[INFO] Eval run completed", file=sys.stderr)

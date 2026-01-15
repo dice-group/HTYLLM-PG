@@ -1,0 +1,16 @@
+task: flores_eng_Latn-toc_Latn
+dataset_path: facebook/flores
+dataset_name: default
+test_split: dev
+output_type: generate_until
+doc_to_text: "{{sentence_eng_Latn}} ="
+doc_to_target: "{{sentence_toc_Latn}}"
+metric_list:
+  - metric: bleu
+    aggregation: mean
+    higher_is_better: true
+generation_kwargs:
+  until:
+    - "\n"
+metadata:
+  version: 1.0
