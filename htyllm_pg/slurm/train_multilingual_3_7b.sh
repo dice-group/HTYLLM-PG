@@ -74,7 +74,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --use-gradient-checkpointing \
       --use-flash-attention \
       --ep-size 8 \
-      --l1-lambda 0.0005 \
+      --l1-lambda 0.0001 \
       --train-split 1.0 \
       --checkpoint-dir /scratch/hpc-prf-merlin/luke/checkpoints_multilingual \
       --checkpoint-steps 2000 \

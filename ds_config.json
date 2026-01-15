@@ -11,6 +11,15 @@
       "weight_decay": 0.0001
     }
   },
+  "scheduler": {
+    "type": "WarmupDecayLR",
+    "params": {
+      "warmup_min_lr": 0,
+      "warmup_max_lr": 0.0001,
+      "warmup_num_steps": 5000,
+      "total_num_steps": 180000
+    }
+  },
   "bf16": {
     "enabled": true
   },

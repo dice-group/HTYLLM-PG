@@ -513,6 +513,7 @@ def topanygating_sparse(
     ep_group=None,
     gate_thresholds: Tensor = None,
     l1_lambda: float = 0.0005,
+    z_loss: float = 0.0,
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, int]:
     """
     Implements Top-Any Gating using Sparse Operations (index_add).
@@ -522,6 +523,7 @@ def topanygating_sparse(
         gate_thresholds: The learnable gate threshold parameters (before sigmoid), shape [E].
                          Used for L1 sparsity penalty on sigmoid(gate_thresholds).
         l1_lambda: L1 sparsity penalty coefficient. Higher = more sparse (fewer experts per token).
+        z_loss: Pre-computed z-loss from the gate module (penalizes large router logits for stability).
     """
     gates = logits                                   # [T, E] (binary)
     mask = gates.bool()                              # [T, E] (bool)
@@ -571,6 +573,10 @@ def topanygating_sparse(
         l1_sparsity_loss = l1_lambda * torch.sigmoid(gate_thresholds).mean()
         l_aux = l_aux + l1_sparsity_loss
 
+    # Add z-loss (pre-computed in GAMoEGateT.forward())
+    # Stabilizes routing by preventing extreme logit values
+    if z_loss > 0:
+        l_aux = l_aux + z_loss
 
     # Calculate slots using cumsum on the bool mask
     cumsum = torch.cumsum(mask.to(torch.int32), dim=0) 
@@ -711,7 +717,18 @@ class GAMoEGateT(torch.nn.Module):
             gates = self.gates
 
         logit_scale = torch.clamp(self.temperature, max=self.clamp_max).exp()  # for init_t = 1 this is also logit_scale = 1
-        raw_logits = torch.sigmoid(torch.matmul(F.normalize(x, dim=1), F.normalize(sim_matrix, dim=0)) * logit_scale)  # similarity scores in [0, 1]
+        
+        # Split out pre-sigmoid scores for z-loss computation
+        pre_sigmoid = torch.matmul(F.normalize(x, dim=1), F.normalize(sim_matrix, dim=0)) * logit_scale
+        raw_logits = torch.sigmoid(pre_sigmoid)  # similarity scores in [0, 1]
+        
+        # Z-loss on pre-sigmoid scores to prevent router instability (only during training)
+        # Penalizes large logits to keep routing "soft" and prevent sudden transitions
+        if self.training:
+            self._z_loss = 0.001 * (pre_sigmoid.logsumexp(dim=-1) ** 2).mean()
+        else:
+            self._z_loss = 0.0
+        
         # logits = logits * self.experts_mask # zero-out expert -> TODO: Currently this is not need as we do not implement dynamic epxert adding and removal
         gates_scaled = torch.sigmoid(self.gates * logit_scale) # put gates into [0 - 1]
         
@@ -839,6 +856,8 @@ class TopKGate(Module):
             # Get gate thresholds for L1 sparsity penalty (direct pressure on gates to rise)
             gate_thresholds = self.wg.gates if self.training else None
             l1_lambda = self.wg.l1_lambda if self.training else 0.0  # Only apply L1 penalty during training
+            # Get z-loss computed on pre-sigmoid scores (prevents router instability)
+            z_loss = self.wg._z_loss if self.training and hasattr(self.wg, '_z_loss') else 0.0
             
             if self.topany_gating_impl == "sparse":
                 gate_output = topanygating_sparse(
@@ -851,6 +870,7 @@ class TopKGate(Module):
                     self.ep_group,
                     gate_thresholds=gate_thresholds,
                     l1_lambda=l1_lambda,
+                    z_loss=z_loss,
                 )
             elif self.topany_gating_impl == "opt":
                 gate_output = topanygating_opt(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
