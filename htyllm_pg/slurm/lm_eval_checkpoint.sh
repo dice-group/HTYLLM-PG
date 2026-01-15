@@ -33,7 +33,7 @@ TOK=${TOK:-$CKPT}
 
 mkdir -p "$OUTDIR" logs
 module purge
-module load toolchain/foss/2024a system/CUDA/12.6.0 lib/NCCL/2.22.3-GCCcore-13.3.0-CUDA-12.6.0    #TODO verify that these work
+module load toolchain/foss/2024a system/CUDA/13.0.0 lib/NCCL/2.22.3-GCCcore-13.3.0-CUDA-13.0.0    #TODO verify that these work
 source /opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3/etc/profile.d/conda.sh
 conda activate test2
 

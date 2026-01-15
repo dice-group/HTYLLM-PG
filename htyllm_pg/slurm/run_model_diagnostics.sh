@@ -62,7 +62,7 @@ done
 set +euo pipefail
 source ~/.bashrc 2>/dev/null || true
 conda activate moe 2>/dev/null || true
-module load system/CUDA/12.6.0 2>/dev/null || true
+module load system/CUDA/13.0.0 2>/dev/null || true
 module load compiler/GCCcore/12.3.0 2>/dev/null || true
 set -euo pipefail
 

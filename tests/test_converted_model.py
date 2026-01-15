@@ -50,15 +50,6 @@ if DEEPSPEED_AVAILABLE:
         # Initialize distributed backend via DeepSpeed
         deepspeed.init_distributed(dist_backend="nccl", auto_mpi_discovery=False)
 
-# Initialize CUDA and CUBLAS early to avoid initialization issues
-if torch.cuda.is_available():
-    torch.cuda.init()
-    # Warm up CUDA with tensor creation AND matrix multiplication (to init CUBLAS)
-    _warmup_a = torch.randn(8, 8, device="cuda")
-    _warmup_b = torch.randn(8, 8, device="cuda")
-    _ = torch.matmul(_warmup_a, _warmup_b)  # This actually initializes CUBLAS
-    del _warmup_a, _warmup_b
-    torch.cuda.synchronize()
 
 # Check if we have a real model to test
 HF_MODEL_PATH = os.environ.get("HF_MODEL_PATH")
@@ -89,7 +80,7 @@ _cached_model = None
 _cached_tokenizer = None
 
 
-def get_shared_model(device="cuda", dtype=torch.float32):
+def get_shared_model(dtype=torch.float32):
     """Get or create a shared model instance to avoid CUDA context issues."""
     global _cached_model
     
@@ -99,20 +90,14 @@ def get_shared_model(device="cuda", dtype=torch.float32):
             HF_MODEL_PATH,
             trust_remote_code=True,
             torch_dtype=dtype,
-            device_map=device if torch.cuda.is_available() else "cpu"
+            device_map="cuda" if torch.cuda.is_available() else "cpu"
         )
         _cached_model.eval()
         
         # Re-initialize CUBLAS after model loading (DeepSpeed/Triton can disrupt it)
         if torch.cuda.is_available():
-            print("  [Fixture] Re-initializing CUBLAS after model load...")
-            _device = next(_cached_model.parameters()).device
-            _a = torch.randn(64, 64, device=_device, dtype=dtype)
-            _b = torch.randn(64, 64, device=_device, dtype=dtype)
-            _ = torch.matmul(_a, _b)
-            del _a, _b
             torch.cuda.synchronize()
-            print("  [Fixture] CUBLAS warmup complete")
+
     
     return _cached_model
 
