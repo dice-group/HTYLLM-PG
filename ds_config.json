@@ -1,5 +1,5 @@
 {
-  "gradient_accumulation_steps": 64,
+  "gradient_accumulation_steps": 16,
   "train_micro_batch_size_per_gpu": 16,
   "gradient_clipping": 1.0,
   "optimizer": {
