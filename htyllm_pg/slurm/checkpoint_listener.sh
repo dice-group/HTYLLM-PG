@@ -5,11 +5,14 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --time=36:30:00
+#SBATCH --time=168:00:00
 #SBATCH --output=logs/checkpoint_listener_%j.log                #Check this path?
 
 # This script can run either via `sbatch checkpoint_listener.sh ...`
 # (using the header above) or directly with `bash checkpoint_listener.sh ...`.
+
+# Note: Don't source ~/.bashrc here - it can interfere with set -e
+# sbatch should already be in PATH on SLURM systems
 set -euo pipefail
 
 usage() {
@@ -22,7 +25,7 @@ evaluation jobs for each one.
 Options:
   --watch-dir DIR      Directory containing checkpoint-* folders
   --eval-script SCRIPT Script run via sbatch for evaluation
-  --tasks LIST         lm-eval tasks (default: belebele)
+  --tasks LIST         lm-eval tasks (optional, uses lm_eval_tasks.txt if not set)
   --batch-size N       lm-eval batch size (default: auto)
   --output-dir DIR     Where to save eval outputs (default: watch-dir/lm_eval)
   --wandb-project NAME W&B project (default: llama31_multilingual_eval_belebele)
@@ -34,7 +37,7 @@ Options:
 EOF
 }
 
-TASKS="belebele"
+TASKS=""
 BS="auto"
 POLL=120
 WANDB_PROJ=""            #"llama31_multilingual_eval_belebele"            #Insert our WANDB
@@ -93,7 +96,7 @@ submit() {
     "$SCRIPT" \
     --checkpoint "${ckpt_path}" \
     --output-dir "$OUT" \
-    --tasks "$TASKS" \
+    ${TASKS:+--tasks "$TASKS"} \
     --batch-size "$BS" \
     --wandb-project "$WANDB_PROJ" \
     --wandb-prefix "${wandb_prefix}" \
@@ -104,7 +107,8 @@ submit() {
 echo "[INFO] Watching $WATCH"
 
 while true; do
-  mapfile -t CKPTS < <(find "$WATCH" -maxdepth 1 -type d -name 'checkpoint-*' | sort -V)
+  # Look for both checkpoint-* and step_* patterns (DeepSpeed uses step_N format)
+  mapfile -t CKPTS < <(find "$WATCH" -maxdepth 1 -type d \( -name 'checkpoint-*' -o -name 'step_*' \) | sort -V)
 
   for ckpt in "${CKPTS[@]}"; do
     processed "$ckpt" || submit "$ckpt"

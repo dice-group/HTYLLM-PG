@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=moe-multilingual
-#SBATCH --nodes=16                   
+#SBATCH --nodes=12                   
 #SBATCH --ntasks-per-node=1           # 1 DeepSpeed launcher per node
 #SBATCH --cpus-per-task=4
-#SBATCH --time=96:00:00
+#SBATCH --time=168:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:h100:4             # 4 GPUs per node
 #SBATCH --mem=128GB
@@ -16,7 +16,7 @@ source ~/.bashrc
 
 conda activate moe
 
-module load system/CUDA/12.6.0
+module load system/CUDA/13.0.0
 module load compiler/GCCcore/12.3.0  
 
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
@@ -61,7 +61,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --deepspeed \
       --deepspeed_config ds_config.json \
       --epochs 1 \
-      --batch-size 10 \
+      --batch-size 16 \
       --lr 1e-4 \
       --dim 2048 \
       --depth 24 \
@@ -74,6 +74,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --use-gradient-checkpointing \
       --use-flash-attention \
       --ep-size 8 \
+      --l1-lambda 0.0001 \
       --train-split 1.0 \
       --checkpoint-dir /scratch/hpc-prf-merlin/luke/checkpoints_multilingual \
       --checkpoint-steps 2000 \

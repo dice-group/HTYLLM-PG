@@ -16,7 +16,7 @@ source ~/.bashrc
 
 conda activate moe
 
-module load system/CUDA/12.6.0
+module load system/CUDA/13.0.0
 module load compiler/GCCcore/12.3.0  
 
 export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK}
@@ -42,7 +42,24 @@ echo "Hostfile:"
 cat "${HOSTFILE}"
 
 MASTER_ADDR=$(head -n 1 "${HOSTFILE}" | awk '{print $1}')
-MASTER_PORT=6000
+
+# Find an available port starting from BASE_PORT
+find_available_port() {
+  local port=$1
+  local max_attempts=100
+  for ((i=0; i<max_attempts; i++)); do
+    if ! ss -tuln | grep -q ":${port} "; then
+      echo "${port}"
+      return 0
+    fi
+    ((port++))
+  done
+  echo "ERROR: Could not find available port after ${max_attempts} attempts" >&2
+  return 1
+}
+
+BASE_PORT=6000
+MASTER_PORT=$(find_available_port ${BASE_PORT})
 
 echo "MASTER_ADDR = ${MASTER_ADDR}"
 echo "MASTER_PORT = ${MASTER_PORT}"
@@ -61,7 +78,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --deepspeed \
       --deepspeed_config ds_config.json \
       --epochs 1 \
-      --batch-size 12 \
+      --batch-size 24 \
       --lr 1e-4 \
       --dim 512 \
       --depth 4 \
@@ -73,6 +90,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --topany-gating-impl "sparse" \
       --use-gradient-checkpointing \
       --use-flash-attention \
+      --l1-lambda 0.0001 \
       --train-split 1.0 \
       --checkpoint-dir /scratch/hpc-prf-merlin/luke/checkpoints_multilingual_small \
       --checkpoint-steps 2000 \

@@ -27,6 +27,8 @@ import torch.nn.functional as F
 from deepspeed.utils import groups
 from .mappings import drop_tokens, gather_tokens
 from .loss import diverse_and_simple_gate_loss
+import uuid
+import wandb
 
 if TYPE_CHECKING:
     Base = Module[Tensor]
@@ -509,10 +511,19 @@ def topanygating_sparse(
     gate_tensor=None,
     expert_mask=None,
     ep_group=None,
+    gate_thresholds: Tensor = None,
+    l1_lambda: float = 0.0005,
+    z_loss: float = 0.0,
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, int]:
     """
     Implements Top-Any Gating using Sparse Operations (index_add).
     Returns indices rather than a dense [T, E, C] mask to save memory.
+    
+    Args:
+        gate_thresholds: The learnable gate threshold parameters (before sigmoid), shape [E].
+                         Used for L1 sparsity penalty on sigmoid(gate_thresholds).
+        l1_lambda: L1 sparsity penalty coefficient. Higher = more sparse (fewer experts per token).
+        z_loss: Pre-computed z-loss from the gate module (penalizes large router logits for stability).
     """
     gates = logits                                   # [T, E] (binary)
     mask = gates.bool()                              # [T, E] (bool)
@@ -544,11 +555,28 @@ def topanygating_sparse(
         efficiency_loss = gates.float().mean()
         l_aux = diverse_and_simple_gate_loss(gate_tensor, expert_mask) + load_balance_loss + efficiency_loss
     
-    # Add activation penalty to encourage using more experts per token
-    # Penalize if average experts per token drops below target (1.5)
-    if gate_tensor is not None and hasattr(gate_tensor, '_activation_rate'):
-        activation_penalty = F.relu(1.5 - gate_tensor._activation_rate)
-        l_aux = l_aux + 0.1 * activation_penalty
+    # L1 Sparsity Penalty on Gate Thresholds
+    # L_sparsity = λ * mean(σ(gate_thresholds))
+    # 
+    # Why it works: Directly applies pressure on gate thresholds to rise (become more selective).
+    # Higher sigmoid(gate_thresholds) = higher activation threshold = fewer experts per token.
+    # 
+    # Benefits over penalizing raw similarity scores:
+    #   1. Direct effect on sparsity (thresholds control activation, not similarities)
+    #   2. No gradient leakage to transformer representations
+    #   3. Cleaner optimization landscape - gates learn independently from sim_matrix
+    #   4. Doesn't penalize useful high-similarity expert-token pairs
+    #
+    # The model will lower a gate threshold only if the reduction in CE loss
+    # from activating that expert outweighs the L1 penalty.
+    if gate_thresholds is not None and l1_lambda > 0:
+        l1_sparsity_loss = l1_lambda * torch.sigmoid(gate_thresholds).mean()
+        l_aux = l_aux + l1_sparsity_loss
+
+    # Add z-loss (pre-computed in GAMoEGateT.forward())
+    # Stabilizes routing by preventing extreme logit values
+    if z_loss > 0:
+        l_aux = l_aux + z_loss
 
     # Calculate slots using cumsum on the bool mask
     cumsum = torch.cumsum(mask.to(torch.int32), dim=0) 
@@ -635,6 +663,7 @@ class GAMoEGateT(torch.nn.Module):
         adaptive_experts: bool = False,
         init_t: float = 1.0,
         gate_backward: str = "sign",  # 'sign' (original) or 'ste'
+        l1_lambda: float = 0.0005,  # L1 sparsity penalty coefficient (Lasso) - lower = more experts, higher = fewer experts
     ):
         super().__init__()
         self.expert_num = num_global_experts # total number of experts in the model 
@@ -646,6 +675,7 @@ class GAMoEGateT(torch.nn.Module):
         # LF: these are the "embeddings" for the experts - used to compute similarity between tokens and experts
         # self.register_parameter('sim_matrix', torch.nn.Parameter(torch.empty(max_expert_num, model_dim).T.contiguous(), requires_grad=True))
         self.gates = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=True)  # learnable threshold for each expert
+        self.gates.data.fill_(-1.0)  
         #self.experts_mask = torch.nn.Parameter(torch.zeros(max_expert_num), requires_grad=False)  # non-learnable expert-mask
         self.temperature = torch.nn.Parameter(torch.log(torch.full([1], 1.0 / init_t, dtype=torch.float32)), requires_grad=False)
         # for init_t = 1.0 this will make temperature = 0
@@ -657,12 +687,18 @@ class GAMoEGateT(torch.nn.Module):
         self.fp32_gate = fp32_gate
         self.max_expert_num = max_expert_num
         self.adaptive_experts = adaptive_experts
+        
+        # L1 Lasso sparsity penalty coefficient
+        # This applies constant pressure on gates to close; model opens gates only when
+        # the reduction in CE loss outweighs the L1 penalty, naturally finding optimal k per token
+        self.l1_lambda = l1_lambda
 
         # store backward policy
         allowed = {"sign", "ste"}
         if gate_backward not in allowed:
             raise ValueError(f"gate_backward must be one of {allowed}, got {gate_backward}")
         self.gate_backward = gate_backward
+        self.gate_id = str(uuid.uuid4())[:8]
 
     def _apply_gate_backward(self, scores: Tensor) -> Tensor:
         """Dispatch to the requested backward strategy."""
@@ -681,9 +717,31 @@ class GAMoEGateT(torch.nn.Module):
             gates = self.gates
 
         logit_scale = torch.clamp(self.temperature, max=self.clamp_max).exp()  # for init_t = 1 this is also logit_scale = 1
-        raw_logits = torch.sigmoid(torch.matmul(F.normalize(x, dim=1), F.normalize(sim_matrix, dim=0)) * logit_scale)  # similarity scores in [0, 1]
+        
+        # Split out pre-sigmoid scores for z-loss computation
+        pre_sigmoid = torch.matmul(F.normalize(x, dim=1), F.normalize(sim_matrix, dim=0)) * logit_scale
+        raw_logits = torch.sigmoid(pre_sigmoid)  # similarity scores in [0, 1]
+        
+        # Z-loss on pre-sigmoid scores to prevent router instability (only during training)
+        # Penalizes large logits to keep routing "soft" and prevent sudden transitions
+        if self.training:
+            self._z_loss = 0.001 * (pre_sigmoid.logsumexp(dim=-1) ** 2).mean()
+        else:
+            self._z_loss = 0.0
+        
         # logits = logits * self.experts_mask # zero-out expert -> TODO: Currently this is not need as we do not implement dynamic epxert adding and removal
         gates_scaled = torch.sigmoid(self.gates * logit_scale) # put gates into [0 - 1]
+        
+        if self.training and wandb is not None and wandb.run is not None and dist.get_rank() == 0:
+            wandb.log({
+                f"gates/{self.gate_id}/mean": gates_scaled.detach().mean().item(),
+                f"gates/{self.gate_id}/min": gates_scaled.detach().min().item(),
+                f"gates/{self.gate_id}/max": gates_scaled.detach().max().item(),
+                f"gates/{self.gate_id}/std": gates_scaled.detach().std().item(),
+            }, commit=False)
+
+        # Note: L1 sparsity penalty is now applied directly on self.gates in topanygating_sparse()
+        # This is more direct (targets thresholds) and avoids gradient leakage to representations
         
         if self.training:
             # training: thresholded + binarised
@@ -750,11 +808,12 @@ class TopKGate(Module):
                  ep_group: Union[torch.distributed.ProcessGroup, None] = None,
                  top2_2nd_expert_sampling: bool = True,
                  gate_backward: str = "sign",
-                 topany_gating_impl: str = "sparse") -> None:
+                 topany_gating_impl: str = "sparse",
+                 l1_lambda: float = 0.0005) -> None:
         super().__init__()
 
         if k == -1:
-            self.wg = GAMoEGateT(model_dim, num_experts, max_expert_num=num_experts,  fp32_gate=True, adaptive_experts=True, init_t=1.0, gate_backward=gate_backward)
+            self.wg = GAMoEGateT(model_dim, num_experts, max_expert_num=num_experts, fp32_gate=True, adaptive_experts=True, init_t=1.0, gate_backward=gate_backward, l1_lambda=l1_lambda)
         else:
             self.wg = torch.nn.Linear(model_dim, num_experts, bias=False) # this is basically the routing network token -> experts 
         self.ep_group = ep_group
@@ -770,6 +829,7 @@ class TopKGate(Module):
         self.use_rts = use_rts
         self.top2_2nd_expert_sampling = top2_2nd_expert_sampling
         self.topany_gating_impl = topany_gating_impl
+        self.l1_lambda = l1_lambda
 
     def _set_ep_group(self, ep_group):
         assert self.ep_group is None, 'Attempting to override an existing ep_group'
@@ -793,10 +853,25 @@ class TopKGate(Module):
             logits = torch.nn.functional.linear(input_fp32, weight=self.wg.weight.float(), bias=None)
 
         if self.k == -1:
+            # Get gate thresholds for L1 sparsity penalty (direct pressure on gates to rise)
+            gate_thresholds = self.wg.gates if self.training else None
+            l1_lambda = self.wg.l1_lambda if self.training else 0.0  # Only apply L1 penalty during training
+            # Get z-loss computed on pre-sigmoid scores (prevents router instability)
+            z_loss = self.wg._z_loss if self.training and hasattr(self.wg, '_z_loss') else 0.0
+            
             if self.topany_gating_impl == "sparse":
-                gate_output = topanygating_sparse(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
-                                         self.min_capacity, top_k, self.wg.sim_matrix, None #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn
-                                         , self.ep_group)
+                gate_output = topanygating_sparse(
+                    logits, 
+                    self.capacity_factor if self.training else self.eval_capacity_factor,
+                    self.min_capacity, 
+                    top_k, 
+                    self.wg.sim_matrix, 
+                    None,  # self.wg.experts_mask as we dont use dynamic adding and removing of expert rn
+                    self.ep_group,
+                    gate_thresholds=gate_thresholds,
+                    l1_lambda=l1_lambda,
+                    z_loss=z_loss,
+                )
             elif self.topany_gating_impl == "opt":
                 gate_output = topanygating_opt(logits, self.capacity_factor if self.training else self.eval_capacity_factor,
                                          self.min_capacity, top_k, self.wg.sim_matrix, None #self.wg.experts_mask as we dont use dynamic adding and removig of expert rn

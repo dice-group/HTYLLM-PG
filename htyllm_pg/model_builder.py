@@ -434,16 +434,14 @@ from torch.utils.checkpoint import checkpoint
 class Transformer(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., moe_layers:List[int]=[], 
                  num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
-                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1,
-                 topany_gating_impl='sparse',
+                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1, 
+                 topany_gating_impl='sparse', use_flash_attention=False, use_gradient_checkpointing=True,
                  max_seq_len=512,        # NEW: Pass to Attention
                  use_rope=True,          # NEW: Enable RoPE
                  rope_theta=10000.0,     # NEW: RoPE base frequency
                  rope_dim=None,          # NEW: Partial RoPE (None = full head_dim)
                  rope_scaling=None,      # NEW: RoPE scaling config
-                 use_flash_attention=False,
-                 use_gradient_checkpointing=True
-    ):
+                 l1_lambda=0.0005):      # NEW: L1 Lasso sparsity penalty coefficient
         for moe in moe_layers:
             assert moe >= 0, "MOE layers must be greater than or equal to 0"
             assert moe < depth, "MOE layers must be less than the depth of the transformer"
@@ -484,8 +482,8 @@ class Transformer(nn.Module):
                 min_capacity=min_capacity, # minimum capacity for the expert
                 use_residual=use_residual, # whether to use residual connection in the MoE layer
                 gate_backward=gate_backward,
-                topany_gating_impl=topany_gating_impl,
-                #max_expert_num=4
+                topany_gating_impl=topany_gating_impl, # implementation choice for top-any gating
+                l1_lambda=l1_lambda # L1 Lasso sparsity penalty coefficient
             )
 
     def forward(
@@ -553,15 +551,13 @@ class Transformer(nn.Module):
 class MoE_Transformer(nn.Module):
     def __init__(self, vocab_size, max_seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0., moe_layers: List[int] = [],
                  num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0, 
-                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1,
+                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1, 
+                 topany_gating_impl='sparse', use_flash_attention=False, use_gradient_checkpointing=True,
                  use_rope=True,          # NEW: Enable RoPE
                  rope_theta=10000.0,     # NEW: RoPE base frequency
                  rope_dim=None,          # NEW: Partial RoPE (None = full head_dim)
                  rope_scaling=None,      # NEW: RoPE scaling config
-                 use_flash_attention=False,
-                 use_gradient_checkpointing=True,
-                 topany_gating_impl='sparse'
-    ):
+                 l1_lambda=0.0005):      # NEW: L1 Lasso sparsity penalty coefficient
         super().__init__()
 
         self.token_embedding = nn.Embedding(vocab_size, dim) # lookup table for token_id -> embedding (shape: [vocab_size, dim], 
@@ -581,15 +577,14 @@ class MoE_Transformer(nn.Module):
                                       num_experts=num_experts, k=k, capacity_factor=capacity_factor,
                                       eval_capacity_factor=eval_capacity_factor, min_capacity=min_capacity,
                                       use_residual=use_residual, gate_backward=gate_backward, ep_size=ep_size,
+                                      topany_gating_impl=topany_gating_impl, use_flash_attention=use_flash_attention,
+                                      use_gradient_checkpointing=use_gradient_checkpointing,
                                       max_seq_len=max_seq_len,    # NEW
                                       use_rope=use_rope,           # NEW
                                       rope_theta=rope_theta,       # NEW
                                       rope_dim=rope_dim,           # NEW
                                       rope_scaling=rope_scaling,   # NEW
-                                      use_flash_attention=use_flash_attention,
-                                      use_gradient_checkpointing=use_gradient_checkpointing,
-                                      topany_gating_impl=topany_gating_impl
-        )
+                                      l1_lambda=l1_lambda)         # NEW
 
         self.output_projection = nn.Linear(dim, vocab_size, bias=False)
         self.output_projection.weight = self.token_embedding.weight
@@ -658,47 +653,12 @@ def moe_builder(vocab_size: int = 131072, max_seq_len: int = 2048, dim=768, dept
                 dim_head=64, dropout=0., emb_dropout=0., moe_layers=[0, 3],
                 num_experts=4, k=-1, capacity_factor=1.5, eval_capacity_factor=2.0,
                 min_capacity=0.0, use_residual=False, gate_backward='ste', ep_size=1,
+                topany_gating_impl='sparse', use_flash_attention=False, use_gradient_checkpointing=True,
                 use_rope=True,          # NEW: Enable RoPE by default
                 rope_theta=10000.0,     # NEW: RoPE base frequency
                 rope_dim=None,          # NEW: Partial RoPE (None = full head_dim)
                 rope_scaling=None,      # NEW: RoPE scaling config
-                use_flash_attention=False,
-                use_gradient_checkpointing=True,
-                topany_gating_impl='sparse'
-):
-    """
-    Build a Mixture of Experts Transformer model with optional RoPE.
-    
-    Args:
-        vocab_size: Size of vocabulary
-        max_seq_len: Maximum sequence length
-        dim: Model dimension
-        depth: Number of transformer layers
-        heads: Number of attention heads
-        mlp_dim: Feedforward dimension
-        dim_head: Dimension per attention head
-        dropout: Dropout probability
-        emb_dropout: Embedding dropout probability
-        moe_layers: List of layer indices to use MoE
-        num_experts: Number of experts in MoE
-        k: Top-k experts to use
-        capacity_factor: MoE capacity factor
-        eval_capacity_factor: MoE eval capacity factor
-        min_capacity: Minimum MoE capacity
-        use_residual: Use residual in MoE
-        gate_backward: MoE gate backward method
-        ep_size: Expert parallel size
-        use_rope: Whether to use RoPE (default: True)
-        rope_theta: Base frequency for RoPE (default: 10000.0)
-        rope_dim: Number of dimensions to rotate (None = full head_dim, must be even)
-        rope_scaling: Optional scaling config for longer context
-            - {'type': 'linear', 'factor': 2.0} for linear scaling
-            - {'type': 'ntk', 'factor': 2.0, 'alpha': 1.0} for NTK-aware scaling
-            - {'type': 'yarn', 'factor': 2.0, 'scale': 1.0} for YaRN scaling (simplified)
-    
-    Returns:
-        MoE_Transformer model
-    """
+                l1_lambda=0.0005):      # NEW: L1 Lasso sparsity penalty coefficient
     model = MoE_Transformer(
         vocab_size=vocab_size,
         max_seq_len=max_seq_len,
@@ -718,13 +678,14 @@ def moe_builder(vocab_size: int = 131072, max_seq_len: int = 2048, dim=768, dept
         use_residual=use_residual,
         gate_backward=gate_backward,
         ep_size=ep_size,
+        topany_gating_impl=topany_gating_impl,
+        use_flash_attention=use_flash_attention,
+        use_gradient_checkpointing=use_gradient_checkpointing,
         use_rope=use_rope,           # NEW
         rope_theta=rope_theta,       # NEW
         rope_dim=rope_dim,           # NEW
         rope_scaling=rope_scaling,    # NEW
-        use_flash_attention=use_flash_attention,
-        use_gradient_checkpointing=use_gradient_checkpointing,
-        topany_gating_impl=topany_gating_impl
+        l1_lambda=l1_lambda          # NEW
     )
 
     return model

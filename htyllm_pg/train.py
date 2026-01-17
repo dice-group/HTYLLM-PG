@@ -82,6 +82,7 @@ def save_config(args, output_dir):
         "topany_gating_impl": args.topany_gating_impl,
         "use_flash_attention": args.use_flash_attention,
         "use_gradient_checkpointing": args.use_gradient_checkpointing,
+        "l1_lambda": args.l1_lambda,
         "architectures": ["HTYLLMForCausalLM"],
         "model_type": "htyllm_moe"
     }
@@ -127,6 +128,7 @@ def get_args() -> argparse.Namespace :
     parser.add_argument("--topany-gating-impl", type=str, dest="topany_gating_impl", default="sparse", help="Top-any gating implementation: 'opt' or 'sparse'")
     parser.add_argument("--use-flash-attention", action="store_true", dest="use_flash_attention", help="Use Flash Attention (optimized) instead of standard attention")
     parser.add_argument("--use-gradient-checkpointing", action="store_true", dest="use_gradient_checkpointing", default=True, help="Use gradient checkpointing to save memory")
+    parser.add_argument("--l1-lambda", type=float, dest="l1_lambda", default=0.0005, help="L1 Lasso sparsity penalty for adaptive gating (higher = fewer experts per token)")
     
     parser.add_argument("--train-split", type=float, dest="train_split", default=0.95, help="Fraction of data for training (1.0 = no test split)")
     
@@ -161,7 +163,8 @@ def main():
         ep_size=args.ep_size,
         topany_gating_impl=args.topany_gating_impl,
         use_flash_attention=args.use_flash_attention,
-        use_gradient_checkpointing=args.use_gradient_checkpointing
+        use_gradient_checkpointing=args.use_gradient_checkpointing,
+        l1_lambda=args.l1_lambda
     )
 
     pytorch_total_params = sum(p.numel() for p in model_pytorch.parameters() if p.requires_grad)
@@ -210,6 +213,7 @@ def main():
                 "topany_gating_impl": args.topany_gating_impl,
                 "use_flash_attention": args.use_flash_attention,
                 "use_gradient_checkpointing": args.use_gradient_checkpointing,
+                "l1_lambda": args.l1_lambda,
                 "lr": args.lr,
                 "weight_decay": args.weight_decay,
                 "batch_size": args.batch_size,

@@ -12,6 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import CausalLMOutputWithPast
+from transformers.generation import GenerationMixin
 from htyllm_pg.model_builder import MoE_Transformer, moe_builder
 
 class HTYLLMConfig(PretrainedConfig):
@@ -44,7 +45,7 @@ class HTYLLMConfig(PretrainedConfig):
     def num_hidden_layers(self):
         return self.depth
 
-class HTYLLMForCausalLM(PreTrainedModel):
+class HTYLLMForCausalLM(PreTrainedModel, GenerationMixin):
     config_class = HTYLLMConfig
     
     def __init__(self, config):
@@ -65,6 +66,9 @@ class HTYLLMForCausalLM(PreTrainedModel):
         output = CausalLMOutputWithPast(loss=loss, logits=logits)
         output.expert_counts = expert_counts
         return output
+
+    def prepare_inputs_for_generation(self, input_ids, **kwargs):
+        return {"input_ids": input_ids}
 
 def convert(args):
     # 1. Load Config
@@ -126,7 +130,19 @@ def convert(args):
 
     # 5. Save HF Model
     print(f"Saving to {args.output_dir}...")
-    hf_model.save_pretrained(args.output_dir)
+    # Use safe_serialization=False to handle tied/shared weights
+    # (token_embedding and output_projection share the same tensor)
+    hf_model.save_pretrained(args.output_dir, safe_serialization=False)
+    
+    # 5b. Copy tokenizer files from project root
+    import shutil
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    tokenizer_files = ["tokenizer.json", "tokenizer_config.json", "special_tokens_map.json"]
+    for tf in tokenizer_files:
+        src = os.path.join(project_root, tf)
+        if os.path.exists(src):
+            shutil.copy(src, os.path.join(args.output_dir, tf))
+            print(f"Copied {tf} to output directory")
     
     # We read model_builder.py and append our wrapper classes
     model_builder_path = os.path.join(os.path.dirname(__file__), "../model_builder.py")
@@ -136,6 +152,7 @@ def convert(args):
     wrapper_code = f"""
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import CausalLMOutputWithPast
+from transformers.generation import GenerationMixin
 import torch
 import deepspeed
 import inspect
@@ -144,6 +161,9 @@ import inspect
 # This is required for the MoE layer to function correctly during inference
 if not deepspeed.comm.is_initialized():
     import os
+    import random
+    import time
+    
     # If running in a non-distributed environment (e.g. simple inference/eval),
     # set up a single-process distributed environment to satisfy DeepSpeed requirements.
     if "RANK" not in os.environ:
@@ -151,19 +171,31 @@ if not deepspeed.comm.is_initialized():
         os.environ["LOCAL_RANK"] = "0"
         os.environ["WORLD_SIZE"] = "1"
         os.environ["MASTER_ADDR"] = "127.0.0.1"
-        os.environ["MASTER_PORT"] = "29500"
+        
+        # Retry initialization in case of port collision
+        max_retries = 10
+        for attempt in range(max_retries):
+            try:
+                # Use existing MASTER_PORT on first attempt, random on retry
+                if "MASTER_PORT" not in os.environ or attempt > 0:
+                    port = random.randint(10000, 60000)
+                    os.environ["MASTER_PORT"] = str(port)
+                
+                deepspeed.init_distributed(dist_backend="nccl", auto_mpi_discovery=False)
+                break
+            except Exception as e:
+                # Catch port collision errors
+                if ("EADDRINUSE" in str(e) or "address already in use" in str(e)) and attempt < max_retries - 1:
+                    # Wait a bit before retrying to reduce contention
+                    time.sleep(1 + random.random())
+                    continue
+                raise e
+    else:
+        deepspeed.init_distributed(dist_backend="nccl", auto_mpi_discovery=False)
 
-    deepspeed.init_distributed(dist_backend="nccl", auto_mpi_discovery=False)
+{inspect.getsource(HTYLLMConfig)}
 
-{inspect.getsource(HTYLLMConfig).replace(
-    'super().__init__(**kwargs)',
-    'super().__init__(**kwargs)\\n\\n    @property\\n    def num_hidden_layers(self):\\n        return self.depth'
-)}
-
-{inspect.getsource(HTYLLMForCausalLM).replace(
-    'return output', 
-    'return output\\n\\n    def prepare_inputs_for_generation(self, input_ids, **kwargs):\\n        return {"input_ids": input_ids}'
-)}
+{inspect.getsource(HTYLLMForCausalLM)}
 """
     
     with open(os.path.join(args.output_dir, "modeling_htyllm.py"), "w") as f:
