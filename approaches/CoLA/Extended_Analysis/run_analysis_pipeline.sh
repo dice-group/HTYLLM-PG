@@ -17,12 +17,10 @@ echo ""
 # Configuration
 BASE_MODEL="meta-llama/Llama-3.1-8B"
 CHECKPOINT="/scratch/hpc-prf-merlin/sashreek/moe_study/saves/hydralora_moe_llama31_8b_acc"
-ADAPTER_TYPE="hydralora"
 VALIDATION_DATA="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/samples"
 LANGUAGES="english,spa_Latn,fra_Latn,deu_Latn,zho_Hani"
 NUM_SEQUENCES="10000"
-NUM_LAYERS="32"
-NUM_EXPERTS="4"
+# Note: --adapter_type, --num_layers, --num_experts are auto-detected from adapter_config.json
 
 # Derived paths
 CHECKPOINT_NAME=$(basename "$CHECKPOINT")
@@ -32,9 +30,9 @@ DATA_DIR="./data/language_test_sets"
 echo "Configuration:"
 echo "  Base Model: $BASE_MODEL"
 echo "  Checkpoint: $CHECKPOINT"
-echo "  Adapter Type: $ADAPTER_TYPE"
 echo "  Languages: $LANGUAGES"
 echo "  Output: $OUTPUT_DIR"
+echo "  (adapter_type, num_layers, num_experts auto-detected)"
 echo ""
 
 # Step 1: Prepare test data (skip if already exists)
@@ -51,16 +49,13 @@ else
     echo ""
 fi
 
-# Step 2: Analyze routing
+# Step 2: Analyze routing (adapter_type, num_layers, num_experts auto-detected)
 echo -e "${GREEN}[2/5] Running expert routing analysis...${NC}"
 python tool/analyze_expert_routing.py \
     --base_model "$BASE_MODEL" \
     --adapter_checkpoint "$CHECKPOINT" \
-    --adapter_type "$ADAPTER_TYPE" \
     --test_data "$DATA_DIR" \
     --output "$OUTPUT_DIR" \
-    --num_layers "$NUM_LAYERS" \
-    --num_experts "$NUM_EXPERTS" \
     --batch_size 16
 echo ""
 

@@ -28,15 +28,62 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-# Add parent directory to path to import peft
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from peft import PeftModel
-
+# Configure logging first (needed before _ensure_local_peft)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def _ensure_local_peft():
+    """
+    Load repo-local PEFT with CoLA/Hydra support, not site-packages.
+    
+    This is critical because:
+    1. pip's peft package doesn't have CoLA/HydraLoRA
+    2. Python caches modules, so if peft was imported before, it won't reload
+    3. We must force-reload from our local LLaMA-Factory/src/peft
+    """
+    # Clear any cached peft modules to force reload
+    for name in list(sys.modules.keys()):
+        if name == "peft" or name.startswith("peft."):
+            del sys.modules[name]
+    
+    # Path: Extended_Analysis/tool/ → Extended_Analysis/ → CoLA/ → LLaMA-Factory/src
+    repo_root = Path(__file__).resolve().parent.parent.parent  # CoLA/
+    peft_path = repo_root / "LLaMA-Factory" / "src"
+    
+    if not (peft_path / "peft" / "__init__.py").exists():
+        raise FileNotFoundError(
+            f"Local PEFT not found at {peft_path}/peft. "
+            "Ensure LLaMA-Factory submodule is cloned."
+        )
+    
+    if str(peft_path) not in sys.path:
+        sys.path.insert(0, str(peft_path))
+    
+    # Force-load local peft module using importlib
+    import importlib.util
+    peft_init = peft_path / "peft" / "__init__.py"
+    spec = importlib.util.spec_from_file_location(
+        "peft", peft_init, 
+        submodule_search_locations=[str(peft_path / "peft")]
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Failed to load local peft from {peft_init}")
+    
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["peft"] = module
+    spec.loader.exec_module(module)
+    
+    logger.info(f"Loaded local PEFT from: {peft_path}")
+    return module
+
+
+# Load local PEFT with CoLA/HydraLoRA support
+_peft = _ensure_local_peft()
+PeftModel = _peft.PeftModel
 
 
 class LanguageDataset(Dataset):
@@ -362,78 +409,60 @@ def create_routing_matrix(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Analyze expert routing for CoLA/HydraLoRA checkpoints"
-    )
-    parser.add_argument(
-        '--base_model',
-        type=str,
-        required=True,
-        help='Base model name or path (e.g., meta-llama/Llama-2-7b-hf)'
-    )
-    parser.add_argument(
-        '--adapter_checkpoint',
-        type=str,
-        required=True,
-        help='Path to adapter checkpoint directory'
-    )
-    parser.add_argument(
-        '--adapter_type',
-        type=str,
-        choices=['cola', 'hydralora'],
-        required=True,
-        help='Type of adapter (cola or hydralora)'
-    )
-    parser.add_argument(
-        '--test_data',
-        type=Path,
-        required=True,
-        help='Directory containing language-specific JSONL files'
-    )
-    parser.add_argument(
-        '--languages',
-        type=str,
-        default=None,
-        help='Comma-separated list of languages to analyze (default: all in test_data)'
-    )
-    parser.add_argument(
-        '--output',
-        type=Path,
-        required=True,
-        help='Output directory for routing statistics'
-    )
-    parser.add_argument(
-        '--batch_size',
-        type=int,
-        default=16,
-        help='Batch size for inference (default: 16)'
-    )
-    parser.add_argument(
-        '--max_sequences',
-        type=int,
-        default=None,
-        help='Maximum sequences per language (default: all available)'
-    )
-    parser.add_argument(
-        '--num_layers',
-        type=int,
-        default=32,
-        help='Number of layers in model (default: 32 for Llama-7B)'
-    )
-    parser.add_argument(
-        '--num_experts',
-        type=int,
-        default=4,
-        help='Number of experts per layer (default: 4)'
-    )
-    parser.add_argument(
-        '--device',
-        type=str,
-        default='cuda',
-        help='Device to use (default: cuda)'
-    )
+    parser = argparse.ArgumentParser(description="Analyze expert routing for CoLA/HydraLoRA checkpoints")
+    parser.add_argument('--base_model',type=str,required=True,help='Base model name or path (e.g., meta-llama/Llama-2-7b-hf)')
+    parser.add_argument('--adapter_checkpoint', type=str, required=True, help='Path to adapter checkpoint directory')
+    parser.add_argument('--adapter_type', type=str, choices=['cola', 'hydralora'], default=None, help='Type of adapter (cola or hydralora). Auto-detected from adapter_config.json if not specified.')
+    parser.add_argument('--test_data', type=Path, required=True, help='Directory containing language-specific JSONL files')
+    parser.add_argument('--languages', type=str, default=None, help='Comma-separated list of languages to analyze (default: all in test_data)')
+    parser.add_argument('--output', type=Path, required=True, help='Output directory for routing statistics')
+    parser.add_argument('--batch_size', type=int, default=16, help='Batch size for inference (default: 16)')
+    parser.add_argument('--max_sequences', type=int, default=None, help='Maximum sequences per language (default: all available)')
+    parser.add_argument('--num_layers', type=int, default=None, help='Number of layers in model. Auto-detected from base model config if not specified.')
+    parser.add_argument('--num_experts', type=int, default=None, help='Number of experts per layer. Auto-detected from adapter_config.json if not specified.')
+    parser.add_argument('--device', type=str, default='cuda', help='Device to use (default: cuda)')
     
     args = parser.parse_args()
+    
+    # Auto-detect from adapter_config.json if not specified
+    adapter_config_path = Path(args.adapter_checkpoint) / "adapter_config.json"
+    if adapter_config_path.exists():
+        logger.info(f"Reading adapter config from {adapter_config_path}")
+        with open(adapter_config_path, 'r') as f:
+            adapter_config = json.load(f)
+        
+        # Auto-detect adapter_type
+        if args.adapter_type is None:
+            peft_type = adapter_config.get('peft_type', '').lower()
+            if peft_type in ['cola', 'hydralora']:
+                args.adapter_type = peft_type
+                logger.info(f"Auto-detected adapter_type: {args.adapter_type}")
+            else:
+                logger.error(f"Could not auto-detect adapter_type from peft_type: {peft_type}")
+                raise ValueError("Please specify --adapter_type (cola or hydralora)")
+        
+        # Auto-detect num_experts (CoLA uses cola_num_experts, HydraLoRA uses num_experts)
+        if args.num_experts is None:
+            # Try adapter-specific field names first
+            num_experts = adapter_config.get('cola_num_experts')
+            if num_experts is None:
+                num_experts = adapter_config.get('num_experts')
+            if num_experts is None:
+                num_experts = 4  # Default fallback
+            args.num_experts = num_experts
+            logger.info(f"Auto-detected num_experts: {args.num_experts}")
+    else:
+        logger.warning(f"adapter_config.json not found at {adapter_config_path}")
+        if args.adapter_type is None:
+            raise ValueError("adapter_config.json not found. Please specify --adapter_type")
+        if args.num_experts is None:
+            args.num_experts = 4
+            logger.warning(f"Using default num_experts: {args.num_experts}")
+    
+    # Auto-detect num_layers from base model if not specified
+    if args.num_layers is None:
+        # Will be detected after model loading
+        args.num_layers = None  # Placeholder, will be set after model load
     
     # Get list of languages
     if args.languages:
@@ -452,6 +481,15 @@ def main():
         args.adapter_checkpoint,
         args.device
     )
+    
+    # Auto-detect num_layers from model config if not specified
+    if args.num_layers is None:
+        if hasattr(model.config, 'num_hidden_layers'):
+            args.num_layers = model.config.num_hidden_layers
+            logger.info(f"Auto-detected num_layers: {args.num_layers}")
+        else:
+            args.num_layers = 32  # Default fallback
+            logger.warning(f"Could not auto-detect num_layers, using default: {args.num_layers}")
     
     # Create routing collector
     collector = RoutingCollector(adapter_type=args.adapter_type)
