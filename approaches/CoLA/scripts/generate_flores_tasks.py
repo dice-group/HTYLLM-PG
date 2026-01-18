@@ -25,7 +25,7 @@ OUTPUT_DIR = "custom_tasks/flores"
 TASKS_FILE_PATH = "configs/lm_eval_tasks.txt"
 SOURCE_LANG = "eng_Latn"
 DATASET_PATH = "facebook/flores"
-DATASET_NAME = "default"
+MAX_GEN_TOKS = 64
 
 def clean_lang_list(raw_text):
     return sorted(list(set(raw_text.split())))
@@ -35,21 +35,25 @@ def generate_yaml(lang_code):
         return None
     
     task_name = f"flores_{SOURCE_LANG}-{lang_code}"
+    dataset_name = f"{SOURCE_LANG}-{lang_code}"
     
     yaml_content = f"""task: {task_name}
 dataset_path: {DATASET_PATH}
-dataset_name: {DATASET_NAME}
+dataset_name: {dataset_name}
 test_split: dev
+dataset_kwargs:
+  trust_remote_code: true
 output_type: generate_until
 doc_to_text: "{{{{sentence_{SOURCE_LANG}}}}} ="
 doc_to_target: "{{{{sentence_{lang_code}}}}}"
 metric_list:
   - metric: bleu
-    aggregation: mean
+    aggregation: bleu
     higher_is_better: true
 generation_kwargs:
   until:
     - "\\n"
+  max_gen_toks: {MAX_GEN_TOKS}
 metadata:
   version: 1.0
 """

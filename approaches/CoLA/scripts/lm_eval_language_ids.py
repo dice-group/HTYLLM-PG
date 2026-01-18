@@ -110,6 +110,15 @@ def _normalize_device_map(value: Optional[str]) -> Optional[str]:
     return val
 
 
+def _normalize_attn_impl(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    val = str(value).strip()
+    if not val or val.lower() in ("none", "null"):
+        return None
+    return val
+
+
 def _resolve_adapter_dir(path: Path) -> Path:
     if (path / "adapter_config.json").exists():
         return path
@@ -251,6 +260,7 @@ def _run_eval(
         "true",
         "yes",
     }
+    attn_impl = _normalize_attn_impl(os.environ.get("LM_EVAL_ATTN_IMPL"))
     task_manager = TaskManager(include_path=include_path)
     if device_map is not None:
         force_move = False
@@ -268,6 +278,8 @@ def _run_eval(
         os.environ.get("CUDA_VISIBLE_DEVICES"),
         torch.cuda.device_count(),
     )
+    if attn_impl:
+        logger.info("Attention implementation override: %s", attn_impl)
     # Ensure repo-local PEFT (with CoLA/Hydra) is used inside lm_eval.
     repo_root = Path(__file__).resolve().parents[1]
     peft_path = repo_root / "LLaMA-Factory" / "src"
@@ -299,6 +311,20 @@ def _run_eval(
         from transformers import AutoModelForCausalLM
     except Exception as exc:
         raise RuntimeError("lm_eval/transformers is not installed in this environment") from exc
+    try:
+        import lm_eval.tasks as _tasks
+        _ppt = _tasks.pretty_print_task
+        def _ppt_safe(*a, **k):
+            try: return _ppt(*a, **k)
+            except ValueError as exc:
+                msg = str(exc)
+                if "is not in the subpath of" in msg or "one path is relative and the other is absolute" in msg:
+                    logger.info("Task: %s", a[0] if a else "<unknown>")
+                    return None
+                raise
+        _tasks.pretty_print_task = _ppt_safe
+    except Exception:
+        pass
 
     # Load PEFT locally to support CoLA/Hydra even if site-packages peft lacks them.
     from peft import PeftModel  # repo-local due to sys.path override above
@@ -324,6 +350,8 @@ def _run_eval(
         load_kwargs = {"low_cpu_mem_usage": True}
         if torch_dtype is not None:
             load_kwargs["torch_dtype"] = torch_dtype
+        if attn_impl is not None:
+            load_kwargs["attn_implementation"] = attn_impl
         if device_map is not None:
             load_kwargs["device_map"] = device_map
         base_model = AutoModelForCausalLM.from_pretrained(pretrained, **load_kwargs)
@@ -377,19 +405,31 @@ def _run_eval(
         batch_size=batch_size,
     )
 
-    results = evaluator.simple_evaluate(
-        model=model,
-        tasks=tasks,
-        batch_size=batch_size,
-        device=device,
-        limit=limit,
-        log_samples=log_samples,
-        task_manager=task_manager,
-        random_seed=random_seed,
-        numpy_random_seed=numpy_random_seed,
-        torch_random_seed=torch_random_seed,
-        fewshot_random_seed=fewshot_random_seed,
-    )
+    _rel = Path.relative_to
+    def _rel_safe(self, *other):
+        try: return _rel(self, *other)
+        except ValueError as exc:
+            msg = str(exc)
+            if "is not in the subpath of" in msg or "one path is relative and the other is absolute" in msg:
+                return self
+            raise
+    Path.relative_to = _rel_safe
+    try:
+        results = evaluator.simple_evaluate(
+            model=model,
+            tasks=tasks,
+            batch_size=batch_size,
+            device=device,
+            limit=limit,
+            log_samples=log_samples,
+            task_manager=task_manager,
+            random_seed=random_seed,
+            numpy_random_seed=numpy_random_seed,
+            torch_random_seed=torch_random_seed,
+            fewshot_random_seed=fewshot_random_seed,
+        )
+    finally:
+        Path.relative_to = _rel
 
     if results is None:
         return

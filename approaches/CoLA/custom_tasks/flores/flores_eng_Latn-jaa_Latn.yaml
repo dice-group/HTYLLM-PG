@@ -1,16 +1,19 @@
 task: flores_eng_Latn-jaa_Latn
 dataset_path: facebook/flores
-dataset_name: default
+dataset_name: eng_Latn-jaa_Latn
 test_split: dev
+dataset_kwargs:
+  trust_remote_code: true
 output_type: generate_until
 doc_to_text: "{{sentence_eng_Latn}} ="
 doc_to_target: "{{sentence_jaa_Latn}}"
 metric_list:
   - metric: bleu
-    aggregation: mean
+    aggregation: bleu
     higher_is_better: true
 generation_kwargs:
   until:
     - "\n"
+  max_gen_toks: 64
 metadata:
   version: 1.0

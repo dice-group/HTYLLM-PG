@@ -86,6 +86,7 @@ SEED=${SEED:-${LM_EVAL_RANDOM_SEED:-42}}
 NUMPY_SEED=${NUMPY_SEED:-${LM_EVAL_NUMPY_SEED:-42}}
 TORCH_SEED=${TORCH_SEED:-${LM_EVAL_TORCH_SEED:-42}}
 FEWSHOT_SEED=${FEWSHOT_SEED:-${LM_EVAL_FEWSHOT_SEED:-42}}
+export LM_EVAL_DEVICE_MAP=${LM_EVAL_DEVICE_MAP:-none}
 
 [[ -z "${CKPT:-}" || -z "${OUTDIR:-}" ]] && { echo "--checkpoint and --output-dir required"; exit 1; }
 [[ ! -d "$CKPT" ]] && { echo "Checkpoint not found: $CKPT"; exit 1; }
