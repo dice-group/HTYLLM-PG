@@ -57,6 +57,10 @@ while [[ $# -gt 0 ]]; do
     --wandb-job-type) WJOB=$2; shift 2;;
     --lang-mode)     LANG_MODE=$2; shift 2;;
     --extra-args)    EXTRA=$2; shift 2;;
+    --seed)          SEED=$2; shift 2;;
+    --numpy-seed)    NUMPY_SEED=$2; shift 2;;
+    --torch-seed)    TORCH_SEED=$2; shift 2;;
+    --fewshot-seed)  FEWSHOT_SEED=$2; shift 2;;
     *) echo "Unknown argument: $1"; exit 1;;
   esac
 done
@@ -78,6 +82,10 @@ ENABLE_SUMMARY=${LM_EVAL_ENABLE_SUMMARY:-true}
 SUMMARY_UPLOAD=${LM_EVAL_SUMMARY_UPLOAD:-local}
 FORCE_DEVICE=${LM_EVAL_FORCE_DEVICE:-true}
 SUMMARY_SUFFIX=${LM_EVAL_SUMMARY_SUFFIX:-_summary}
+SEED=${SEED:-${LM_EVAL_RANDOM_SEED:-42}}
+NUMPY_SEED=${NUMPY_SEED:-${LM_EVAL_NUMPY_SEED:-42}}
+TORCH_SEED=${TORCH_SEED:-${LM_EVAL_TORCH_SEED:-42}}
+FEWSHOT_SEED=${FEWSHOT_SEED:-${LM_EVAL_FEWSHOT_SEED:-42}}
 
 [[ -z "${CKPT:-}" || -z "${OUTDIR:-}" ]] && { echo "--checkpoint and --output-dir required"; exit 1; }
 [[ ! -d "$CKPT" ]] && { echo "Checkpoint not found: $CKPT"; exit 1; }
@@ -183,6 +191,18 @@ WRAPPER_ARGS=(
   fi
   if [[ -n "${DEVICE_MAP}" ]]; then
     WRAPPER_ARGS+=("--device-map" "$DEVICE_MAP")
+  fi
+  if [[ -n "${SEED:-}" ]]; then
+    WRAPPER_ARGS+=("--seed" "$SEED")
+  fi
+  if [[ -n "${NUMPY_SEED:-}" ]]; then
+    WRAPPER_ARGS+=("--numpy-seed" "$NUMPY_SEED")
+  fi
+  if [[ -n "${TORCH_SEED:-}" ]]; then
+    WRAPPER_ARGS+=("--torch-seed" "$TORCH_SEED")
+  fi
+  if [[ -n "${FEWSHOT_SEED:-}" ]]; then
+    WRAPPER_ARGS+=("--fewshot-seed" "$FEWSHOT_SEED")
   fi
   if [[ "$LOG_ROUTER_METRICS" == "true" ]]; then
     WRAPPER_ARGS+=("--log-router-metrics")

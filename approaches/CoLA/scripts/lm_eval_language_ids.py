@@ -241,6 +241,10 @@ def _run_eval(
     device_map: Optional[str],
     run_suffix: Optional[str] = None,
     include_path: Optional[str] = None,
+    random_seed: int = 42,
+    numpy_random_seed: int = 42,
+    torch_random_seed: int = 42,
+    fewshot_random_seed: int = 42,
 ):
     force_move = os.environ.get("LM_EVAL_FORCE_DEVICE", "true").strip().lower() in {
         "1",
@@ -381,6 +385,10 @@ def _run_eval(
         limit=limit,
         log_samples=log_samples,
         task_manager=task_manager,
+        random_seed=random_seed,
+        numpy_random_seed=numpy_random_seed,
+        torch_random_seed=torch_random_seed,
+        fewshot_random_seed=fewshot_random_seed,
     )
 
     if results is None:
@@ -443,6 +451,10 @@ def main() -> int:
     parser.add_argument("--log-router-metrics", action="store_true", help="Log CoLA/Hydra router metrics from PEFT")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--include-path", type=str, default=None, help="Additional path to include if there are external tasks")
+    parser.add_argument("--seed", type=int, default=int(os.environ.get("LM_EVAL_RANDOM_SEED", 42)), help="Random seed for lm_eval (python random).")
+    parser.add_argument("--numpy-seed", type=int, default=int(os.environ.get("LM_EVAL_NUMPY_SEED", 42)), help="Numpy random seed for lm_eval.")
+    parser.add_argument("--torch-seed", type=int, default=int(os.environ.get("LM_EVAL_TORCH_SEED", 42)), help="Torch random seed for lm_eval.")
+    parser.add_argument("--fewshot-seed", type=int, default=int(os.environ.get("LM_EVAL_FEWSHOT_SEED", 42)), help="Fewshot sampling seed for lm_eval.")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s|%(asctime)s|%(name)s:%(lineno)d >> %(message)s")
 
@@ -501,6 +513,10 @@ def main() -> int:
             device_map=device_map,
             run_suffix="no_ids",
             include_path=args.include_path,
+            random_seed=args.seed,
+            numpy_random_seed=args.numpy_seed,
+            torch_random_seed=args.torch_seed,
+            fewshot_random_seed=args.fewshot_seed,
         )
 
     if args.mode in ("with_ids", "both"):
@@ -530,6 +546,10 @@ def main() -> int:
                 device_map=device_map,
                 run_suffix=f"with_ids_{task}",
                 include_path=args.include_path,
+                random_seed=args.seed,
+                numpy_random_seed=args.numpy_seed,
+                torch_random_seed=args.torch_seed,
+                fewshot_random_seed=args.fewshot_seed,
             )
 
     print("[INFO] Eval run completed", file=sys.stderr)

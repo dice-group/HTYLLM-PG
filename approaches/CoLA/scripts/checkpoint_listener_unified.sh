@@ -34,6 +34,10 @@ SUMMARY_PROJECT_SUFFIX="${LM_EVAL_SUMMARY_SUFFIX:-_summary}"
 SYNC_SCRIPT=""
 SYNC_PYTHON="python3"
 ROOTS_FILE=""
+SEED="${LM_EVAL_RANDOM_SEED:-42}"
+NUMPY_SEED="${LM_EVAL_NUMPY_SEED:-42}"
+TORCH_SEED="${LM_EVAL_TORCH_SEED:-42}"
+FEWSHOT_SEED="${LM_EVAL_FEWSHOT_SEED:-42}"
 WATCH_ROOTS=(
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/" # watch all
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-hard_20260108_054502"
@@ -66,6 +70,10 @@ while [[ $# -gt 0 ]]; do
     --sync-suffix) SYNC_SUFFIX=$2; shift 2; continue;;
     --sync-script) SYNC_SCRIPT=$2; shift 2; continue;;
     --sync-python) SYNC_PYTHON=$2; shift 2; continue;;
+    --seed) SEED=$2; shift 2; continue;;
+    --numpy-seed) NUMPY_SEED=$2; shift 2; continue;;
+    --torch-seed) TORCH_SEED=$2; shift 2; continue;;
+    --fewshot-seed) FEWSHOT_SEED=$2; shift 2; continue;;
     --marker-tag) MARK_TAG=$2; shift 2; continue;;
     --ignore-existing) IGNORE_EXISTING=true; shift; continue;;
     --force) FORCE=true; FORCE_ONCE=true; shift; continue;;
@@ -285,6 +293,18 @@ submit_eval() {
     --wandb-group "$run_label" \
     ${TOK:+--tokenizer "$TOK"} \
   )
+  if [[ -n "${SEED:-}" ]]; then
+    sbatch_cmd+=(--seed "$SEED")
+  fi
+  if [[ -n "${NUMPY_SEED:-}" ]]; then
+    sbatch_cmd+=(--numpy-seed "$NUMPY_SEED")
+  fi
+  if [[ -n "${TORCH_SEED:-}" ]]; then
+    sbatch_cmd+=(--torch-seed "$TORCH_SEED")
+  fi
+  if [[ -n "${FEWSHOT_SEED:-}" ]]; then
+    sbatch_cmd+=(--fewshot-seed "$FEWSHOT_SEED")
+  fi
   local job_out=""
   if job_out=$("${sbatch_cmd[@]}"); then
     echo "[INFO] ${job_out} (ckpt=${target})"
