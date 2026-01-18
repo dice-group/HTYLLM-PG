@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=moe-multilingual
-#SBATCH --nodes=12                   
+#SBATCH --nodes=4                   
 #SBATCH --ntasks-per-node=1           # 1 DeepSpeed launcher per node
 #SBATCH --cpus-per-task=4
 #SBATCH --time=168:00:00
@@ -61,14 +61,14 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --deepspeed \
       --deepspeed_config ds_config.json \
       --epochs 1 \
-      --batch-size 16 \
+      --batch-size 8 \
       --lr 1e-4 \
-      --dim 2048 \
-      --depth 24 \
-      --heads 16 \
+      --dim 3072 \
+      --depth 28 \
+      --heads 24 \
       --dim-head 128 \
-      --mlp-dim 8192 \
-      --moe-layers 3 7 11 15 19 23 \
+      --mlp-dim 12288 \
+      --moe-layers 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 \
       --num-experts 8 \
       --topany-gating-impl "sparse" \
       --use-gradient-checkpointing \
@@ -76,7 +76,7 @@ srun --ntasks=${SLURM_NNODES} --ntasks-per-node=1 bash -c '
       --ep-size 8 \
       --l1-lambda 0.0001 \
       --train-split 1.0 \
-      --checkpoint-dir /scratch/hpc-prf-merlin/luke/checkpoints_multilingual \
+      --checkpoint-dir /scratch/hpc-prf-merlin/luke/checkpoints_multilingual_3_5b \
       --checkpoint-steps 2000 \
       --data-dir /scratch/hpc-prf-merlin/luke/tokenized_multilingual
 '
