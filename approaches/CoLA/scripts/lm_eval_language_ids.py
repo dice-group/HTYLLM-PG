@@ -20,7 +20,7 @@ _MODEL_CACHE: dict[tuple[str, str, str, str, str], object] = {}
 def _log_adapter_stats(model: torch.nn.Module) -> None:
     try:
         names = [name for name, _ in model.named_parameters()]
-    except Exception:  # noqa: BLE001
+    except Exception:
         return
     router_count = sum(".router." in name for name in names)
     expert_count = sum(".expert_" in name for name in names)
@@ -293,7 +293,7 @@ def _run_eval(
         from lm_eval.loggers.wandb_logger import WandbLogger
         from lm_eval.utils import simple_parse_args_string
         from transformers import AutoModelForCausalLM
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise RuntimeError("lm_eval/transformers is not installed in this environment") from exc
 
     # Load PEFT locally to support CoLA/Hydra even if site-packages peft lacks them.
@@ -306,7 +306,7 @@ def _run_eval(
 
             pop_tracked_metrics = _pop_tracked_metrics
             pop_tracked_metrics()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pop_tracked_metrics = None
 
     model_key = (
@@ -325,23 +325,23 @@ def _run_eval(
         base_model = AutoModelForCausalLM.from_pretrained(pretrained, **load_kwargs)
         try:
             logger.info("Base model device: %s", next(base_model.parameters()).device)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.info("Base model device: <unknown>")
         peft_model = PeftModel.from_pretrained(base_model, peft, is_trainable=False)
         try:
             logger.info("PEFT model device before move: %s", next(peft_model.parameters()).device)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.info("PEFT model device before move: <unknown>")
         if device.startswith("cuda") and torch.cuda.is_available() and force_move:
             try:
                 peft_model = peft_model.to(device)
                 logger.info("Moved PEFT model to device: %s", device)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning("Failed to move PEFT model to %s: %s", device, exc)
         peft_model.eval()
         try:
             logger.info("PEFT model device after move: %s", next(peft_model.parameters()).device)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.info("PEFT model device after move: <unknown>")
         _log_adapter_stats(peft_model)
         _MODEL_CACHE[model_key] = peft_model
@@ -435,16 +435,8 @@ def main() -> int:
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--limit", type=float, default=None, help="lm_eval limit per task")
     parser.add_argument("--mode", choices=["with_ids", "no_ids", "both"], default="both")
-    parser.add_argument(
-        "--torch-dtype",
-        default=os.environ.get("LM_EVAL_TORCH_DTYPE"),
-        help="Torch dtype for model load (auto|bf16|fp16|fp32).",
-    )
-    parser.add_argument(
-        "--device-map",
-        default=os.environ.get("LM_EVAL_DEVICE_MAP"),
-        help="Optional device_map for model load (e.g. auto).",
-    )
+    parser.add_argument("--torch-dtype", default=os.environ.get("LM_EVAL_TORCH_DTYPE"), help="Torch dtype for model load (auto|bf16|fp16|fp32).")
+    parser.add_argument("--device-map", default=os.environ.get("LM_EVAL_DEVICE_MAP"), help="Optional device_map for model load (e.g. auto).")
     parser.add_argument("--wandb-args", default=None, help="Comma args for wandb.init, e.g. project=lm-eval,job_type=eval")
     parser.add_argument("--wandb-config-args", default=None, help="Comma args for wandb.config.update")
     parser.add_argument("--log-samples", action="store_true", help="Log lm_eval samples in results/W&B")
@@ -452,10 +444,7 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--include-path", type=str, default=None, help="Additional path to include if there are external tasks")
     args = parser.parse_args()
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s|%(asctime)s|%(name)s:%(lineno)d >> %(message)s",
-    )
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s|%(asctime)s|%(name)s:%(lineno)d >> %(message)s")
 
     ckpt = _resolve_adapter_dir(Path(args.checkpoint))
     if not ckpt.exists():
