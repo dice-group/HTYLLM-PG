@@ -25,7 +25,7 @@ OUTPUT_DIR = "custom_tasks/flores"
 TASKS_FILE_PATH = "configs/lm_eval_tasks.txt"
 SOURCE_LANG = "eng_Latn"
 DATASET_PATH = "facebook/flores"
-MAX_GEN_TOKS = 64
+MAX_GEN_TOKS = 64 # TODO: check is this is enough for eval, or should we increase to 126
 
 def clean_lang_list(raw_text):
     return sorted(list(set(raw_text.split())))

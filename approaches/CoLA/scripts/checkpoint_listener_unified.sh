@@ -15,42 +15,51 @@
 
 set -euo pipefail
 
-TASKS="belebele_eng_Latn"
+TASKS="/scratch/hpc-prf-merlin/joel/HTYLLM-PG/approaches/CoLA/configs/lm_eval_tasks.txt"
 BS="auto"
 TOK=""
-POLL=120
+POLL=600
 MIN_AGE=300
 OUT_SUBDIR="lm_eval"
 IGNORE_EXISTING=false
 FORCE=false
-FORCE_ONCE=false
+FORCE_ONCE=true
 LIMIT=""
 LOG_ROOT="/scratch/hpc-prf-merlin/joel/HTYLLM-PG/approaches/CoLA/scripts/listener_logs"
 SCRIPT=""
-SYNC_INTERVAL=120
+SYNC_INTERVAL=900
 SYNC_PROJECT="htyllm-adapter-lpr-200_lang_cola_eval"
 SYNC_SUFFIX=""
 SUMMARY_PROJECT_SUFFIX="${LM_EVAL_SUMMARY_SUFFIX:-_summary}"
 SYNC_SCRIPT=""
 SYNC_PYTHON="python3"
 ROOTS_FILE=""
+STEP_MOD=10000
 SEED="${LM_EVAL_RANDOM_SEED:-42}"
 NUMPY_SEED="${LM_EVAL_NUMPY_SEED:-42}"
 TORCH_SEED="${LM_EVAL_TORCH_SEED:-42}"
 FEWSHOT_SEED="${LM_EVAL_FEWSHOT_SEED:-42}"
 WATCH_ROOTS=(
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/" # watch all
-  # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-hard_20260108_054502"
+  #"/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-hard_20260108_054502"
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-headbias_20260108_054502"
-   "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-lpr_20260108_054502"
+  # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-lpr_20260108_054502"
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaflat_20260108_054502"
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-exp-hard_20260108_054502"
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-exp-lpr-expert-only_20260108_054502"
-  # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-exp-lpr_20260108_054502"
+  "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-exp-lpr_20260108_054502"
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-flat_20260108_054502"
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/lora_lora-baseline_20260108_054502"
 )
 MARK_TAG=""
+export LM_EVAL_USE_LANG_WRAPPER="${LM_EVAL_USE_LANG_WRAPPER:-true}"
+export LM_EVAL_LANG_MODE="${LM_EVAL_LANG_MODE:-with_ids}"
+export LM_EVAL_LOG_ROUTER_METRICS="${LM_EVAL_LOG_ROUTER_METRICS:-true}"
+export LM_EVAL_TORCH_DTYPE="${LM_EVAL_TORCH_DTYPE:-bf16}"
+export LM_EVAL_ATTN_IMPL="${LM_EVAL_ATTN_IMPL:-flash_attention_2}"
+export LM_EVAL_DEVICE_MAP="${LM_EVAL_DEVICE_MAP:-none}"
+export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
+export LM_EVAL_SUMMARY_UPLOAD="${LM_EVAL_SUMMARY_UPLOAD:-true}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -70,6 +79,7 @@ while [[ $# -gt 0 ]]; do
     --sync-suffix) SYNC_SUFFIX=$2; shift 2; continue;;
     --sync-script) SYNC_SCRIPT=$2; shift 2; continue;;
     --sync-python) SYNC_PYTHON=$2; shift 2; continue;;
+    --step-mod) STEP_MOD=$2; shift 2; continue;;
     --seed) SEED=$2; shift 2; continue;;
     --numpy-seed) NUMPY_SEED=$2; shift 2; continue;;
     --torch-seed) TORCH_SEED=$2; shift 2; continue;;
@@ -199,6 +209,15 @@ is_old_enough() {
   mtime=$(stat -c %Y "$path" 2>/dev/null || echo 0)
   age=$((now - mtime))
   [[ "$age" -ge "$MIN_AGE" ]]
+}
+
+checkpoint_step() {
+  local path=$1
+  if [[ "$path" =~ checkpoint-([0-9]+) ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return
+  fi
+  echo ""
 }
 
 resolve_adapter() {
@@ -337,9 +356,30 @@ while true; do
     mapfile -t CKPTS < <(
       find "$root" -type f -path '*/checkpoint-*_adapter/adapter_config.json' -printf '%h\n' | sort -V
     )
+    max_step=""
+    if [[ -n "${STEP_MOD}" && "${STEP_MOD}" != "0" ]]; then
+      for ckpt in "${CKPTS[@]}"; do
+        step=$(checkpoint_step "$ckpt")
+        if [[ -n "$step" ]]; then
+          if [[ -z "$max_step" || "$step" -gt "$max_step" ]]; then
+            max_step=$step
+          fi
+        fi
+      done
+    fi
     for ckpt in "${CKPTS[@]}"; do
       target=$(resolve_adapter "$ckpt")
       [[ -z "$target" ]] && continue
+      if [[ -n "${STEP_MOD}" && "${STEP_MOD}" != "0" ]]; then
+        step=$(checkpoint_step "$target")
+        if [[ -n "$step" ]]; then
+          if [[ -n "$max_step" && "$step" -eq "$max_step" ]]; then
+            :
+          elif (( step % STEP_MOD != 0 )); then
+            continue
+          fi
+        fi
+      fi
       if [[ -n "${seen_targets[$target]+x}" ]]; then
         continue
       fi
