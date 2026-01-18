@@ -34,11 +34,9 @@ echo ""
 # Configuration
 BASE_MODEL="meta-llama/Llama-3.1-8B"
 CHECKPOINT="/scratch/hpc-prf-merlin/sashreek/moe_study/saves/hydralora_moe_llama31_8b_acc"
-ADAPTER_TYPE="hydralora"
 DATA_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/samples"
 OUTPUT_BASE="./analysis"
-NUM_LAYERS="32"
-NUM_EXPERTS="4"
+# Note: --adapter_type, --num_layers, --num_experts are auto-detected from adapter_config.json
 
 # Get list of languages from data directory
 LANGUAGES=($(ls ${DATA_DIR}/*.jsonl | xargs -n1 basename | sed 's/.jsonl//'))
@@ -61,16 +59,13 @@ echo ""
 # Create output directory
 mkdir -p "${OUTPUT_BASE}/per_language"
 
-# Run analysis for this language only
+# Run analysis for this language only (adapter_type, num_layers, num_experts auto-detected)
 srun python tool/analyze_expert_routing.py \
     --base_model "$BASE_MODEL" \
     --adapter_checkpoint "$CHECKPOINT" \
-    --adapter_type "$ADAPTER_TYPE" \
     --test_data "$DATA_DIR" \
     --languages "$LANG" \
     --output "${OUTPUT_BASE}/per_language/${LANG}" \
-    --num_layers "$NUM_LAYERS" \
-    --num_experts "$NUM_EXPERTS" \
     --batch_size 8 \
     --device cuda
 
