@@ -131,8 +131,18 @@ def _extract_checkpoint(name: str) -> Optional[int]:
         return None
 
 
-def _collect_train_runs(api: wandb.Api, project: str) -> list[TrainRunInfo]:
-    runs = api.runs(project)
+def _collect_train_runs(
+    api: wandb.Api,
+    project: str,
+    group: Optional[str] = None,
+    group_regex: Optional[str] = None,
+) -> list[TrainRunInfo]:
+    filters = {}
+    if group:
+        filters["group"] = group
+    elif group_regex:
+        filters["group"] = {"$regex": group_regex}
+    runs = api.runs(project, filters=filters) if filters else api.runs(project)
     result: list[TrainRunInfo] = []
     for run in runs:
         tags = _parse_tags(run.tags or [])
@@ -161,10 +171,17 @@ def _eval_runs_for_group(
     group: str,
     mode: str,
     task_prefix: str,
+    checkpoint: Optional[int] = None,
 ) -> list[wandb.apis.public.Run]:
     name_regex = "with_ids" if mode == "with_ids" else "no_ids"
     if mode == "any":
         name_regex = ""
+    if checkpoint is not None:
+        ckpt_pattern = f"checkpoint-{checkpoint}"
+        if name_regex:
+            name_regex = f"{ckpt_pattern}.*{name_regex}"
+        else:
+            name_regex = ckpt_pattern
     filters = {"group": group}
     if name_regex:
         filters["display_name"] = {"$regex": name_regex}
@@ -188,18 +205,29 @@ def _aggregate_eval(
     group: str,
     mode: str,
     task_prefix: str,
+    checkpoint: Optional[int] = None,
 ) -> tuple[int, dict[str, float]]:
-    runs = _eval_runs_for_group(api, project, group, mode, task_prefix)
+    runs = _eval_runs_for_group(
+        api,
+        project,
+        group,
+        mode,
+        task_prefix,
+        checkpoint=checkpoint,
+    )
     if not runs:
         return 0, {}
-    checkpoints = [
-        ckpt
-        for run in runs
-        if (ckpt := _extract_checkpoint(run.name or "")) is not None
-    ]
-    if not checkpoints:
-        return 0, {}
-    target_ckpt = max(checkpoints)
+    if checkpoint is not None:
+        target_ckpt = checkpoint
+    else:
+        checkpoints = [
+            ckpt
+            for run in runs
+            if (ckpt := _extract_checkpoint(run.name or "")) is not None
+        ]
+        if not checkpoints:
+            return 0, {}
+        target_ckpt = max(checkpoints)
     task_scores: dict[str, float] = {}
     for run in runs:
         name = run.name or ""
@@ -329,14 +357,19 @@ def _compute_correlations(df: pd.DataFrame) -> pd.DataFrame:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--train-project", default=DEFAULT_TRAIN_PROJECT)
+    parser.add_argument("--train-group", default=None)
+    parser.add_argument("--train-group-regex", default=None)
     parser.add_argument("--eval-project", default=DEFAULT_EVAL_PROJECT)
     parser.add_argument("--mode", choices=["with_ids", "no_ids", "any"], default="with_ids")
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_PREFIX)
+    parser.add_argument("--eval-checkpoint", type=int, default=None)
     parser.add_argument("--resource-map", default="data_prep/base_data/lang_resource_dataset.tsv")
     parser.add_argument("--output-dir", default="result_analysis/paper_eval")
     parser.add_argument("--plot-formats", default="png")
     parser.add_argument("--api-timeout", type=int, default=60)
     args = parser.parse_args()
+    if args.train_group and args.train_group_regex:
+        raise SystemExit("Use only one of --train-group or --train-group-regex.")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -345,7 +378,12 @@ def main() -> None:
     api = wandb.Api(timeout=args.api_timeout)
     resource_map = _load_resource_map(Path(args.resource_map))
 
-    train_runs = _collect_train_runs(api, args.train_project)
+    train_runs = _collect_train_runs(
+        api,
+        args.train_project,
+        group=args.train_group,
+        group_regex=args.train_group_regex,
+    )
     per_run_rows = []
     per_task_rows = []
 
@@ -358,6 +396,7 @@ def main() -> None:
             info.group,
             args.mode,
             args.task_prefix,
+            checkpoint=args.eval_checkpoint,
         )
         overall, resource_means, script_means = _summarize_task_scores(
             task_scores, resource_map

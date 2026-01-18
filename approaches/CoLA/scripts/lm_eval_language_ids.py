@@ -282,7 +282,17 @@ def _run_eval(
         logger.info("Attention implementation override: %s", attn_impl)
     # Ensure repo-local PEFT (with CoLA/Hydra) is used inside lm_eval.
     repo_root = Path(__file__).resolve().parents[1]
-    peft_path = repo_root / "LLaMA-Factory" / "src"
+    peft_candidates = [
+        repo_root / "LLaMA-Factory" / "src" / "peft",
+        repo_root / "LLaMA-Factory" / "src" / "llamafactory" / "peft",
+    ]
+    peft_pkg = next((p for p in peft_candidates if (p / "__init__.py").exists()), None)
+    if peft_pkg is None:
+        raise RuntimeError(
+            "Repo-local PEFT not found. Expected LLaMA-Factory/src/peft or "
+            "LLaMA-Factory/src/llamafactory/peft with __init__.py."
+        )
+    peft_path = peft_pkg.parent
     if str(peft_path) not in sys.path:
         sys.path.insert(0, str(peft_path))
     for name in list(sys.modules.keys()):
@@ -292,7 +302,6 @@ def _run_eval(
     # Force-load repo-local peft before lm_eval so HFLM uses it.
     import importlib.util
 
-    peft_pkg = peft_path / "peft"
     peft_init = peft_pkg / "__init__.py"
     spec = importlib.util.spec_from_file_location(
         "peft", peft_init, submodule_search_locations=[str(peft_pkg)]
