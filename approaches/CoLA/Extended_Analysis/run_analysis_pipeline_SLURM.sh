@@ -49,20 +49,18 @@ python -c "import torch; print('CUDA available:', torch.cuda.is_available()); pr
 
 # Configuration from command line or defaults
 BASE_MODEL="meta-llama/Llama-3.1-8B"
-CHECKPOINT="/scratch/hpc-prf-merlin/project_data/moe_study/saves/cola_moe_llama31_8b_acc/pissa/checkpoint-6000"
-ADAPTER_TYPE="cola"
+CHECKPOINT="/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/lora_lora-baseline_20260108_054502/checkpoint-50000_adapter"
 VALIDATION_DATA="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/sharded_samples"
 LANGUAGES="english,rus_Cyrl,spa_Latn,fas_Arab,fin_Latn,hin_Deva,slv_Latn,ekk_Latn,zsm_Latn,srp_Cyrl,kat_Geor,tel_Telu"
 NUM_SEQUENCES="100"
-NUM_LAYERS="32"
-NUM_EXPERTS="4"
 BATCH_SIZE="16"
+# Note: --adapter_type, --num_layers, --num_experts are auto-detected from adapter_config.json
 
 # Derived paths
 CHECKPOINT_NAME=$(basename "$CHECKPOINT")
-OUTPUT_DIR="./analysis/${CHECKPOINT_NAME}"
-DATA_DIR="./data/language_test_sets"
-LOGS_DIR="./logs"
+OUTPUT_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/extended_analysis/${CHECKPOINT_NAME}"
+DATA_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/extended_analysis/language_test_sets"
+LOGS_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/extended_analysis/logs"
 
 # Create logs directory
 mkdir -p "$LOGS_DIR"
@@ -70,10 +68,10 @@ mkdir -p "$LOGS_DIR"
 echo "Configuration:"
 echo "  Base Model: $BASE_MODEL"
 echo "  Checkpoint: $CHECKPOINT"
-echo "  Adapter Type: $ADAPTER_TYPE"
 echo "  Languages: $LANGUAGES"
 echo "  Batch Size: $BATCH_SIZE"
 echo "  Output: $OUTPUT_DIR"
+echo "  (adapter_type, num_layers, num_experts auto-detected)"
 echo ""
 
 # Step 1: Prepare test data (skip if already exists)
@@ -91,16 +89,13 @@ else
     echo ""
 fi
 
-# Step 2: Analyze routing
+# Step 2: Analyze routing (adapter_type, num_layers, num_experts auto-detected)
 echo "[2/5] Running expert routing analysis..."
 srun python tool/analyze_expert_routing.py \
     --base_model "$BASE_MODEL" \
     --adapter_checkpoint "$CHECKPOINT" \
-    --adapter_type "$ADAPTER_TYPE" \
     --test_data "$DATA_DIR" \
     --output "$OUTPUT_DIR" \
-    --num_layers "$NUM_LAYERS" \
-    --num_experts "$NUM_EXPERTS" \
     --batch_size "$BATCH_SIZE" \
     --device cuda \
     2>&1 | tee "$LOGS_DIR/step2_analyze_${SLURM_JOB_ID}.log"
