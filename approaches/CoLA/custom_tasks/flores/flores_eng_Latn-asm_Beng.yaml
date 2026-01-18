@@ -1,7 +1,9 @@
 task: flores_eng_Latn-asm_Beng
 dataset_path: facebook/flores
-dataset_name: default
+dataset_name: eng_Latn-asm_Beng
 test_split: dev
+dataset_kwargs:
+  trust_remote_code: true
 output_type: generate_until
 doc_to_text: "{{sentence_eng_Latn}} ="
 doc_to_target: "{{sentence_asm_Beng}}"
@@ -12,5 +14,6 @@ metric_list:
 generation_kwargs:
   until:
     - "\n"
+  max_gen_toks: 128
 metadata:
   version: 1.0
