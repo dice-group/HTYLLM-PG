@@ -26,7 +26,7 @@ python tool/prepare_language_datasets.py \
     --output_dir ./data/language_test_sets
 ```
 
-**Note**: Use simple language codes (en, es, hi, etc.). The script automatically maps them to actual directory names (`english`, `spa_Latn`, `hin_Deva`, etc.).
+
 
 ### 2. Run Expert Routing Analysis
 
@@ -36,11 +36,9 @@ Analyze a trained checkpoint:
 python tool/analyze_expert_routing.py \
     --base_model meta-llama/Llama-3.1-8B \
     --adapter_checkpoint /path/to/checkpoint \
-    --adapter_type hydralora \
     --test_data ./data/language_test_sets \
-    --output ./analysis/my_checkpoint \
-    --num_layers 32 \
-    --num_experts 4
+    --output ./analysis/my_checkpoint
+    # --adapter_type, --num_layers, --num_experts are auto-detected from adapter_config.json
 ```
 
 ### 3. Process and Normalize Data
@@ -170,9 +168,9 @@ Main analysis script that captures routing decisions during inference.
 **Key Arguments**:
 - `--base_model`: Base model name/path
 - `--adapter_checkpoint`: Adapter checkpoint directory
-- `--adapter_type`: `cola` or `hydralora`
-- `--num_layers`: Number of model layers (32 for Llama-7B)
-- `--num_experts`: Experts per layer
+- `--adapter_type`: `cola` or `hydralora` (auto-detected from adapter_config.json if not specified)
+- `--num_layers`: Number of model layers (auto-detected from model config if not specified)
+- `--num_experts`: Experts per layer (auto-detected from adapter_config.json if not specified)
 
 ### Normalization (Critical!)
 
@@ -251,7 +249,8 @@ Blue → White → Yellow → Red with breakpoints at 1/16 and 2/16 of num_exper
 ## Requirements
 
 ```bash
-pip install numpy matplotlib seaborn scikit-learn torch transformers peft datasets tqdm
+pip install numpy matplotlib seaborn scikit-learn torch transformers datasets tqdm
+# Note: Do NOT pip install peft - the local version in LLaMA-Factory/src is used automatically
 ```
 
 ## Troubleshooting

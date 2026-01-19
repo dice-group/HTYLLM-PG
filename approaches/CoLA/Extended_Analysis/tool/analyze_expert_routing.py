@@ -276,6 +276,12 @@ class RoutingCollector:
             json.dump(stats, f, indent=2)
         
         logger.info(f"Saved raw routing data for '{language_id}' to {output_file}")
+        
+        # Clear memory for this language to prevent OOM with many languages
+        if language_id in self.routing_data:
+            del self.routing_data[language_id]
+            logger.debug(f"Cleared routing data for '{language_id}' from memory")
+
 
 
 def load_model_and_adapter(
@@ -312,6 +318,7 @@ def analyze_language(
     tokenizer,
     language_file: Path,
     language_id: str,
+    language_idx: Optional[int],  # NEW: integer language ID for routing
     collector: RoutingCollector,
     batch_size: int = 16,
     max_sequences: Optional[int] = None
@@ -341,8 +348,29 @@ def analyze_language(
             input_ids = batch['input_ids'].to(model.device)
             attention_mask = batch['attention_mask'].to(model.device)
             
+            # Prepare forward pass kwargs
+            forward_kwargs = {
+                'input_ids': input_ids,
+                'attention_mask': attention_mask
+            }
+            
+            # Add language_ids if available (required for CoLA language-aware routing)
+            if language_idx is not None:
+                lang_ids = torch.full(
+                    (input_ids.size(0),),  # Batch size
+                    language_idx,
+                    device=model.device,
+                    dtype=torch.long
+                )
+                forward_kwargs['language_ids'] = lang_ids
+            else:
+                logger.warning(
+                    f"Language '{language_id}' not found in adapter's language_list. "
+                    "Routing will use input-only mode without language awareness."
+                )
+            
             # Forward pass (routing gets collected via hooks)
-            _ = model(input_ids=input_ids, attention_mask=attention_mask)
+            _ = model(**forward_kwargs)
     
     # Get aggregated statistics
     stats = collector.get_language_stats(language_id)
@@ -421,6 +449,7 @@ def main():
     parser.add_argument('--num_layers', type=int, default=None, help='Number of layers in model. Auto-detected from base model config if not specified.')
     parser.add_argument('--num_experts', type=int, default=None, help='Number of experts per layer. Auto-detected from adapter_config.json if not specified.')
     parser.add_argument('--device', type=str, default='cuda', help='Device to use (default: cuda)')
+    parser.add_argument('--use_language_ids', action='store_true', help='Use language_ids from adapter config for language-aware routing (default: False)')
     
     args = parser.parse_args()
     
@@ -495,6 +524,29 @@ def main():
     collector = RoutingCollector(adapter_type=args.adapter_type)
     collector.attach_hooks(model)
     
+    # Auto-detect language_ids mapping from adapter_config (only if requested)
+    lang_id_map = {}
+    if args.use_language_ids:
+        logger.info("Language IDs mode enabled: will use language_ids from adapter config")
+        if adapter_config_path.exists():
+            # Load language_list from adapter config
+            lang_list = adapter_config.get('language_list', [])
+            if lang_list:
+                # Build mapping: language_code -> integer index
+                lang_id_map = {lang: idx for idx, lang in enumerate(lang_list)}
+                logger.info(f"Loaded language_list with {len(lang_list)} languages from adapter_config")
+                
+                # Handle special case: "english" -> "eng_Latn" mapping
+                if 'eng_Latn' in lang_id_map and 'english' not in lang_id_map:
+                    lang_id_map['english'] = lang_id_map['eng_Latn']
+                    logger.debug("Added 'english' -> 'eng_Latn' mapping")
+            else:
+                logger.warning("adapter_config.json missing 'language_list' field - cannot use language_ids")
+        else:
+            logger.warning("adapter_config.json not found - cannot use language_ids")
+    else:
+        logger.info("Language IDs mode disabled: using input-only routing (original behavior)")
+    
     # Analyze each language
     all_language_stats = {}
     raw_data_dir = args.output / 'raw_stats'
@@ -506,11 +558,22 @@ def main():
             logger.warning(f"File not found: {lang_file}, skipping")
             continue
         
+        # Get language integer ID for routing (only if use_language_ids is enabled)
+        language_idx = None
+        if args.use_language_ids:
+            language_idx = lang_id_map.get(lang)
+            if language_idx is None:
+                logger.warning(
+                    f"Language '{lang}' not in adapter's language_list. "
+                    "Analysis will proceed without language_ids for this language."
+                )
+        
         stats = analyze_language(
             model,
             tokenizer,
             lang_file,
             lang,
+            language_idx,  # Pass integer language ID
             collector,
             args.batch_size,
             args.max_sequences
