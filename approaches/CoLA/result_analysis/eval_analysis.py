@@ -97,7 +97,12 @@ def _tasks_from_summary(summary: dict, prefix: str) -> set[str]:
     for key in summary.keys():
         if not key.startswith(prefix):
             continue
-        if key.endswith("/acc") or key.endswith("/acc_norm"):
+        if (
+            key.endswith("/acc")
+            or key.endswith("/acc_norm")
+            or key.endswith("/acc,none")
+            or key.endswith("/acc_norm,none")
+        ):
             task = key.split("/")[0]
             tasks.add(task)
     return tasks
@@ -117,7 +122,11 @@ def _coerce_float(value: object) -> Optional[float]:
 def _metric_for_task(summary: dict, task: str) -> Optional[float]:
     value = summary.get(f"{task}/acc_norm")
     if value is None:
+        value = summary.get(f"{task}/acc_norm,none")
+    if value is None:
         value = summary.get(f"{task}/acc")
+    if value is None:
+        value = summary.get(f"{task}/acc,none")
     return _coerce_float(value)
 
 
@@ -172,6 +181,7 @@ def _eval_runs_for_group(
     mode: str,
     task_prefix: str,
     checkpoint: Optional[int] = None,
+    match_mode: str = "group",
 ) -> list[wandb.apis.public.Run]:
     name_regex = "with_ids" if mode == "with_ids" else "no_ids"
     if mode == "any":
@@ -182,9 +192,20 @@ def _eval_runs_for_group(
             name_regex = f"{ckpt_pattern}.*{name_regex}"
         else:
             name_regex = ckpt_pattern
-    filters = {"group": group}
+    filters = {}
+    if match_mode == "group":
+        filters["group"] = group
+    else:
+        prefix = group
+        regex = f"^{prefix}"
+        if name_regex:
+            regex = f"{regex}.*{name_regex}"
+        filters["display_name"] = {"$regex": regex}
     if name_regex:
-        filters["display_name"] = {"$regex": name_regex}
+        if "display_name" in filters:
+            filters["display_name"]["$regex"] = name_regex if match_mode == "group" else filters["display_name"]["$regex"]
+        else:
+            filters["display_name"] = {"$regex": name_regex}
     runs = list(api.runs(project, filters=filters))
     if not runs:
         return []
@@ -206,6 +227,7 @@ def _aggregate_eval(
     mode: str,
     task_prefix: str,
     checkpoint: Optional[int] = None,
+    match_mode: str = "group",
 ) -> tuple[int, dict[str, float]]:
     runs = _eval_runs_for_group(
         api,
@@ -214,6 +236,7 @@ def _aggregate_eval(
         mode,
         task_prefix,
         checkpoint=checkpoint,
+        match_mode=match_mode,
     )
     if not runs:
         return 0, {}
@@ -225,19 +248,29 @@ def _aggregate_eval(
             for run in runs
             if (ckpt := _extract_checkpoint(run.name or "")) is not None
         ]
-        if not checkpoints:
-            return 0, {}
-        target_ckpt = max(checkpoints)
+        if checkpoints:
+            target_ckpt = max(checkpoints)
+        else:
+            target_ckpt = None
     task_scores: dict[str, float] = {}
     for run in runs:
         name = run.name or ""
-        if f"checkpoint-{target_ckpt}" not in name:
+        if target_ckpt is not None and f"checkpoint-{target_ckpt}" not in name:
             continue
         task = _task_from_run_name(name)
         if task is None:
             candidates = _tasks_from_summary(run.summary, task_prefix)
             if len(candidates) == 1:
                 task = next(iter(candidates))
+            elif candidates:
+                for candidate in candidates:
+                    if candidate in task_scores:
+                        continue
+                    score = _metric_for_task(run.summary, candidate)
+                    if score is None:
+                        continue
+                    task_scores[candidate] = score
+                continue
         if task is None or not task.startswith(task_prefix):
             continue
         if task in task_scores:
@@ -282,7 +315,7 @@ def _build_dataframe(rows: list[dict[str, object]]) -> pd.DataFrame:
 
 
 def _plot_overall(df: pd.DataFrame, output_dir: Path, formats: list[str]) -> None:
-    if plt is None or df.empty:
+    if plt is None or df.empty or "acc_mean" not in df.columns:
         return
     fig, ax = plt.subplots(figsize=(8, 4))
     labels = df["label"].tolist()
@@ -297,7 +330,7 @@ def _plot_overall(df: pd.DataFrame, output_dir: Path, formats: list[str]) -> Non
 
 
 def _plot_resource(df: pd.DataFrame, output_dir: Path, formats: list[str]) -> None:
-    if plt is None or df.empty:
+    if plt is None or df.empty or "acc_mean" not in df.columns:
         return
     resource_cols = [col for col in df.columns if col.startswith("resource/")]
     if not resource_cols:
@@ -341,7 +374,7 @@ def _plot_router_scatter(df: pd.DataFrame, output_dir: Path, formats: list[str])
 
 
 def _compute_correlations(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
+    if df.empty or "acc_mean" not in df.columns:
         return pd.DataFrame()
     cols = [col for col in df.columns if col.startswith("router/")]
     rows = []
@@ -363,6 +396,7 @@ def main() -> None:
     parser.add_argument("--mode", choices=["with_ids", "no_ids", "any"], default="with_ids")
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_PREFIX)
     parser.add_argument("--eval-checkpoint", type=int, default=None)
+    parser.add_argument("--eval-match", choices=["group", "name_prefix"], default="group")
     parser.add_argument("--resource-map", default="data_prep/base_data/lang_resource_dataset.tsv")
     parser.add_argument("--output-dir", default="result_analysis/paper_eval")
     parser.add_argument("--plot-formats", default="png")
@@ -397,6 +431,7 @@ def main() -> None:
             args.mode,
             args.task_prefix,
             checkpoint=args.eval_checkpoint,
+            match_mode=args.eval_match,
         )
         overall, resource_means, script_means = _summarize_task_scores(
             task_scores, resource_map
