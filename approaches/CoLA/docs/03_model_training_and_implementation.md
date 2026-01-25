@@ -5,6 +5,15 @@ This section documents the core adapter implementations and how language-prior r
 ---
 
 ## 1) Core Adapter Implementations
+
+We extended the original CoLA implementation (https://github.com/zyy-2001/CoLA/tree/master) and specifically tailored the CoLA and HydraLoRA tuners for massively multilingual use cases.
+We added expert support for CoLA, extended PiSSA initialization, and added multi‑node/FSDP support for large‑scale training via Accelerate. We also added the LPR implementation and multiple routing modes (expert‑only routing, head‑bias routing, standard LPR routing).
+
+Everything is configurable. The most important configurable pieces are described below.
+
+Detailed explanations about the modifications and configurations can be found here:
+`approaches/CoLA/docs/extra/hierarchical_adapters_multilingual_study_approaches_explanation.md`
+
 ### 1.1 CoLA
 - **Code**: `LLaMA-Factory/src/peft/tuners/cola/`
 - **Key files**:
@@ -57,4 +66,3 @@ This section documents the core adapter implementations and how language-prior r
 ## 5) Metrics and Diagnostics
 - **Reference**: `docs/training_metrics.md`
 - Logged via `record_cola_metrics` / `record_hydralora_metrics` inside adapter layers and trainer.
-

@@ -5,6 +5,7 @@ This section collects environment, install, and artifact notes for maintainers.
 ---
 
 ## 1) Environment and Install
+Orient yourself using `approaches/CoLA/LLaMA-Factory/setup_conda_env.md` to set up the correct conda environment for this project.
 - **Environment file**: `LLaMA-Factory/environment.yaml`
 - **Editable installs**:
   - `LLaMA-Factory` and `peft` are installed in editable mode (see `README.md`).
@@ -32,4 +33,3 @@ Large directories that may be excluded if needed:
 
 ## 4) Testing Notes
 - Integration tests live in `tests/integration/` and validate routing + script flags.
-

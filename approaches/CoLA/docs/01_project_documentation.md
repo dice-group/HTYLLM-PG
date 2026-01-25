@@ -1,19 +1,17 @@
 # Project Documentation (Index)
 
-> This index is the entry point for maintainers. Each major area is documented in a dedicated file to make LaTeX/PDF export straightforward.
+> This index is the entry point for maintainers. Each major area is documented in a dedicated file.
 
-## Section Files
-- **Data preparation**: `docs/data_preparation.md`
-- **Model training + implementation**: `docs/model_training_and_implementation.md`
-- **Training orchestration (Slurm + listeners)**: `docs/training_orchestration.md`
-- **Evaluation + result analysis**: `docs/evaluation_and_analysis.md`
-- **Reproducibility + submission checklist**: `docs/reproducibility_and_submission.md`
+## Section Files (Ordered)
+- **01 Data preparation**: `docs/02_data_preparation.md`
+- **02 Model training + implementation**: `docs/03_model_training_and_implementation.md`
+- **03 Training orchestration (Slurm + listeners)**: `docs/04_training_orchestration.md`
+- **04 Evaluation + result analysis**: `docs/05_evaluation_and_analysis.md`
+- **05 Reproducibility + submission checklist**: `docs/06_reproducibility_and_submission.md`
 
 ## Quick Summary
 - **Pipeline**: data prep (sampling + clustering + tokenizer extension + tokenization) → training (CoLA/Hydra + LPR) → orchestration (Slurm, checkpoint listeners, eval hooks) → analysis.
 - **Tier JSONs**: `tools/two_stage_clustering/*.json` define expert groups + subgroups.
-- **Training plan**: `docs/training_plan.md` + `docs/training_runs_plan.csv` (keep in sync with scripts).
 
 ## Export Note
 - These files are structured with stable headings and minimal nesting for easy conversion to LaTeX/PDF later.
-
