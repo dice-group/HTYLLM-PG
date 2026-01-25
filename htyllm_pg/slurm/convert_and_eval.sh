@@ -2,11 +2,11 @@
 #SBATCH --job-name=moe-convert-eval
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --time=04:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:h100:1
-#SBATCH --mem=64GB
+#SBATCH --mem=256GB
 #SBATCH --account=hpc-prf-merlin
 
 # Combined conversion + evaluation script for DeepSpeed MoE checkpoints
