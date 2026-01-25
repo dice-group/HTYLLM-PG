@@ -33,6 +33,9 @@ approaches/CoLA/data_prep/processed_artifacts/**.json
 approaches/CoLA/data_prep/processed_artifacts/plots/*
 approaches/CoLA/sample_data/logs/*
 approaches/CoLA/data_prep/lang_cluster_analysis/lang2vec/
+approaches/CoLA/result_analysis/wand_experts/*
+approaches/CoLA/result_analysis/wandb_exports
+approaches/CoLA/result_analysis/paper_eval_wandb
 with_language_ids_belebele_*.json
 no_language_ids.json
 .wandb_summary_id_with_ids

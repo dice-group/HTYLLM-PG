@@ -120,4 +120,3 @@ belebele_zho_Hans
 belebele_zho_Hant
 belebele_zsm_Latn
 belebele_zul_Latn
-xnli
