@@ -229,9 +229,38 @@ def get_args():
     return parser.parse_args()
 
 
+def load_deepspeed_checkpoint(model, checkpoint_dir, tag, device):
+    """
+    Load a DeepSpeed ZeRO checkpoint into a PyTorch model.
+    Works without requiring distributed setup.
+    """
+    from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
+    
+    checkpoint_path = os.path.join(checkpoint_dir, tag)
+    
+    # Check if checkpoint exists
+    if not os.path.isdir(checkpoint_path):
+        raise FileNotFoundError(f"Checkpoint directory not found: {checkpoint_path}")
+    
+    print(f"Loading ZeRO checkpoint from {checkpoint_path}...")
+    
+    # Use DeepSpeed's utility to consolidate ZeRO shards into fp32 state dict
+    state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_path)
+    
+    # Load into model (with strict=False to handle potential key mismatches)
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    
+    if missing:
+        print(f"Warning: Missing keys: {missing[:5]}..." if len(missing) > 5 else f"Warning: Missing keys: {missing}")
+    if unexpected:
+        print(f"Warning: Unexpected keys: {unexpected[:5]}..." if len(unexpected) > 5 else f"Warning: Unexpected keys: {unexpected}")
+    
+    print("Checkpoint loaded successfully!")
+    return model
+
+
 def run_inference_for_stats(args):
     """Load model and run inference to collect expert activation statistics."""
-    import deepspeed
     from htyllm_pg.model_builder import moe_builder
     from htyllm_pg.dataset import MultiLangTokenDataset
     from torch.utils.data import DataLoader, Subset
@@ -258,35 +287,14 @@ def run_inference_for_stats(args):
         l1_lambda=args.l1_lambda,
     )
     
-    # Load checkpoint
+    # Load checkpoint using DeepSpeed's zero_to_fp32 utility
     print(f"Loading checkpoint from step {args.checkpoint_step}...")
-    checkpoint_path = os.path.join(args.checkpoint_dir, f"step_{args.checkpoint_step}")
-    
-    # For DeepSpeed checkpoints, we need to handle the sharded format
-    # First try to load as a DeepSpeed checkpoint
-    try:
-        # Initialize DeepSpeed for inference
-        ds_config = {
-            "train_batch_size": args.batch_size,
-            "fp16": {"enabled": True},
-        }
-        model_engine, _, _, _ = deepspeed.initialize(
-            model=model,
-            config=ds_config,
-        )
-        model_engine.load_checkpoint(args.checkpoint_dir, tag=f"step_{args.checkpoint_step}")
-        model = model_engine.module
-        print("Loaded DeepSpeed checkpoint successfully")
-    except Exception as e:
-        print(f"Could not load as DeepSpeed checkpoint: {e}")
-        print("Trying to load as PyTorch state_dict...")
-        # Try loading consolidated checkpoint
-        state_path = os.path.join(checkpoint_path, "pytorch_model.bin")
-        if os.path.exists(state_path):
-            model.load_state_dict(torch.load(state_path, map_location=device))
-            print("Loaded PyTorch state_dict successfully")
-        else:
-            raise FileNotFoundError(f"Could not find checkpoint at {checkpoint_path}")
+    model = load_deepspeed_checkpoint(
+        model, 
+        args.checkpoint_dir, 
+        f"step_{args.checkpoint_step}",
+        device
+    )
     
     model = model.to(device)
     model.eval()
