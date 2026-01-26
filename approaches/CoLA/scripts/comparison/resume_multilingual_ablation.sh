@@ -1,0 +1,676 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CALL_DIR="$(pwd)"
+LOG_DIR="${LOG_DIR:-${CALL_DIR}/logs/multilingual_ablation_resume}"
+
+cd "${REPO_ROOT}"
+
+CONDA_BASE=${CONDA_BASE:-/opt/software/pc2/EB-SW/software/Miniforge3/25.3.0-3}
+CONDA_ENV=${CONDA_ENV:-merlin}
+MODULE_INIT=${MODULE_INIT:-module purge && module load toolchain/foss/2024a system/CUDA/12.6.0 lib/NCCL/2.22.3-GCCcore-13.3.0-CUDA-12.6.0}
+
+DATASET_NAME=${DATASET_NAME:-c4}
+DATASET_DIR=${DATASET_DIR:-./LLaMA-Factory/data}
+LANGUAGE_COLUMN=${LANGUAGE_COLUMN:-language}
+#TOKENIZED_BASE_DIR=${TOKENIZED_BASE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_tiers_tokenized_fully_200} # for full
+TOKENIZED_BASE_DIR=${TOKENIZED_BASE_DIR:-/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_tiers_tokenized}
+
+OUTPUT_ROOT=${OUTPUT_ROOT:-/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola}
+WANDB_PROJECT=${WANDB_PROJECT:-htyllm-adapter-lpr-200_lang_cola}
+WANDB_ENTITY=${WANDB_ENTITY:-}
+default_wandb_group="multilingual-ablation-resume"
+if [[ -z "${WANDB_RUN_GROUP+x}" ]]; then
+  WANDB_RUN_GROUP="${default_wandb_group}"
+fi
+SBATCH_ARGS=${SBATCH_ARGS:---cpus-per-task=32}
+
+RESUME_TIMESTAMP="${RESUME_TIMESTAMP:-}"
+RESUME_COMPLETED="${RESUME_COMPLETED:-false}"
+RESUME_TYPES="${RESUME_TYPES:-lora,hydra,cola}"
+
+required_paths=(
+  DATASET_DIR
+  TOKENIZED_BASE_DIR
+  OUTPUT_ROOT
+)
+
+for path_var in "${required_paths[@]}"; do
+  if [[ ! -e "${!path_var}" ]]; then
+    echo "[ERROR] ${path_var} points to ${!path_var}, which does not exist." >&2
+    exit 1
+  fi
+done
+
+mkdir -p "${LOG_DIR}"
+
+export CONDA_BASE CONDA_ENV MODULE_INIT
+export DATASET_NAME DATASET_DIR
+export LANGUAGE_COLUMN
+export REPO_ROOT
+export WANDB_PROJECT WANDB_ENTITY WANDB_RUN_GROUP
+
+PREPROCESSING_NUM_WORKERS=${PREPROCESSING_NUM_WORKERS:-32}
+PREPROCESSING_BATCH_SIZE=${PREPROCESSING_BATCH_SIZE:-100000}
+export PREPROCESSING_NUM_WORKERS PREPROCESSING_BATCH_SIZE
+
+timestamp="$(date +%Y%m%d_%H%M%S)"
+if [[ "${WANDB_RUN_GROUP}" == "${default_wandb_group}" ]]; then
+  WANDB_RUN_GROUP="${WANDB_RUN_GROUP}-${timestamp}"
+fi
+
+count_experts_from_language_map() {
+  local map_path=$1
+  python - "${map_path}" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r") as f:
+    data = json.load(f)
+
+if isinstance(data, dict):
+    print(len(data))
+elif isinstance(data, list):
+    print(len(data))
+else:
+    raise SystemExit(f"Unsupported language_map format: {type(data).__name__}")
+PY
+}
+
+head_counts_from_language_map() {
+  local map_path=$1
+  python - "${map_path}" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r") as f:
+    data = json.load(f)
+
+if not isinstance(data, dict):
+    print("")
+    raise SystemExit(0)
+
+counts = []
+for _, entry in sorted(data.items(), key=lambda kv: str(kv[0])):
+    if not isinstance(entry, dict):
+        counts.append(0)
+        continue
+    subgroups = entry.get("subgroups") or {}
+    if isinstance(subgroups, dict):
+        counts.append(len(subgroups))
+    else:
+        counts.append(0)
+
+if all(c == 0 for c in counts):
+    print("")
+else:
+    print(",".join(str(c) for c in counts))
+PY
+}
+
+# Language tiers: <tier_id>|<language_count>|<language_map_path>|<tokenized_path>|<model_path>
+LANGUAGE_TIERS=(
+  "tier200_10_percent|200|${REPO_ROOT}/tools/two_stage_clustering/200_tier_language_groupings.json|${TOKENIZED_BASE_DIR}/llama-3.1-8B_tokenizer/cola_tier3|meta-llama/Llama-3.1-8B"
+)
+
+# Hydra variants:
+# <label>|<use_experts>|<lora_num>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<head_top_k>|<guidance_scope>|<train_bs>
+HYDRA_VARIANTS=(
+  "hydra-flat|False|3|learned|0.0|0.0|learned|0.0|1|1|none|3"
+  "hydra-exp-lpr|True|3|learned|0.1|0.0|learned|0.0|1|1|all|2"
+  "hydra-exp-lpr-expert-only|True|3|learned|0.1|0.0|learned|0.0|1|1|expert_only|2"
+  "hydra-exp-hard|True|3|hard|0.0|0.0|hard|0.0|1|1|all|2"
+)
+
+# CoLA variants:
+# <label>|<use_experts>|<num_A>|<num_B>|<strategy>|<router_mode>|<prior_weight>|<bias_value>|<head_router_mode>|<head_bias_value>|<top_k>|<guidance_scope>|<train_bs>
+COLA_VARIANTS=(
+  "colaflat|False|1|3|fully|learned|0.0|0.0|learned|0.0|1|none|5"
+  "colaexp-lpr|True|1|3|fully|learned|0.1|0.0|learned|0.0|1|all|4"
+  "colaexp-headbias|True|1|3|fully|learned|0.1|0.0|bias|2.0|1|all|4"
+  "colaexp-hard|True|1|3|fully|hard|0.0|0.0|learned|0.0|1|expert_only|4"
+)
+
+# LoRA variants:
+# <label>|<train_bs>
+LORA_VARIANTS=(
+  "lora-baseline|5"
+)
+
+# Resource mappings
+DEFAULT_GPU_TYPE=${DEFAULT_GPU_TYPE:-h100}
+DEFAULT_GPU_COUNT=${DEFAULT_GPU_COUNT:-1}
+DEFAULT_WALLTIME=${DEFAULT_WALLTIME:-12:00:00}
+DEFAULT_PARTITION=${DEFAULT_PARTITION:-gpu}
+
+declare -A TIER_WALLTIME_MAP=(
+  ["tier12"]="48:00:00"
+  ["tier72"]="168:00:00"
+  ["tier200"]="168:00:00"
+  ["tier200_10_percent"]="168:00:00"
+  ["tier200_10pct_8gpu"]="168:00:00"
+  ["tier200_full"]="168:00:00"
+)
+
+declare -A TIER_GPU_COUNT_MAP=(
+  ["tier12"]=2
+  ["tier72"]=4
+  ["tier200"]=4
+  ["tier200_10_percent"]=4
+  ["tier200_10pct_8gpu"]=4
+  ["tier200_full"]=4
+)
+
+declare -A TIER_NODE_COUNT_MAP=(
+  ["tier12"]=1
+  ["tier72"]=1
+  ["tier200"]=1
+  ["tier200_10_percent"]=1
+  ["tier200_full"]=4
+)
+
+declare -A TIER_GPU_TYPE_MAP=(
+  ["tier12"]="${DEFAULT_GPU_TYPE}"
+  ["tier72"]="${DEFAULT_GPU_TYPE}"
+  ["tier200"]="${DEFAULT_GPU_TYPE}"
+  ["tier200_10_percent"]="${DEFAULT_GPU_TYPE}"
+  ["tier200_10pct_8gpu"]="${DEFAULT_GPU_TYPE}"
+  ["tier200_full"]="${DEFAULT_GPU_TYPE}"
+)
+
+declare -A TIER_PARTITION_MAP=(
+  ["tier12"]="${DEFAULT_PARTITION}"
+  ["tier72"]="${DEFAULT_PARTITION}"
+  ["tier200"]="${DEFAULT_PARTITION}"
+  ["tier200_10_percent"]="${DEFAULT_PARTITION}"
+  ["tier200_10pct_8gpu"]="${DEFAULT_PARTITION}"
+  ["tier200_full"]="${DEFAULT_PARTITION}"
+)
+
+ENABLE_LM_EVAL_LISTENER=${ENABLE_LM_EVAL_LISTENER:-true}
+CHECKPOINT_LISTENER_SCRIPT=${CHECKPOINT_LISTENER_SCRIPT:-${REPO_ROOT}/scripts/checkpoint_listener.sh}
+LM_EVAL_SCRIPT=${LM_EVAL_SCRIPT:-${REPO_ROOT}/scripts/lm_eval_checkpoint.sh}
+LM_EVAL_TASK_FILE=${LM_EVAL_TASK_FILE:-${REPO_ROOT}/configs/lm_eval_tasks.txt}
+if [[ -z "${LM_EVAL_TASKS:-}" ]]; then
+  if [[ -f "${LM_EVAL_TASK_FILE}" ]]; then
+    LM_EVAL_TASKS=$(paste -sd, "${LM_EVAL_TASK_FILE}")
+  else
+    LM_EVAL_TASKS="belebele,flores200,arc_challenge,mmlu,hellaswag"
+  fi
+fi
+LM_EVAL_BATCH_SIZE=${LM_EVAL_BATCH_SIZE:-auto}
+LM_EVAL_POLL_INTERVAL=${LM_EVAL_POLL_INTERVAL:-300}
+LM_EVAL_WANDB_PROJECT=${LM_EVAL_WANDB_PROJECT:-htyllm-adapter-lpr-200_lang_cola_eval}
+LM_EVAL_WANDB_PREFIX=${LM_EVAL_WANDB_PREFIX:-lm_eval_200_lang_cola}
+LM_EVAL_WANDB_MODE=${LM_EVAL_WANDB_MODE:-online}
+LM_EVAL_EXTRA_ARGS=${LM_EVAL_EXTRA_ARGS:---device-map auto}
+LISTENER_SBATCH_ARGS=${LISTENER_SBATCH_ARGS:-}
+
+select_resources() {
+  local -n out_ref=$1
+  local tier_id=$2
+  local gpu_type=${TIER_GPU_TYPE_MAP[$tier_id]:-${DEFAULT_GPU_TYPE}}
+  local gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
+  local node_count=${TIER_NODE_COUNT_MAP[$tier_id]:-1}
+  local partition=${TIER_PARTITION_MAP[$tier_id]:-${DEFAULT_PARTITION}}
+  local walltime=${TIER_WALLTIME_MAP[$tier_id]:-${DEFAULT_WALLTIME}}
+  out_ref=(
+    "--partition=${partition}"
+    "--gres=gpu:${gpu_type}:${gpu_count}"
+    "--time=${walltime}"
+  )
+  if [[ "${node_count}" -gt 1 ]]; then
+    out_ref+=("--nodes=${node_count}" "--ntasks=${node_count}" "--ntasks-per-node=1")
+  fi
+}
+
+submit_job() {
+  local name=$1
+  local script=$2
+  local log_prefix=$3
+  local env_array_name=$4
+  local sbatch_array_name=$5
+  shift 5
+  local -n env_assignments=$env_array_name
+  local -n sbatch_assignments=$sbatch_array_name
+  local cmd=(env)
+  cmd+=("MKL_INTERFACE_LAYER=GNU")
+  for assignment in "${env_assignments[@]}"; do
+    cmd+=("${assignment}")
+  done
+  cmd+=("sbatch" "--output=${LOG_DIR}/${log_prefix}_%j.log")
+  if [[ -n "${SBATCH_ARGS:-}" ]]; then
+    cmd+=(${SBATCH_ARGS})
+  fi
+  cmd+=("--export=ALL,MKL_INTERFACE_LAYER=GNU")
+  echo "[DEBUG] sbatch cmd: ${cmd[*]}"
+  for arg in "${sbatch_assignments[@]}"; do
+    if [[ -n "${arg}" ]]; then
+      cmd+=("${arg}")
+    fi
+  done
+  cmd+=("${script}")
+  local output
+  if ! output=$("${cmd[@]}"); then
+    echo "[ERROR] Failed to submit ${name} job." >&2
+    exit 1
+  fi
+  if [[ "${output}" != *"Submitted batch job"* ]]; then
+    echo "${output}" >&2
+    echo "[ERROR] sbatch did not acknowledge submission for ${name}." >&2
+    exit 1
+  fi
+  local job_id
+  job_id=$(awk '{print $4}' <<<"${output}")
+  echo "[INFO] Submitted ${name} job ${job_id}"
+  printf "%s" "${job_id}"
+}
+
+submit_listener_job() {
+  local listener_label=$1
+  local watch_dir=$2
+  local model_path=$3
+  if [[ "${ENABLE_LM_EVAL_LISTENER}" != "true" ]]; then
+    return
+  fi
+  if [[ ! -f "${CHECKPOINT_LISTENER_SCRIPT}" ]]; then
+    echo "[WARN] CHECKPOINT_LISTENER_SCRIPT not found at ${CHECKPOINT_LISTENER_SCRIPT}; skipping listener launch" >&2
+    return
+  fi
+  if [[ ! -f "${LM_EVAL_SCRIPT}" ]]; then
+    echo "[WARN] LM_EVAL_SCRIPT not found at ${LM_EVAL_SCRIPT}; skipping listener launch" >&2
+    return
+  fi
+  local tier_label
+  tier_label="$(basename "$(dirname "${watch_dir}")")"
+  local eval_out_dir="${LOG_DIR}/${tier_label}/eval"
+  local log_path="${eval_out_dir}/listener_${listener_label}_${timestamp}.log"
+  local wandb_group
+  wandb_group="$(basename "${watch_dir}")"
+  mkdir -p "${eval_out_dir}"
+  local cmd=(sbatch "--output=${log_path}" "--export=ALL,REPO_ROOT=${REPO_ROOT}")
+  if [[ -n "${LISTENER_SBATCH_ARGS}" ]]; then
+    cmd+=(${LISTENER_SBATCH_ARGS})
+  fi
+  cmd+=(
+    "${CHECKPOINT_LISTENER_SCRIPT}"
+    --watch-dir "${watch_dir}"
+    --output-dir "${eval_out_dir}"
+    --eval-script "${LM_EVAL_SCRIPT}"
+    --tokenizer "${model_path}"
+    --tasks "${LM_EVAL_TASKS}"
+    --batch-size "${LM_EVAL_BATCH_SIZE}"
+    --poll-interval "${LM_EVAL_POLL_INTERVAL}"
+    --wandb-project "${LM_EVAL_WANDB_PROJECT}"
+    --wandb-prefix "${LM_EVAL_WANDB_PREFIX}_${listener_label}"
+    --wandb-group "${wandb_group}"
+    --wandb-mode "${LM_EVAL_WANDB_MODE}"
+  )
+  if [[ -n "${LM_EVAL_EXTRA_ARGS}" ]]; then
+    cmd+=(--extra-args "${LM_EVAL_EXTRA_ARGS}")
+  fi
+  local output
+  if ! output=$("${cmd[@]}"); then
+    echo "[WARN] Failed to submit listener for ${listener_label}" >&2
+    return
+  fi
+  if [[ "${output}" != *"Submitted batch job"* ]]; then
+    echo "[WARN] Listener submission returned unexpected output: ${output}" >&2
+    return
+  fi
+  local job_id
+  job_id=$(awk '{print $4}' <<<"${output}")
+  echo "[INFO] Submitted checkpoint listener ${job_id} for ${listener_label}"
+  LISTENER_JOB_IDS["listener-${listener_label}"]="${job_id}"
+}
+
+sanitize() {
+  echo "$1" | tr '/ ' '__'
+}
+
+type_enabled() {
+  local haystack=",$(echo "${RESUME_TYPES}" | tr ' ' ','),"
+  local needle=",$1,"
+  [[ "${haystack}" == *"${needle}"* ]]
+}
+
+find_run_dir() {
+  local base_dir=$1
+  local run_prefix=$2
+  local ts=$3
+  local candidate=""
+  if [[ -n "${ts}" ]]; then
+    candidate="${base_dir}/${run_prefix}_${ts}"
+    if [[ -d "${candidate}" ]]; then
+      echo "${candidate}"
+      return 0
+    fi
+  fi
+  candidate=$(ls -d "${base_dir}/${run_prefix}_"* 2>/dev/null | sort -V | tail -n 1)
+  if [[ -n "${candidate}" && -d "${candidate}" ]]; then
+    echo "${candidate}"
+    return 0
+  fi
+  return 1
+}
+
+find_latest_checkpoint() {
+  local run_dir=$1
+  local latest
+  latest=$(ls -d "${run_dir}"/checkpoint-* 2>/dev/null | grep -v _adapter | sort -V | tail -n 1 || true)
+  if [[ -n "${latest}" && -d "${latest}" ]]; then
+    echo "${latest}"
+    return 0
+  fi
+  return 1
+}
+
+echo "[INFO] Resuming multilingual ablation runs from ${OUTPUT_ROOT}"
+
+declare -A JOB_IDS=()
+declare -A LISTENER_JOB_IDS=()
+
+for tier_spec in "${LANGUAGE_TIERS[@]}"; do
+  IFS='|' read -r tier_id lang_count tier_map tokenized_path model_path <<<"${tier_spec}"
+  tier_slug="$(sanitize "${tier_id}")"
+  if [[ "${tokenized_path}" != /* ]]; then
+    tokenized_path="${TOKENIZED_BASE_DIR}/${tokenized_path}"
+  fi
+  additional_target="${ADDITIONAL_TARGET:-}"
+  if [[ -z "${additional_target}" && "${TRAIN_EMBEDDINGS:-false}" == "true" ]]; then
+    additional_target="embed_tokens,lm_head"
+  fi
+  if [[ ! -d "${tokenized_path}" ]]; then
+    echo "[ERROR] Tokenized path ${tokenized_path} not found for ${tier_id}" >&2
+    exit 1
+  fi
+  if [[ -d "${model_path}" ]]; then
+    : # local path exists
+  elif [[ "${model_path}" =~ ^[^/]+/[^/]+$ ]]; then
+    : # assume a remote hub id like meta-llama/Llama-3.1-8B
+  else
+    echo "[ERROR] Model path ${model_path} not found for ${tier_id} and does not look like a hub id" >&2
+    exit 1
+  fi
+  if [[ ! -f "${tier_map}" ]]; then
+    echo "[ERROR] LANGUAGE_MAP ${tier_map} not found for ${tier_id}" >&2
+    exit 1
+  fi
+  tier_num_experts="$(count_experts_from_language_map "${tier_map}")"
+
+  tier_nodes=${TIER_NODE_COUNT_MAP[$tier_id]:-1}
+  tier_gpu_count=${TIER_GPU_COUNT_MAP[$tier_id]:-${DEFAULT_GPU_COUNT}}
+  tier_total_gpus=$((tier_nodes * tier_gpu_count))
+
+  if type_enabled "lora"; then
+    for variant_spec in "${LORA_VARIANTS[@]}"; do
+      IFS='|' read -r label train_bs <<<"${variant_spec}"
+      variant_slug="$(sanitize "${label}")"
+      run_dir=$(find_run_dir "${OUTPUT_ROOT}/${tier_slug}" "lora_${variant_slug}" "${RESUME_TIMESTAMP:-}" || true)
+      if [[ -z "${run_dir}" ]]; then
+        echo "[WARN] No existing LoRA run dir for ${tier_id} ${label}" >&2
+        continue
+      fi
+      if [[ -f "${run_dir}/.training_complete" && "${RESUME_COMPLETED}" != "true" ]]; then
+        echo "[INFO] Skip completed LoRA run ${run_dir}" >&2
+        continue
+      fi
+      ckpt=$(find_latest_checkpoint "${run_dir}" || true)
+      if [[ -z "${ckpt}" ]]; then
+        echo "[WARN] No checkpoint found for ${run_dir}" >&2
+        continue
+      fi
+
+      declare -a lora_sbatch=()
+      select_resources lora_sbatch "${tier_id}"
+      accelerate_config=""
+      if [[ "${tier_total_gpus}" -ge 2 ]]; then
+        if [[ "${tier_total_gpus}" -ge 8 ]]; then
+          accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_8gpu_config.yaml"
+        elif [[ "${tier_total_gpus}" -ge 4 ]]; then
+          accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml"
+        else
+          accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_2gpu_config.yaml"
+        fi
+      fi
+
+      lora_descriptor="${tier_id}_${label}_resume"
+      lora_wandb="${lora_descriptor}_tokenizer:base_${timestamp}"
+      lora_log="resume_lora_${tier_slug}_${variant_slug}"
+
+      lora_env=(
+        "REPO_ROOT=${REPO_ROOT}"
+        "OUTPUT_DIR=${run_dir}"
+        "WANDB_NAME=${lora_wandb}"
+        "MODEL_NAME_OR_PATH=${model_path}"
+        "TOKENIZED_PATH=${tokenized_path}"
+        "FLASH_ATTN=${FLASH_ATTN:-fa2}"
+        "ADDITIONAL_TARGET=${additional_target}"
+        "MODEL_VARIANT=${tier_id}"
+        "LANGUAGE_TIER=${tier_id}"
+        "WANDB_TAGS=adapter:lora,variant:${label},tier:${tier_id},resume:true"
+        "ALLOW_OVERWRITE=false"
+        "RESUME_FROM_CHECKPOINT=${ckpt}"
+      )
+      if [[ -n "${train_bs}" ]]; then
+        lora_env+=("PER_DEVICE_TRAIN_BATCH_SIZE=${train_bs}" "PER_DEVICE_EVAL_BATCH_SIZE=${train_bs}")
+      fi
+      if [[ -n "${accelerate_config}" ]]; then
+        lora_env+=("ACCELERATE_CONFIG_FILE=${accelerate_config}")
+      fi
+
+      lora_job=$(submit_job "LoRA-resume-${label}-${tier_id}" \
+        "${SCRIPT_DIR}/lora_job.sh" "${lora_log}" lora_env lora_sbatch)
+      JOB_IDS["lora-${label}-${tier_id}"]="${lora_job}"
+      submit_listener_job "lora-${label}-${tier_id}" "${run_dir}" "${model_path}"
+    done
+  fi
+
+  if type_enabled "hydra"; then
+    for variant_spec in "${HYDRA_VARIANTS[@]}"; do
+      IFS='|' read -r label use_experts lora_num router_mode prior_weight bias_value head_router_mode head_bias_value top_k head_top_k guidance_scope train_bs <<<"${variant_spec}"
+      variant_slug="$(sanitize "${label}")"
+      if [[ -z "${head_top_k:-}" ]]; then
+        head_top_k=1
+      fi
+      if [[ -z "${head_router_mode:-}" ]]; then
+        head_router_mode="${router_mode}"
+      fi
+      if [[ -z "${head_bias_value:-}" ]]; then
+        head_bias_value="${bias_value}"
+      fi
+      if [[ "${use_experts}" == "True" ]]; then
+        hydra_num_experts="${tier_num_experts}"
+      else
+        hydra_num_experts=1
+      fi
+
+      run_dir=$(find_run_dir "${OUTPUT_ROOT}/${tier_slug}" "hydra_${variant_slug}" "${RESUME_TIMESTAMP:-}" || true)
+      if [[ -z "${run_dir}" ]]; then
+        echo "[WARN] No existing Hydra run dir for ${tier_id} ${label}" >&2
+        continue
+      fi
+      if [[ -f "${run_dir}/.training_complete" && "${RESUME_COMPLETED}" != "true" ]]; then
+        echo "[INFO] Skip completed Hydra run ${run_dir}" >&2
+        continue
+      fi
+      ckpt=$(find_latest_checkpoint "${run_dir}" || true)
+      if [[ -z "${ckpt}" ]]; then
+        echo "[WARN] No checkpoint found for ${run_dir}" >&2
+        continue
+      fi
+
+      declare -a hydra_sbatch=()
+      select_resources hydra_sbatch "${tier_id}"
+      accelerate_config=""
+      if [[ "${tier_total_gpus}" -ge 2 ]]; then
+        if [[ "${tier_total_gpus}" -ge 8 ]]; then
+          accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_8gpu_config.yaml"
+        elif [[ "${tier_total_gpus}" -ge 4 ]]; then
+          accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml"
+        else
+          accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_2gpu_config.yaml"
+        fi
+      fi
+
+      hydra_descriptor="${tier_id}_${label}_${router_mode}_resume"
+      hydra_wandb="${hydra_descriptor}_tokenizer:base_${timestamp}"
+      hydra_log="resume_hydra_${tier_slug}_${variant_slug}"
+
+      hydra_env=(
+        "REPO_ROOT=${REPO_ROOT}"
+        "OUTPUT_DIR=${run_dir}"
+        "WANDB_NAME=${hydra_wandb}"
+        "MODEL_NAME_OR_PATH=${model_path}"
+        "TOKENIZED_PATH=${tokenized_path}"
+        "FLASH_ATTN=${FLASH_ATTN:-fa2}"
+        "LANGUAGE_MAP=${tier_map}"
+        "LANGUAGE_ROUTER_MODE=${router_mode}"
+        "LANGUAGE_HEAD_ROUTER_MODE=${head_router_mode}"
+        "LANGUAGE_PRIOR_WEIGHT=${prior_weight}"
+        "LANGUAGE_BIAS_VALUE=${bias_value}"
+        "LANGUAGE_HEAD_BIAS_VALUE=${head_bias_value}"
+        "LANGUAGE_GUIDANCE_SCOPE=${guidance_scope}"
+        "ADDITIONAL_TARGET=${additional_target}"
+        "USE_HYDRALORA_EXPERTS=${use_experts}"
+        "HYDRALORA_NUM_EXPERTS=${hydra_num_experts}"
+        "HYDRALORA_TOP_K=${top_k}"
+        "HYDRALORA_HEAD_TOP_K=${head_top_k}"
+        "LORA_NUM=${lora_num}"
+        "MODEL_VARIANT=${tier_id}"
+        "LANGUAGE_TIER=${tier_id}"
+        "WANDB_TAGS=adapter:hydra,variant:${label},tier:${tier_id},mode:${router_mode},head_mode:${head_router_mode},gamma:${prior_weight},resume:true"
+        "ALLOW_OVERWRITE=false"
+        "RESUME_FROM_CHECKPOINT=${ckpt}"
+      )
+      if [[ "${use_experts}" == "True" ]]; then
+        hydra_expert_lora_nums="$(head_counts_from_language_map "${tier_map}")"
+        if [[ -n "${hydra_expert_lora_nums}" ]]; then
+          hydra_env+=("HYDRALORA_EXPERT_LORA_NUMS=${hydra_expert_lora_nums}")
+        fi
+      fi
+      if [[ -n "${train_bs}" ]]; then
+        hydra_env+=("PER_DEVICE_TRAIN_BATCH_SIZE=${train_bs}" "PER_DEVICE_EVAL_BATCH_SIZE=${train_bs}")
+      fi
+      if [[ -n "${accelerate_config}" ]]; then
+        hydra_env+=("ACCELERATE_CONFIG_FILE=${accelerate_config}")
+      fi
+
+      hydra_job=$(submit_job "Hydra-resume-${label}-${tier_id}" \
+        "${SCRIPT_DIR}/hydralora_lpr_job.sh" "${hydra_log}" hydra_env hydra_sbatch)
+      JOB_IDS["hydra-${label}-${tier_id}"]="${hydra_job}"
+      submit_listener_job "hydra-${label}-${tier_id}" "${run_dir}" "${model_path}"
+    done
+  fi
+
+  if type_enabled "cola"; then
+    for variant_spec in "${COLA_VARIANTS[@]}"; do
+      IFS='|' read -r label use_experts num_A num_B strategy router_mode prior_weight bias_value head_router_mode head_bias_value top_k guidance_scope train_bs <<<"${variant_spec}"
+      variant_slug="$(sanitize "${label}")"
+      if [[ -z "${head_router_mode:-}" ]]; then
+        head_router_mode="${router_mode}"
+      fi
+      if [[ -z "${head_bias_value:-}" ]]; then
+        head_bias_value="${bias_value}"
+      fi
+      if [[ "${use_experts}" == "True" ]]; then
+        cola_num_experts="${tier_num_experts}"
+      else
+        cola_num_experts=1
+      fi
+
+      run_dir=$(find_run_dir "${OUTPUT_ROOT}/${tier_slug}" "cola_${variant_slug}" "${RESUME_TIMESTAMP:-}" || true)
+      if [[ -z "${run_dir}" ]]; then
+        echo "[WARN] No existing CoLA run dir for ${tier_id} ${label}" >&2
+        continue
+      fi
+      if [[ -f "${run_dir}/.training_complete" && "${RESUME_COMPLETED}" != "true" ]]; then
+        echo "[INFO] Skip completed CoLA run ${run_dir}" >&2
+        continue
+      fi
+      ckpt=$(find_latest_checkpoint "${run_dir}" || true)
+      if [[ -z "${ckpt}" ]]; then
+        echo "[WARN] No checkpoint found for ${run_dir}" >&2
+        continue
+      fi
+
+      declare -a cola_sbatch=()
+      select_resources cola_sbatch "${tier_id}"
+      accelerate_config=""
+      if [[ "${tier_total_gpus}" -ge 2 ]]; then
+        if [[ "${tier_total_gpus}" -ge 8 ]]; then
+          accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_8gpu_config.yaml"
+        elif [[ "${tier_total_gpus}" -ge 4 ]]; then
+          accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_4gpu_config.yaml"
+        else
+          accelerate_config="${REPO_ROOT}/LLaMA-Factory/examples/accelerate/fsdp_2gpu_config.yaml"
+        fi
+      fi
+
+      cola_descriptor="${tier_id}_${label}_${router_mode}_resume"
+      cola_wandb="${cola_descriptor}_tokenizer:base_${timestamp}"
+      cola_log="resume_cola_${tier_slug}_${variant_slug}"
+
+      cola_env=(
+        "REPO_ROOT=${REPO_ROOT}"
+        "OUTPUT_DIR=${run_dir}"
+        "WANDB_NAME=${cola_wandb}"
+        "MODEL_NAME_OR_PATH=${model_path}"
+        "TOKENIZED_PATH=${tokenized_path}"
+        "FLASH_ATTN=${FLASH_ATTN:-fa2}"
+        "LANGUAGE_MAP=${tier_map}"
+        "LANGUAGE_ROUTER_MODE=${router_mode}"
+        "LANGUAGE_HEAD_ROUTER_MODE=${head_router_mode}"
+        "LANGUAGE_PRIOR_WEIGHT=${prior_weight}"
+        "LANGUAGE_BIAS_VALUE=${bias_value}"
+        "LANGUAGE_HEAD_BIAS_VALUE=${head_bias_value}"
+        "LANGUAGE_GUIDANCE_SCOPE=${guidance_scope}"
+        "ADDITIONAL_TARGET=${additional_target}"
+        "USE_COLA_EXPERTS=${use_experts}"
+        "COLA_NUM_EXPERTS=${cola_num_experts}"
+        "COLA_NUM_A=${num_A}"
+        "COLA_NUM_B=${num_B}"
+        "COLA_STRATEGY=${strategy}"
+        "COLA_TOP_K=${top_k}"
+        "MODEL_VARIANT=${tier_id}"
+        "LANGUAGE_TIER=${tier_id}"
+        "WANDB_TAGS=adapter:cola,variant:${label},tier:${tier_id},mode:${router_mode},head_mode:${head_router_mode},gamma:${prior_weight},resume:true"
+        "ALLOW_OVERWRITE=false"
+        "RESUME_FROM_CHECKPOINT=${ckpt}"
+      )
+      if [[ "${use_experts}" == "True" ]]; then
+        cola_expert_num_b="$(head_counts_from_language_map "${tier_map}")"
+        if [[ -n "${cola_expert_num_b}" ]]; then
+          cola_env+=("COLA_EXPERT_NUM_B=${cola_expert_num_b}")
+        fi
+      fi
+      if [[ -n "${train_bs}" ]]; then
+        cola_env+=("PER_DEVICE_TRAIN_BATCH_SIZE=${train_bs}" "PER_DEVICE_EVAL_BATCH_SIZE=${train_bs}")
+      fi
+      if [[ -n "${accelerate_config}" ]]; then
+        cola_env+=("ACCELERATE_CONFIG_FILE=${accelerate_config}")
+      fi
+
+      cola_job=$(submit_job "CoLA-resume-${label}-${tier_id}" \
+        "${SCRIPT_DIR}/cola_lpr_job.sh" "${cola_log}" cola_env cola_sbatch)
+      JOB_IDS["cola-${label}-${tier_id}"]="${cola_job}"
+      submit_listener_job "cola-${label}-${tier_id}" "${run_dir}" "${model_path}"
+    done
+  fi
+done
+
+cat <<SUMMARY
+========================================
+Submitted resume jobs at ${timestamp}
+$(for key in "${!JOB_IDS[@]}"; do printf "  %-32s : %s\n" "${key}" "${JOB_IDS[${key}]}"; done | sort)
+$(for key in "${!LISTENER_JOB_IDS[@]}"; do printf "  %-32s : %s\n" "${key}" "${LISTENER_JOB_IDS[${key}]}"; done | sort)
+
+Outputs resumed under ${OUTPUT_ROOT}
+Tokenized corpora read from ${TOKENIZED_BASE_DIR}
+Monitor metrics in W&B project ${WANDB_PROJECT}
+========================================
+SUMMARY

@@ -31,6 +31,8 @@ export PYTHONUNBUFFERED=1
 
 OUTPUT_DIR="${OUTPUT_DIR:?OUTPUT_DIR not set}"
 mkdir -p "${OUTPUT_DIR}"
+ALLOW_OVERWRITE="${ALLOW_OVERWRITE:-true}"
+RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT:-}"
 
 # Avoid NFS-backed caches (can cause slowdowns/hangs on some clusters).
 CACHE_ROOT="${CACHE_ROOT:-${TMPDIR:-/tmp}/${USER}}"
@@ -157,6 +159,16 @@ if [[ "${AUTO_FIND_BATCH_SIZE}" == "true" || "${AUTO_FIND_BATCH_SIZE}" == "True"
   AUTO_FIND_BATCH_SIZE_FLAG=(--auto_find_batch_size)
 fi
 
+OVERWRITE_FLAGS=()
+if [[ "${ALLOW_OVERWRITE}" == "true" || "${ALLOW_OVERWRITE}" == "True" || "${ALLOW_OVERWRITE}" == "1" ]]; then
+  OVERWRITE_FLAGS=(--overwrite_output_dir)
+fi
+
+RESUME_FLAGS=()
+if [[ -n "${RESUME_FROM_CHECKPOINT}" ]]; then
+  RESUME_FLAGS=(--resume_from_checkpoint "${RESUME_FROM_CHECKPOINT}")
+fi
+
 "${LAUNCH_PREFIX[@]}" "${ACCELERATE_CMD[@]}" "${ENTRYPOINT[@]}" \
   --stage sft \
   --do_train \
@@ -167,8 +179,9 @@ fi
   --template llama3 \
   --finetuning_type lora \
   --output_dir "${OUTPUT_DIR}" \
-  --overwrite_output_dir \
+  "${OVERWRITE_FLAGS[@]}" \
   --run_name "${RUN_NAME}" \
+  "${RESUME_FLAGS[@]}" \
   --num_train_epochs "${TRAIN_EPOCHS}" \
   --learning_rate "${TRAIN_LR}" \
   --lr_scheduler_type "${LR_SCHEDULER_TYPE:-cosine}" \
