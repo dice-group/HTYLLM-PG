@@ -24,8 +24,6 @@ from tqdm.auto import tqdm
 from collections import defaultdict
 import json
 import os
-import glob
-import re
 
 
 def count_feedforward_params(dim: int, mlp_dim: int) -> int:
@@ -231,88 +229,10 @@ def get_args():
     return parser.parse_args()
 
 
-def load_deepspeed_moe_checkpoint(model, checkpoint_dir, tag, device):
-    """
-    Load a DeepSpeed MoE checkpoint with expert parallelism into a PyTorch model.
-    
-    Checkpoint structure:
-      - mp_rank_00_model_states.pt: main model states (non-expert params)
-      - layer_X_expert_Y_mp_rank_00_model_states.pt: expert-specific states
-    """
-    checkpoint_path = os.path.join(checkpoint_dir, tag)
-    
-    if not os.path.isdir(checkpoint_path):
-        raise FileNotFoundError(f"Checkpoint directory not found: {checkpoint_path}")
-    
-    print(f"Loading MoE checkpoint from {checkpoint_path}...")
-    
-    # Load main model states
-    main_state_path = os.path.join(checkpoint_path, "mp_rank_00_model_states.pt")
-    if not os.path.exists(main_state_path):
-        raise FileNotFoundError(f"Main model states not found: {main_state_path}")
-    
-    print("  Loading main model states...")
-    main_checkpoint = torch.load(main_state_path, map_location=device)
-    
-    # Extract the module state dict
-    if 'module' in main_checkpoint:
-        state_dict = main_checkpoint['module']
-    else:
-        state_dict = main_checkpoint
-    
-    # Load expert states
-    expert_files = sorted(glob.glob(os.path.join(checkpoint_path, "layer_*_expert_*_mp_rank_00_model_states.pt")))
-    print(f"  Found {len(expert_files)} expert checkpoint files...")
-    
-    # Parse and load each expert file
-    expert_pattern = re.compile(r'layer_(\d+)_expert_(\d+)_mp_rank_00_model_states\.pt')
-    
-    for expert_file in expert_files:
-        filename = os.path.basename(expert_file)
-        match = expert_pattern.match(filename)
-        if not match:
-            continue
-        
-        layer_idx = int(match.group(1))
-        expert_idx = int(match.group(2))
-        
-        expert_checkpoint = torch.load(expert_file, map_location=device)
-        
-        # Expert states are typically stored under 'module' key
-        if 'module' in expert_checkpoint:
-            expert_state = expert_checkpoint['module']
-        else:
-            expert_state = expert_checkpoint
-        
-        # Merge expert states into main state dict
-        # The key structure for MoE experts in your model is:
-        # transformer.layers.{layer_idx}.1.deepspeed_moe.experts.deepspeed_experts.{expert_idx}.*
-        for key, value in expert_state.items():
-            state_dict[key] = value
-    
-    # Load into model
-    print("  Loading state dict into model...")
-    missing, unexpected = model.load_state_dict(state_dict, strict=False)
-    
-    if missing:
-        print(f"  Warning: {len(missing)} missing keys")
-        if len(missing) <= 10:
-            for k in missing:
-                print(f"    - {k}")
-        else:
-            for k in missing[:5]:
-                print(f"    - {k}")
-            print(f"    ... and {len(missing) - 5} more")
-    
-    if unexpected:
-        print(f"  Warning: {len(unexpected)} unexpected keys")
-    
-    print("Checkpoint loaded successfully!")
-    return model
-
-
 def run_inference_for_stats(args):
     """Load model and run inference to collect expert activation statistics."""
+    import deepspeed
+    from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
     from htyllm_pg.model_builder import moe_builder
     from htyllm_pg.dataset import MultiLangTokenDataset
     from torch.utils.data import DataLoader, Subset
@@ -320,7 +240,17 @@ def run_inference_for_stats(args):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
     
-    # Build model
+    # Initialize DeepSpeed distributed for single-process inference
+    if not deepspeed.comm.is_initialized():
+        os.environ.setdefault("RANK", "0")
+        os.environ.setdefault("LOCAL_RANK", "0")
+        os.environ.setdefault("WORLD_SIZE", "1")
+        os.environ.setdefault("MASTER_ADDR", "127.0.0.1")
+        os.environ.setdefault("MASTER_PORT", "29500")
+        deepspeed.init_distributed(dist_backend="nccl", auto_mpi_discovery=False)
+    
+    # Build model with ep_size=1 for single-GPU inference
+    # (experts will be consolidated from the distributed checkpoint)
     print("Building model...")
     model = moe_builder(
         vocab_size=args.vocab_size,
@@ -332,21 +262,39 @@ def run_inference_for_stats(args):
         dim_head=args.dim_head,
         moe_layers=args.moe_layers,
         num_experts=args.num_experts,
-        ep_size=args.ep_size,
+        ep_size=1,  # Single GPU - all experts on one device
         topany_gating_impl=args.topany_gating_impl,
         use_flash_attention=args.use_flash_attention,
         use_gradient_checkpointing=False,  # Not needed for inference
         l1_lambda=args.l1_lambda,
     )
     
-    # Load checkpoint from DeepSpeed MoE format
+    # Initialize DeepSpeed and load checkpoint
     print(f"Loading checkpoint from step {args.checkpoint_step}...")
-    model = load_deepspeed_moe_checkpoint(
-        model, 
-        args.checkpoint_dir, 
-        f"step_{args.checkpoint_step}",
-        device
+    ds_config = {
+        "train_batch_size": args.batch_size,
+        "train_micro_batch_size_per_gpu": args.batch_size,
+        "zero_optimization": {"stage": 0},
+    }
+    
+    base_params = {"params": [p for p in model.parameters() if p.requires_grad], "name": "parameters"}
+    param_groups = split_params_into_different_moe_groups_for_optimizer(base_params)
+    
+    model_engine, _, _, _ = deepspeed.initialize(
+        model=model,
+        model_parameters=param_groups,
+        config=ds_config,
     )
+    
+    # Load checkpoint - DeepSpeed handles EP consolidation
+    checkpoint_path = args.checkpoint_dir
+    tag = f"step_{args.checkpoint_step}"
+    load_path, _ = model_engine.load_checkpoint(checkpoint_path, tag=tag)
+    if load_path is None:
+        raise ValueError(f"Could not load checkpoint from {checkpoint_path}/{tag}")
+    
+    print(f"Checkpoint loaded from {load_path}")
+    model = model_engine.module
     
     model = model.to(device)
     model.eval()
