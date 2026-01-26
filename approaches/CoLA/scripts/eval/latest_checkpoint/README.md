@@ -37,7 +37,7 @@ If you already have a list of run paths:
 python scripts/eval/latest_checkpoint/submit_latest_eval.py --paths-file /path/to/run_paths.txt
 ```
 
-Inline list wrapper (edit the DIRS array inside the script):
+Inline list wrapper (edit the NO_IDS_DIRS and BOTH_DIRS arrays inside the script):
 
 ```bash
 scripts/eval/latest_checkpoint/run_latest_eval_from_list.sh
