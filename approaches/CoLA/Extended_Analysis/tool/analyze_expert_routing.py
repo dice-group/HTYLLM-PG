@@ -184,11 +184,15 @@ class RoutingCollector:
         def hook(module, input, output):
             """Forward hook to capture routing decisions."""
             try:
-                # CoLA stores routing data in _caches dict during forward pass
+                # CoLA and HydraLoRA store routing data in _caches dict during forward pass
                 # Check for cached routing state (set by _cache_router_state)
                 router_logits = None
                 if hasattr(module, '_caches') and isinstance(module._caches, dict):
+                    # CoLA uses 'cola_router_logits'
                     router_logits = module._caches.get('cola_router_logits', None)
+                    # HydraLoRA uses 'hydra_expert_router_logits'
+                    if router_logits is None:
+                        router_logits = module._caches.get('hydra_expert_router_logits', None)
                 
                 # If no cache, try legacy attribute names
                 if router_logits is None:
@@ -582,7 +586,7 @@ def main():
         all_language_stats[lang] = stats
         collector.save_raw_data(raw_data_dir, lang)
     
-    # Create routing matrix
+    # Create routing matrix (captures what router learned)
     routing_matrix = create_routing_matrix(
         all_language_stats,
         languages,
@@ -590,21 +594,66 @@ def main():
         args.num_experts
     )
     
+    # Create target routing matrix if use_language_ids is enabled
+    # This shows what the LPR targets ARE (useful for all modes: hard, bias, learned)
+    # For hard mode: this is what's enforced
+    # For learned/bias modes: this is what LPR loss supervises toward
+    target_routing_matrix = None
+    router_mode = 'unknown'
+    if args.use_language_ids and adapter_config_path.exists():
+        language_to_family_ids = adapter_config.get('language_to_family_ids', [])
+        language_list = adapter_config.get('language_list', [])
+        router_mode = adapter_config.get('language_router_mode', 'learned')
+        
+        if language_to_family_ids and language_list:
+            # Build target routing matrix from config (no inference needed)
+            target_routing_matrix = np.zeros(
+                (len(languages), args.num_layers, args.num_experts),
+                dtype=np.float32
+            )
+            
+            for lang_idx, lang in enumerate(languages):
+                # Find the language index in adapter's language_list
+                if lang in language_list:
+                    adapter_lang_idx = language_list.index(lang)
+                    if adapter_lang_idx < len(language_to_family_ids):
+                        target_expert = int(language_to_family_ids[adapter_lang_idx])
+                        # Set all layers to show target expert
+                        target_routing_matrix[lang_idx, :, target_expert] = 1.0
+                        logger.info(f"Target routing for '{lang}': Expert {target_expert}")
+                else:
+                    logger.warning(f"Language '{lang}' not found in adapter's language_list")
+            
+            logger.info(f"Created target routing matrix (mode: {router_mode})")
+    
     # Save routing matrix
     args.output.mkdir(parents=True, exist_ok=True)
     output_file = args.output / 'routing_matrix.npz'
     
-    np.savez(
-        output_file,
-        routing_matrix=routing_matrix,
-        languages=languages,
-        num_layers=args.num_layers,
-        num_experts=args.num_experts
-    )
+    # Build save dict
+    save_dict = {
+        'routing_matrix': routing_matrix,
+        'languages': languages,
+        'num_layers': args.num_layers,
+        'num_experts': args.num_experts,
+        'router_mode': router_mode
+    }
+    
+    # Add target routing if available
+    if target_routing_matrix is not None:
+        save_dict['target_routing_matrix'] = target_routing_matrix
+        save_dict['has_target_routing'] = True
+        logger.info("Including target routing matrix in output")
+    else:
+        save_dict['has_target_routing'] = False
+    
+    np.savez(output_file, **save_dict)
     
     logger.info(f"Saved routing matrix to {output_file}")
     
     # Save metadata
+    router_mode = adapter_config.get('language_router_mode', 'learned') if adapter_config_path.exists() else 'unknown'
+    
     metadata = {
         'base_model': args.base_model,
         'adapter_checkpoint': args.adapter_checkpoint,
@@ -613,7 +662,10 @@ def main():
         'languages': languages,
         'num_layers': args.num_layers,
         'num_experts': args.num_experts,
-        'routing_matrix_shape': list(routing_matrix.shape)
+        'routing_matrix_shape': list(routing_matrix.shape),
+        'use_language_ids': args.use_language_ids,
+        'router_mode': router_mode,
+        'has_target_routing': target_routing_matrix is not None
     }
     
     metadata_file = args.output / 'metadata.json'
