@@ -53,8 +53,17 @@ if ((${#NO_IDS_DIRS[@]})); then
 fi
 
 if ((${#BOTH_DIRS[@]})); then
-  LM_EVAL_LANG_MODE=both \
-  exec python3 "${REPO_ROOT}/scripts/eval/latest_checkpoint/submit_latest_eval.py" \
+  LM_EVAL_LANG_MODE=no_ids \
+  python3 "${REPO_ROOT}/scripts/eval/latest_checkpoint/submit_latest_eval.py" \
+    --paths "${BOTH_DIRS[@]}" \
+    --wandb-project "${WANDB_PROJECT}" \
+    --eval-partition "${EVAL_PARTITION}" \
+    --eval-time "${EVAL_TIME}" \
+    --eval-gpus "${EVAL_GPUS}" \
+    --eval-gpu-type "${EVAL_GPU_TYPE}"
+
+  LM_EVAL_LANG_MODE=with_ids \
+  python3 "${REPO_ROOT}/scripts/eval/latest_checkpoint/submit_latest_eval.py" \
     --paths "${BOTH_DIRS[@]}" \
     --wandb-project "${WANDB_PROJECT}" \
     --eval-partition "${EVAL_PARTITION}" \
