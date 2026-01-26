@@ -24,6 +24,8 @@ from tqdm.auto import tqdm
 from collections import defaultdict
 import json
 import os
+import glob
+import re
 
 
 def count_feedforward_params(dim: int, mlp_dim: int) -> int:
@@ -229,31 +231,81 @@ def get_args():
     return parser.parse_args()
 
 
-def load_deepspeed_checkpoint(model, checkpoint_dir, tag, device):
+def load_deepspeed_moe_checkpoint(model, checkpoint_dir, tag, device):
     """
-    Load a DeepSpeed ZeRO checkpoint into a PyTorch model.
-    Works without requiring distributed setup.
-    """
-    from deepspeed.utils.zero_to_fp32 import get_fp32_state_dict_from_zero_checkpoint
+    Load a DeepSpeed MoE checkpoint with expert parallelism into a PyTorch model.
     
+    Checkpoint structure:
+      - mp_rank_00_model_states.pt: main model states (non-expert params)
+      - layer_X_expert_Y_mp_rank_00_model_states.pt: expert-specific states
+    """
     checkpoint_path = os.path.join(checkpoint_dir, tag)
     
-    # Check if checkpoint exists
     if not os.path.isdir(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint directory not found: {checkpoint_path}")
     
-    print(f"Loading ZeRO checkpoint from {checkpoint_path}...")
+    print(f"Loading MoE checkpoint from {checkpoint_path}...")
     
-    # Use DeepSpeed's utility to consolidate ZeRO shards into fp32 state dict
-    state_dict = get_fp32_state_dict_from_zero_checkpoint(checkpoint_path)
+    # Load main model states
+    main_state_path = os.path.join(checkpoint_path, "mp_rank_00_model_states.pt")
+    if not os.path.exists(main_state_path):
+        raise FileNotFoundError(f"Main model states not found: {main_state_path}")
     
-    # Load into model (with strict=False to handle potential key mismatches)
+    print("  Loading main model states...")
+    main_checkpoint = torch.load(main_state_path, map_location=device)
+    
+    # Extract the module state dict
+    if 'module' in main_checkpoint:
+        state_dict = main_checkpoint['module']
+    else:
+        state_dict = main_checkpoint
+    
+    # Load expert states
+    expert_files = sorted(glob.glob(os.path.join(checkpoint_path, "layer_*_expert_*_mp_rank_00_model_states.pt")))
+    print(f"  Found {len(expert_files)} expert checkpoint files...")
+    
+    # Parse and load each expert file
+    expert_pattern = re.compile(r'layer_(\d+)_expert_(\d+)_mp_rank_00_model_states\.pt')
+    
+    for expert_file in expert_files:
+        filename = os.path.basename(expert_file)
+        match = expert_pattern.match(filename)
+        if not match:
+            continue
+        
+        layer_idx = int(match.group(1))
+        expert_idx = int(match.group(2))
+        
+        expert_checkpoint = torch.load(expert_file, map_location=device)
+        
+        # Expert states are typically stored under 'module' key
+        if 'module' in expert_checkpoint:
+            expert_state = expert_checkpoint['module']
+        else:
+            expert_state = expert_checkpoint
+        
+        # Merge expert states into main state dict
+        # The key structure for MoE experts in your model is:
+        # transformer.layers.{layer_idx}.1.deepspeed_moe.experts.deepspeed_experts.{expert_idx}.*
+        for key, value in expert_state.items():
+            state_dict[key] = value
+    
+    # Load into model
+    print("  Loading state dict into model...")
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
     
     if missing:
-        print(f"Warning: Missing keys: {missing[:5]}..." if len(missing) > 5 else f"Warning: Missing keys: {missing}")
+        print(f"  Warning: {len(missing)} missing keys")
+        if len(missing) <= 10:
+            for k in missing:
+                print(f"    - {k}")
+        else:
+            for k in missing[:5]:
+                print(f"    - {k}")
+            print(f"    ... and {len(missing) - 5} more")
+    
     if unexpected:
-        print(f"Warning: Unexpected keys: {unexpected[:5]}..." if len(unexpected) > 5 else f"Warning: Unexpected keys: {unexpected}")
+        print(f"  Warning: {len(unexpected)} unexpected keys")
     
     print("Checkpoint loaded successfully!")
     return model
@@ -287,9 +339,9 @@ def run_inference_for_stats(args):
         l1_lambda=args.l1_lambda,
     )
     
-    # Load checkpoint using DeepSpeed's zero_to_fp32 utility
+    # Load checkpoint from DeepSpeed MoE format
     print(f"Loading checkpoint from step {args.checkpoint_step}...")
-    model = load_deepspeed_checkpoint(
+    model = load_deepspeed_moe_checkpoint(
         model, 
         args.checkpoint_dir, 
         f"step_{args.checkpoint_step}",
