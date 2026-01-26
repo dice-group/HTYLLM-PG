@@ -394,6 +394,14 @@ def main():
     num_layers = int(data['num_layers'])
     num_experts = int(data['num_experts'])
     
+    # Check for target routing
+    has_target_routing = bool(data.get('has_target_routing', False))
+    target_routing_matrix = None
+    router_mode = str(data.get('router_mode', 'unknown'))
+    if has_target_routing and 'target_routing_matrix' in data:
+        target_routing_matrix = data['target_routing_matrix']
+        logger.info(f"Found target routing matrix for dual heatmap mode (mode: {router_mode})")
+    
     logger.info(f"Matrix shape: {routing_matrix.shape}")
     logger.info(f"Languages: {len(languages)}")
     
@@ -405,6 +413,7 @@ def main():
     
     # Generate visualizations
     if args.create_heatmap:
+        # Router learning heatmap (what the router network learned/selected)
         create_routing_heatmap(
             routing_matrix,
             languages,
@@ -413,6 +422,28 @@ def main():
             args.output_dir / 'routing_heatmap.png',
             color_scheme=args.color_scheme
         )
+        
+        # Target routing heatmap (LPR targets)
+        # For hard mode: what's enforced
+        # For learned/bias modes: what LPR supervises toward
+        if target_routing_matrix is not None:
+            # Create filename based on mode
+            if router_mode == 'hard':
+                target_filename = 'enforced_routing_heatmap.png'
+                logger.info("Creating enforced routing heatmap (hard mode)")
+            else:
+                target_filename = 'target_routing_heatmap.png'
+                logger.info(f"Creating target routing heatmap ({router_mode} mode)")
+            
+            create_routing_heatmap(
+                target_routing_matrix,
+                languages,
+                num_layers,
+                num_experts,
+                args.output_dir / target_filename,
+                color_scheme=args.color_scheme
+            )
+            logger.info(f"Generated both router learning and target routing heatmaps")
     
     if args.create_tsne:
         create_tsne_clustering(

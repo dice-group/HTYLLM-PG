@@ -124,23 +124,40 @@ def main():
     logger.info(f"Languages: {len(languages)}")
     logger.info(f"Layers: {num_layers}, Experts: {num_experts}")
     
+    # Check for target routing matrix
+    has_target_routing = bool(data.get('has_target_routing', False))
+    target_routing_matrix = None
+    router_mode = str(data.get('router_mode', 'unknown'))
+    if has_target_routing and 'target_routing_matrix' in data:
+        target_routing_matrix = data['target_routing_matrix']
+        logger.info(f"Found target routing matrix: {target_routing_matrix.shape} (mode: {router_mode})")
+    
     # Apply normalization
     normalized_matrix = normalize_routing_counts(routing_matrix, num_layers)
     
     # Compute additional statistics
     layer_entropy = compute_layer_entropy(normalized_matrix)
     
+    # Build save dict
+    save_dict = {
+        'routing_matrix': normalized_matrix,
+        'routing_matrix_raw': routing_matrix,
+        'languages': languages,
+        'num_layers': num_layers,
+        'num_experts': num_experts,
+        'layer_entropy': layer_entropy,
+        'has_target_routing': has_target_routing,
+        'router_mode': router_mode
+    }
+    
+    # Add target routing if available (already normalized since it's 0/1 values)
+    if target_routing_matrix is not None:
+        save_dict['target_routing_matrix'] = target_routing_matrix
+        logger.info("Including target routing matrix in output")
+    
     # Save normalized data
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(
-        args.output,
-        routing_matrix=normalized_matrix,
-        routing_matrix_raw=routing_matrix,
-        languages=languages,
-        num_layers=num_layers,
-        num_experts=num_experts,
-        layer_entropy=layer_entropy
-    )
+    np.savez(args.output, **save_dict)
     
     logger.info(f"Saved normalized data to {args.output}")
     logger.info("Processing complete!")
