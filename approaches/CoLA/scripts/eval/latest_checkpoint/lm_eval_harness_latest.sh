@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "${SCRIPT_DIR}/../../.." && pwd)}"
-HARNESS_ROOT="${LM_EVAL_HARNESS_PATH:-${REPO_ROOT}/scripts/eval/lm-evaluation-harness}"
+HARNESS_ROOT="${LM_EVAL_HARNESS_PATH:-${REPO_ROOT}/scripts/eval/latest_checkpoint/lm-evaluation-harness}"
 LLAMAFACTORY_SRC="${REPO_ROOT}/LLaMA-Factory/src"
 
 CHECKPOINT_PATH="${CHECKPOINT_PATH:?CHECKPOINT_PATH not set}"
@@ -109,7 +109,7 @@ if [[ "${LOG_ROUTER_METRICS}" == "true" ]]; then
 fi
 
 LM_EVAL_FORCE_DEVICE="${FORCE_DEVICE}" \
-python3 "${REPO_ROOT}/scripts/eval/lm_eval_language_ids.py" \
+python3 "${REPO_ROOT}/scripts/lm_eval_language_ids.py" \
   --checkpoint "${CHECKPOINT_PATH}" \
   --tokenizer "${BASE_MODEL}" \
   --tasks "${TASKS}" \
