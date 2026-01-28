@@ -231,6 +231,48 @@ def _build_hflm_with_lang_class(HFLM):
     return HFLMWithLang
 
 
+def _log_wandb_results(
+    results: dict,
+    *,
+    wandb_args: Optional[str],
+    wandb_config_args: Optional[str],
+    peft: str,
+    pretrained: str,
+    run_suffix: Optional[str],
+    log_samples: bool,
+    samples: Optional[dict],
+) -> None:
+    if not wandb_args:
+        return
+    try:
+        from lm_eval.loggers.wandb_logger import WandbLogger
+        from lm_eval.utils import simple_parse_args_string
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WARN] W&B logging failed: {exc}", file=sys.stderr)
+        return
+    try:
+        wandb_args_dict = simple_parse_args_string(wandb_args)
+        name = wandb_args_dict.get("name")
+        if name and not name.endswith("_detailed"):
+            ckpt_step = _infer_checkpoint_step(Path(peft or pretrained))
+            if ckpt_step is not None:
+                name = f"{name}_ckpt{ckpt_step}"
+            else:
+                name = f"{name}_{Path(peft or pretrained).name}"
+            if run_suffix:
+                name = f"{name}_{run_suffix}"
+            wandb_args_dict["name"] = f"{name}_detailed"
+        wandb_config_args_dict = simple_parse_args_string(wandb_config_args)
+        wandb_logger = WandbLogger(wandb_args_dict, wandb_config_args_dict)
+        wandb_logger.post_init(results)
+        wandb_logger.log_eval_result()
+        if log_samples and samples:
+            wandb_logger.log_eval_samples(samples)
+        wandb_logger.run.finish()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[WARN] W&B logging failed: {exc}", file=sys.stderr)
+
+
 def _run_eval(
     *,
     pretrained: str,
@@ -244,6 +286,7 @@ def _run_eval(
     limit: Optional[float],
     wandb_args: Optional[str],
     wandb_config_args: Optional[str],
+    log_wandb: bool,
     log_samples: bool,
     log_router_metrics: bool,
     torch_dtype,
@@ -453,31 +496,34 @@ def _run_eval(
     if log_samples and "samples" in results:
         samples = results.pop("samples")
 
-    if wandb_args:
-        try:
-            wandb_args_dict = simple_parse_args_string(wandb_args)
-            name = wandb_args_dict.get("name")
-            if name and not name.endswith("_detailed"):
-                ckpt_step = _infer_checkpoint_step(Path(peft or pretrained))
-                if ckpt_step is not None:
-                    name = f"{name}_ckpt{ckpt_step}"
-                else:
-                    name = f"{name}_{Path(peft or pretrained).name}"
-                if run_suffix:
-                    name = f"{name}_{run_suffix}"
-                wandb_args_dict["name"] = f"{name}_detailed"
-            wandb_config_args_dict = simple_parse_args_string(wandb_config_args)
-            wandb_logger = WandbLogger(wandb_args_dict, wandb_config_args_dict)
-            wandb_logger.post_init(results)
-            wandb_logger.log_eval_result()
-            if log_samples and samples:
-                wandb_logger.log_eval_samples(samples)
-            wandb_logger.run.finish()
-        except Exception as exc:  # noqa: BLE001
-            print(f"[WARN] W&B logging failed: {exc}", file=sys.stderr)
+    if log_wandb:
+        _log_wandb_results(
+            results,
+            wandb_args=wandb_args,
+            wandb_config_args=wandb_config_args,
+            peft=peft,
+            pretrained=pretrained,
+            run_suffix=run_suffix,
+            log_samples=log_samples,
+            samples=samples,
+        )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(results, indent=2, sort_keys=True, default=str))
+
+    return results
+
+
+def _merge_eval_results(target: dict, source: dict) -> None:
+    if not source:
+        return
+    target.setdefault("results", {})
+    source_results = source.get("results", {})
+    if isinstance(source_results, dict):
+        target["results"].update(source_results)
+    for key in ("versions", "config", "configs", "git_hash"):
+        if key in source and key not in target:
+            target[key] = source[key]
 
 
 
@@ -543,6 +589,10 @@ def main() -> int:
             print(f"{task}: lang_code={code} lang_id={lang_id}")
         return 0
 
+    wandb_with_ids_mode = os.environ.get("LM_EVAL_WANDB_WITH_IDS_MODE", "aggregate").strip().lower()
+    if wandb_with_ids_mode not in {"aggregate", "per_task", "off"}:
+        raise ValueError(f"Invalid LM_EVAL_WANDB_WITH_IDS_MODE: {wandb_with_ids_mode}")
+
     if args.mode in ("no_ids", "both"):
         _run_eval(
             pretrained=base_model,
@@ -556,6 +606,7 @@ def main() -> int:
             limit=args.limit,
             wandb_args=args.wandb_args,
             wandb_config_args=args.wandb_config_args,
+            log_wandb=True,
             log_samples=args.log_samples,
             log_router_metrics=args.log_router_metrics,
             torch_dtype=torch_dtype,
@@ -569,7 +620,8 @@ def main() -> int:
         )
 
     if args.mode in ("with_ids", "both"):
-        # Run per-task so each task gets a fixed language ID
+        aggregate_wandb = wandb_with_ids_mode == "aggregate" and bool(args.wandb_args)
+        aggregate_results: dict = {}
         for task in tasks:
             code = _task_to_lang_code(task)
             if code is None:
@@ -577,7 +629,7 @@ def main() -> int:
             lang_id = lang_map.get(code)
             if lang_id is None:
                 continue
-            _run_eval(
+            result = _run_eval(
                 pretrained=base_model,
                 peft=str(ckpt),
                 tokenizer=base_model,
@@ -589,6 +641,7 @@ def main() -> int:
                 limit=args.limit,
                 wandb_args=args.wandb_args,
                 wandb_config_args=args.wandb_config_args,
+                log_wandb=(wandb_with_ids_mode == "per_task"),
                 log_samples=args.log_samples,
                 log_router_metrics=args.log_router_metrics,
                 torch_dtype=torch_dtype,
@@ -599,6 +652,23 @@ def main() -> int:
                 numpy_random_seed=args.numpy_seed,
                 torch_random_seed=args.torch_seed,
                 fewshot_random_seed=args.fewshot_seed,
+            )
+            if aggregate_wandb and result:
+                _merge_eval_results(aggregate_results, result)
+
+        if aggregate_wandb and aggregate_results.get("results"):
+            _log_wandb_results(
+                aggregate_results,
+                wandb_args=args.wandb_args,
+                wandb_config_args=args.wandb_config_args,
+                peft=str(ckpt),
+                pretrained=base_model,
+                run_suffix="with_ids_all",
+                log_samples=False,
+                samples=None,
+            )
+            (outdir / "with_language_ids_aggregate.json").write_text(
+                json.dumps(aggregate_results, indent=2, sort_keys=True, default=str)
             )
 
     print("[INFO] Eval run completed", file=sys.stderr)

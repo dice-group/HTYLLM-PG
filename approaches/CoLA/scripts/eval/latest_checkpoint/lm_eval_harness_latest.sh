@@ -80,6 +80,23 @@ set -u
 export PYTHONPATH="${HARNESS_ROOT}:${LLAMAFACTORY_SRC}:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
 
+if [[ ! -d "${HARNESS_ROOT}" ]]; then
+  echo "[ERROR] lm-evaluation-harness not found at ${HARNESS_ROOT}" >&2
+  exit 1
+fi
+
+# Ensure relative FLORES paths resolve (configs reference ./lm_eval/...)
+cd "${HARNESS_ROOT}"
+
+if grep -q '^flores_en_perplexity_' "${TASKS_FILE}" 2>/dev/null; then
+  FLORES_JSON_DIR="${HARNESS_ROOT}/lm_eval/tasks/flores_en_perplexity/flores_json"
+  if [[ ! -d "${FLORES_JSON_DIR}" ]]; then
+    echo "[ERROR] FLORES data not found at ${FLORES_JSON_DIR}" >&2
+    echo "        Run: python -m lm_eval.tasks.flores_en_perplexity.gen_flores_config" >&2
+    exit 1
+  fi
+fi
+
 WANDB_PROJECT="${WANDB_PROJECT:-lm-eval}"
 WANDB_ENTITY="${WANDB_ENTITY:-}"
 WANDB_GROUP="${WANDB_GROUP:-}"
