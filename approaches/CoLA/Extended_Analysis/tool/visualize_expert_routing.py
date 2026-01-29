@@ -96,9 +96,9 @@ def create_routing_heatmap(
     
     # Labels
     ax.set_yticks(range(len(languages)))
-    ax.set_yticklabels(languages, fontsize=8)  # Smaller font for many languages
+    ax.set_yticklabels([])  # Remove language labels for cleaner visualization
     ax.set_xlabel('Experts (grouped by layer)', fontsize=14, fontweight='bold')
-    ax.set_ylabel('Language', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Languages', fontsize=14, fontweight='bold')
     ax.set_title(
         'Expert Routing Patterns: Language-Expert Associations Across Layers',
         fontsize=16,
