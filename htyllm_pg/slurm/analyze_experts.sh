@@ -6,7 +6,7 @@
 #SBATCH --time=04:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:h100:1
-#SBATCH --mem=64GB
+#SBATCH --mem=256GB
 #SBATCH --account=hpc-prf-merlin
 
 set -e
