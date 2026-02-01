@@ -331,6 +331,20 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
     
+    # Initialize DeepSpeed distributed backend for single-GPU inference
+    # This is required because DeepSpeed MoE layers use all_to_all communication
+    import deepspeed
+    if not torch.distributed.is_initialized():
+        # Set environment variables for single-process distributed
+        os.environ.setdefault("RANK", "0")
+        os.environ.setdefault("WORLD_SIZE", "1")
+        os.environ.setdefault("LOCAL_RANK", "0")
+        os.environ.setdefault("MASTER_ADDR", "localhost")
+        os.environ.setdefault("MASTER_PORT", "29500")
+        
+        deepspeed.init_distributed(dist_backend="nccl")
+        print("Initialized DeepSpeed distributed backend")
+    
     os.makedirs(args.output_dir, exist_ok=True)
     
     # Load model
