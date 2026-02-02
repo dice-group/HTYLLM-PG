@@ -563,8 +563,6 @@ def main() -> int:
     print(f"[INFO] Eval run: tasks={len(tasks)} mode={args.mode}", file=sys.stderr)
     print(f"[INFO] Eval run: output_dir={outdir}", file=sys.stderr)
 
-    lang_list = _load_language_list(ckpt)
-    lang_map = _build_lang_id_map(lang_list)
     torch_dtype = _parse_torch_dtype(args.torch_dtype)
     if torch_dtype is None and args.device.startswith("cuda"):
         torch_dtype = "auto"
@@ -620,6 +618,11 @@ def main() -> int:
         )
 
     if args.mode in ("with_ids", "both"):
+        try:
+            lang_list = _load_language_list(ckpt)
+        except Exception as exc:
+            raise ValueError("adapter_config.json missing language_list; required for with_ids eval") from exc
+        lang_map = _build_lang_id_map(lang_list)
         aggregate_wandb = wandb_with_ids_mode == "aggregate" and bool(args.wandb_args)
         aggregate_results: dict = {}
         for task in tasks:

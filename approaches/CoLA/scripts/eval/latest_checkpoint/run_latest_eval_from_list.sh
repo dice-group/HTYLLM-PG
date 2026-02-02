@@ -9,7 +9,7 @@ NO_IDS_DIRS=( #### TODO ####
   # # baselines 10% data: cola flat, hydra flat, lora baseline
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaflat_20260108_054502"
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-flat_20260108_054502"
-  # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/lora_lora-baseline_20260108_054502"
+  "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/lora_lora-baseline_20260108_054502"
 
   # # # base lines full data
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_full/cola_colaflat_20260108_055323"
@@ -19,12 +19,12 @@ BOTH_DIRS=(
   # 1) 10 percent tier
   
   # cola
-  # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-headbias_20260108_054502" # failed
+  "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-headbias_20260108_054502" # retry
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-hard_20260108_054502"     # failed
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-lpr_20260108_054502"      # this drastically underperformed and didnt recover from loss incidents # finsihed
   
   # hydralora
-  # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-exp-hard_20260108_054502"            # finished
+  "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-exp-hard_20260108_054502"            # retry
   "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-exp-lpr_20260108_054502"             # failed
   # "/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-exp-lpr-expert-only_20260108_054502" # finished
   
@@ -48,13 +48,19 @@ TASKS_SPLIT_DIR="${TASKS_SPLIT_DIR:-${LOG_ROOT}/tasks_split}"
 BELEBELE_CHUNKS="${BELEBELE_CHUNKS:-1}"
 FLORES_CHUNKS="${FLORES_CHUNKS:-4}"
 TASKS_MANIFEST="${TASKS_MANIFEST:-${TASKS_SPLIT_DIR}/tasks_manifest.tsv}"
+ENABLE_SPLIT="${ENABLE_SPLIT:-1}"
 
-python3 "${REPO_ROOT}/scripts/eval/latest_checkpoint/split_tasks.py" \
-  --tasks-file "${TASKS_FILE}" \
-  --out-dir "${TASKS_SPLIT_DIR}" \
-  --belebele-chunks "${BELEBELE_CHUNKS}" \
-  --flores-chunks "${FLORES_CHUNKS}" \
-  --manifest "${TASKS_MANIFEST}"
+if [[ "${ENABLE_SPLIT}" == "1" ]]; then
+  python3 "${REPO_ROOT}/scripts/eval/latest_checkpoint/split_tasks.py" \
+    --tasks-file "${TASKS_FILE}" \
+    --out-dir "${TASKS_SPLIT_DIR}" \
+    --belebele-chunks "${BELEBELE_CHUNKS}" \
+    --flores-chunks "${FLORES_CHUNKS}" \
+    --manifest "${TASKS_MANIFEST}"
+else
+  mkdir -p "${TASKS_SPLIT_DIR}"
+  printf "all\t%s\n" "${TASKS_FILE}" > "${TASKS_MANIFEST}"
+fi
 
 mapfile -t TASK_MANIFEST_LINES < <(cat "${TASKS_MANIFEST}")
 
