@@ -76,6 +76,15 @@ if [[ -n "${CONDA_BASE:-}" && -n "${EVAL_CONDA_ENV:-}" ]]; then
 fi
 set -u
 
+if [[ -z "${HF_HOME:-}" && -d "/scratch/hpc-prf-merlin/shared_cache/huggingface" ]]; then
+  export HF_HOME="/scratch/hpc-prf-merlin/shared_cache/huggingface"
+fi
+if [[ -n "${HF_HOME:-}" ]]; then
+  export HF_HUB_CACHE="${HF_HUB_CACHE:-${HF_HOME}/hub}"
+  export TRANSFORMERS_CACHE="${TRANSFORMERS_CACHE:-${HF_HOME}/hub}"
+  export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-${HF_HOME}/datasets}"
+fi
+
 # Ensure local harness + local PEFT are used
 export PYTHONPATH="${HARNESS_ROOT}:${LLAMAFACTORY_SRC}:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1

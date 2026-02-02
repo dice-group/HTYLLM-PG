@@ -143,6 +143,7 @@ def main() -> None:
     parser.add_argument("--eval-extra-sbatch", default="", help="Extra sbatch args.")
     parser.add_argument("--log-root", default="scripts/eval/logs/kiss", help="Directory for eval logs.")
     parser.add_argument("--output-subdir", default="lm_eval_latest", help="Subdir for eval outputs within run dir.")
+    parser.add_argument("--wandb-name-suffix", default="", help="Optional suffix appended to WANDB_NAME.")
     parser.add_argument("--skip-existing", action="store_true", help="Skip if output dir already has results.")
     parser.add_argument("--dry-run", action="store_true", help="Print commands without submitting.")
     args = parser.parse_args()
@@ -203,6 +204,11 @@ def main() -> None:
         label = _label_from_run_dir(run_dir)
         log_path = log_root / f"kiss_eval_{label}_{base_ckpt}.log"
 
+        wandb_name_suffix = args.wandb_name_suffix.strip()
+        wandb_name = f"{label}-{base_ckpt}"
+        if wandb_name_suffix:
+            wandb_name = f"{wandb_name}_{wandb_name_suffix}"
+
         env = {
             "CHECKPOINT_PATH": str(adapter_dir),
             "OUTPUT_DIR": str(output_dir),
@@ -210,7 +216,7 @@ def main() -> None:
             "WANDB_PROJECT": args.wandb_project,
             "WANDB_ENTITY": args.wandb_entity,
             "WANDB_GROUP": label,
-            "WANDB_NAME": f"{label}-{base_ckpt}",
+            "WANDB_NAME": wandb_name,
             "REPO_ROOT": str(repo_root),
         }
 
