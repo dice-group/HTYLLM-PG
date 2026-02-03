@@ -554,24 +554,6 @@ def topanygating_sparse(
             load_balance_loss = gates.new_zeros(())
         efficiency_loss = gates.float().mean()
         l_aux = diverse_and_simple_gate_loss(gate_tensor, expert_mask) + load_balance_loss + efficiency_loss
-    
-    # L1 Sparsity Penalty on Gate Thresholds
-    # L_sparsity = λ * mean(σ(gate_thresholds))
-    # 
-    # Why it works: Directly applies pressure on gate thresholds to rise (become more selective).
-    # Higher sigmoid(gate_thresholds) = higher activation threshold = fewer experts per token.
-    # 
-    # Benefits over penalizing raw similarity scores:
-    #   1. Direct effect on sparsity (thresholds control activation, not similarities)
-    #   2. No gradient leakage to transformer representations
-    #   3. Cleaner optimization landscape - gates learn independently from sim_matrix
-    #   4. Doesn't penalize useful high-similarity expert-token pairs
-    #
-    # The model will lower a gate threshold only if the reduction in CE loss
-    # from activating that expert outweighs the L1 penalty.
-    if gate_thresholds is not None and l1_lambda > 0:
-        l1_sparsity_loss = l1_lambda * torch.sigmoid(gate_thresholds).mean()
-        l_aux = l_aux + l1_sparsity_loss
 
     # Add z-loss (pre-computed in GAMoEGateT.forward())
     # Stabilizes routing by preventing extreme logit values
