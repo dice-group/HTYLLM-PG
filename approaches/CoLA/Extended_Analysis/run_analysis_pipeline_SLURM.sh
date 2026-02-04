@@ -2,7 +2,7 @@
 #SBATCH --job-name=expert_routing_analysis
 #SBATCH --output=logs/routing_analysis_%j.out
 #SBATCH --error=logs/routing_analysis_%j.err
-#SBATCH --time=35:00:00
+#SBATCH --time=12:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
@@ -49,17 +49,18 @@ python -c "import torch; print('CUDA available:', torch.cuda.is_available()); pr
 
 # Configuration from command line or defaults
 BASE_MODEL="meta-llama/Llama-3.1-8B"
-CHECKPOINT="/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/cola_colaexp-hard_20260108_054502/checkpoint-60000_adapter"
-VALIDATION_DATA="/scratch/hpc-prf-merlin/project_data/moe_study/fw_samples/sharded_samples"
-LANGUAGES="wbm_Latn,tel_Telu,fas_Arab,crl_Cans,abk_Cyrl,kru_Deva,ksw_Mymr,ekk_Latn,lao_Laoo,uzs_Arab,srp_Cyrl,kat_Geor,ory_Orya,hbo_Hebr,mhr_Cyrl,mni_Beng,moc_Latn,toc_Latn,agg_Latn,amr_Latn,sat_Olck,esi_Latn,fuv_Latn,tzm_Tfng,enx_Latn,gcf_Latn,pnt_Grek,pui_Latn,naq_Latn,kxm_Thai,guu_Latn,sah_Cyrl,spm_Latn,wuu_Hani,nas_Latn,dzo_Tibt,yuj_Latn,gnw_Latn,dty_Deva,jbo_Latn,wsg_Telu,nwx_Deva,spa_Latn,poi_Latn,crx_Latn,xav_Latn,tcy_Knda,gbi_Latn,mej_Latn,hto_Latn,gym_Latn,kaq_Latn,tat_Latn,dik_Latn,naf_Latn,liv_Latn,avt_Latn,miq_Latn,orv_Cyrl,azg_Latn,caa_Latn,jiv_Latn,asm_Beng,tig_Ethi,cpu_Latn,syc_Syrc,tkr_Cyrl,zsm_Latn,lsi_Latn,xal_Cyrl,tel_Latn,hin_Deva,dhg_Latn,cho_Latn,nab_Latn,ium_Latn,bon_Latn,ayo_Latn,cbi_Latn,ncj_Latn,ake_Latn,xnn_Latn,auc_Latn,ang_Latn,quz_Latn,emp_Latn,fin_Latn,guh_Latn,gum_Latn,jaa_Latn,sdh_Arab,wlv_Latn,crk_Latn,knv_Latn,tuo_Latn,slv_Latn,iws_Latn,arz_Arab,hae_Latn,myb_Latn,bug_Latn,koi_Cyrl,aey_Latn,atd_Latn,srd_Latn,wmt_Latn,gqr_Latn,kyf_Latn,sma_Latn,ige_Latn,ctp_Latn,mti_Latn,otw_Latn,xmm_Latn,chq_Latn,lbb_Latn,azj_Cyrl,csy_Latn,pxm_Latn,mse_Latn,ots_Latn,kxw_Latn,lob_Latn,njo_Latn,yua_Latn,kgk_Latn,hig_Latn,kyu_Latn,rtm_Latn,ile_Latn,hin_Latn,sbd_Latn,mww_Latn,hch_Latn,maf_Latn,snd_Deva,tee_Latn,toi_Latn,yut_Latn,swp_Latn,mqj_Latn,ubu_Latn,rus_Cyrl,nin_Latn,ksc_Latn,keo_Latn,esu_Latn,amk_Latn,bqp_Latn,laj_Latn,ibg_Latn,kck_Latn,poy_Latn,tay_Latn,rmn_Latn,cym_Latn,ojb_Cans,bgs_Latn,oku_Latn,mcb_Latn,cub_Latn,whg_Latn,bov_Latn,prf_Latn,hnn_Latn,lgl_Latn,kpw_Latn,dnj_Latn,cbr_Latn,jav_Latn,nba_Latn,gso_Latn,ntp_Latn,gng_Latn,prg_Latn,gwr_Latn,gmv_Latn,cpc_Latn,nuj_Latn,pma_Latn,acn_Latn,nii_Latn,rgu_Latn,zpq_Latn,mck_Latn,uvh_Latn,wew_Latn,bbr_Latn,bwq_Latn,gej_Latn,pam_Latn,nya_Latn,tso_Latn,mau_Latn,tue_Latn,bku_Latn,mie_Latn,ogo_Latn,ben_Latn,english"
+CHECKPOINT="/scratch/hpc-prf-merlin/project_data/moe_study/multilingual_ablation_200_lang_cola/tier200_10_percent/hydra_hydra-exp-lpr_20260108_054502/checkpoint-95000_adapter"
+VALIDATION_DATA="/scratch/hpc-prf-merlin/project_data/moe_study/adapter_dataset/cola_200_tier_samples/sharded_samples"
+LANGUAGES="acm_Arab,ary_Arab,bel_Cyrl,ceb_Latn,diq_Latn,fao_Latn,glk_Arab,hin_Deva,ind_Latn,kat_Geor,kor_Hang,ltz_Latn,mri_Latn,nno_Latn,pbt_Arab,run_Latn,slv_Latn,sun_Latn,tso_Latn,vls_Latn,ady_Cyrl,arz_Arab,ben_Beng,ces_Latn,div_Thaa,fij_Latn,grc_Grek,hne_Deva,inh_Cyrl,kaz_Cyrl,kpv_Cyrl,lug_Latn,mww_Latn,nob_Latn,plt_Latn,rus_Cyrl,sme_Latn,swe_Latn,tuk_Arab,vro_Latn,aeb_Arab,asm_Beng,bew_Latn,che_Cyrl,dsb_Latn,fin_Latn,gsw_Latn,hrv_Latn,isl_Latn,kbd_Cyrl,lao_Laoo,lus_Latn,mya_Mymr,npi_Deva,pms_Latn,sah_Cyrl,smo_Latn,swh_Latn,tur_Latn,wln_Latn,afr_Latn,ast_Latn,bho_Deva,chv_Cyrl,dzo_Tibt,fra_Latn,guj_Gujr,hsb_Latn,ita_Latn,kha_Latn,lat_Latn,mai_Deva,myv_Cyrl,nrm_Latn,pnb_Arab,san_Deva,sna_Latn,tam_Latn,tyv_Cyrl,wol_Latn,als_Latn,ava_Cyrl,bod_Tibt,ckb_Arab,ekk_Latn,fry_Latn,hat_Latn,hun_Latn,jav_Latn,khk_Cyrl,lez_Cyrl,mal_Latn,nap_Latn,nya_Latn,pol_Latn,scn_Latn,snd_Arab,tat_Cyrl,udm_Cyrl,xho_Latn,amh_Ethi,azb_Arab,bos_Latn,cos_Latn,ell_Grek,fur_Latn,haw_Latn,hye_Armn,jpn_Jpan,khm_Khmr,lim_Latn,mar_Deva,nde_Latn,oci_Latn,por_Latn,sco_Latn,som_Latn,tel_Latn,uig_Arab,ydd_Hebr,apc_Arab,bak_Cyrl,bre_Latn,crh_Cyrl,eng_Latn,gaz_Latn,hbo_Hebr,iba_Latn,kab_Latn,kik_Latn,lin_Latn,mfe_Latn,ndo_Latn,ory_Latn,rmy_Cyrl,sdh_Arab,sot_Latn,tgk_Cyrl,ukr_Cyrl,yor_Latn,arb_Arab,ban_Latn,bul_Cyrl,cym_Latn,epo_Latn,gla_Latn,heb_Hebr,ibo_Latn,kac_Latn,kin_Latn,lit_Latn,mhr_Cyrl,nds_Latn,oss_Cyrl,roh_Latn,shn_Mymr,spa_Latn,tha_Thai,urd_Arab,zea_Latn,arg_Latn,bar_Latn,bxr_Cyrl,dan_Latn,eus_Latn,gle_Latn,hif_Latn,ido_Latn,kal_Latn,kir_Cyrl,lmo_Latn,mkd_Cyrl,new_Deva,pan_Guru,ron_Cyrl,sin_Sinh,srd_Latn,tir_Ethi,uzn_Cyrl,zsm_Arab,ars_Arab,bcl_Latn,cat_Latn,deu_Latn,ewe_Latn,glg_Latn,hil_Latn,ilo_Latn,kan_Knda,kmr_Cyrl,ltg_Latn,mlt_Latn,nld_Latn,pap_Latn,rue_Cyrl,slk_Latn,srp_Cyrl,ton_Latn,vie_Latn,zul_Latn"
 NUM_SEQUENCES="10000"
 BATCH_SIZE="16"
 # Note: --adapter_type, --num_layers, --num_experts are auto-detected from adapter_config.json
 
 # Derived paths
 CHECKPOINT_NAME=$(basename "$CHECKPOINT")
-OUTPUT_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/extended_analysis/${CHECKPOINT_NAME}"
-DATA_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/extended_analysis/language_test_sets"
+VARIANT_NAME=$(basename "$(dirname "$CHECKPOINT")")
+OUTPUT_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/extended_analysis/samples_100/${VARIANT_NAME}/${CHECKPOINT_NAME}"
+DATA_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/extended_analysis/language_test_sets_cola_200_tier_samples"
 LOGS_DIR="/scratch/hpc-prf-merlin/project_data/moe_study/extended_analysis/logs"
 
 # Create logs directory
@@ -97,9 +98,9 @@ srun python tool/analyze_expert_routing.py \
     --test_data "$DATA_DIR" \
     --output "$OUTPUT_DIR" \
     --batch_size "$BATCH_SIZE" \
-    --max_sequences 100\
+    --max_sequences 100 \
     --device cuda \
-    --use_language_ids
+    --use_language_ids \
     2>&1 | tee "$LOGS_DIR/step2_analyze_${SLURM_JOB_ID}.log"
 echo ""
 
@@ -116,10 +117,11 @@ echo "[4/5] Creating visualizations..."
 srun python tool/visualize_expert_routing.py \
     --routing_data "$OUTPUT_DIR/routing_matrix_normalized.npz" \
     --language_families ./config/language_families.json \
-    --output_dir "$OUTPUT_DIR/figures" \
-    --create_all \
+    --output_dir "$OUTPUT_DIR/figures/no_lang_ids" \
+    --create_heatmap \
     2>&1 | tee "$LOGS_DIR/step4_visualize_${SLURM_JOB_ID}.log"
 echo ""
+
 
 # Step 5: Generate report
 echo "[5/5] Generating analysis report..."
@@ -130,6 +132,7 @@ srun python tool/generate_analysis_report.py \
     --output "$OUTPUT_DIR/report.md" \
     2>&1 | tee "$LOGS_DIR/step5_report_${SLURM_JOB_ID}.log"
 echo ""
+
 
 echo "========================================="
 echo "Analysis Complete!"
