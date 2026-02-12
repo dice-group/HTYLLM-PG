@@ -1,3 +1,5 @@
 .pytest_cache/
 data_prep/tokenizer_extension/.models/
 data_prep/tokenizer_extension/logs/
+result_analysis/paper_eval
+result_analysis/paper_eval_summary

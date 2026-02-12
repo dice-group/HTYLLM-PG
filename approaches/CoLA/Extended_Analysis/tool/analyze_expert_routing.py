@@ -28,15 +28,62 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-# Add parent directory to path to import peft
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from peft import PeftModel
-
+# Configure logging first (needed before _ensure_local_peft)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def _ensure_local_peft():
+    """
+    Load repo-local PEFT with CoLA/Hydra support, not site-packages.
+    
+    This is critical because:
+    1. pip's peft package doesn't have CoLA/HydraLoRA
+    2. Python caches modules, so if peft was imported before, it won't reload
+    3. We must force-reload from our local LLaMA-Factory/src/peft
+    """
+    # Clear any cached peft modules to force reload
+    for name in list(sys.modules.keys()):
+        if name == "peft" or name.startswith("peft."):
+            del sys.modules[name]
+    
+    # Path: Extended_Analysis/tool/ → Extended_Analysis/ → CoLA/ → LLaMA-Factory/src
+    repo_root = Path(__file__).resolve().parent.parent.parent  # CoLA/
+    peft_path = repo_root / "LLaMA-Factory" / "src"
+    
+    if not (peft_path / "peft" / "__init__.py").exists():
+        raise FileNotFoundError(
+            f"Local PEFT not found at {peft_path}/peft. "
+            "Ensure LLaMA-Factory submodule is cloned."
+        )
+    
+    if str(peft_path) not in sys.path:
+        sys.path.insert(0, str(peft_path))
+    
+    # Force-load local peft module using importlib
+    import importlib.util
+    peft_init = peft_path / "peft" / "__init__.py"
+    spec = importlib.util.spec_from_file_location(
+        "peft", peft_init, 
+        submodule_search_locations=[str(peft_path / "peft")]
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Failed to load local peft from {peft_init}")
+    
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["peft"] = module
+    spec.loader.exec_module(module)
+    
+    logger.info(f"Loaded local PEFT from: {peft_path}")
+    return module
+
+
+# Load local PEFT with CoLA/HydraLoRA support
+_peft = _ensure_local_peft()
+PeftModel = _peft.PeftModel
 
 
 class LanguageDataset(Dataset):
@@ -137,11 +184,15 @@ class RoutingCollector:
         def hook(module, input, output):
             """Forward hook to capture routing decisions."""
             try:
-                # CoLA stores routing data in _caches dict during forward pass
+                # CoLA and HydraLoRA store routing data in _caches dict during forward pass
                 # Check for cached routing state (set by _cache_router_state)
                 router_logits = None
                 if hasattr(module, '_caches') and isinstance(module._caches, dict):
+                    # CoLA uses 'cola_router_logits'
                     router_logits = module._caches.get('cola_router_logits', None)
+                    # HydraLoRA uses 'hydra_expert_router_logits'
+                    if router_logits is None:
+                        router_logits = module._caches.get('hydra_expert_router_logits', None)
                 
                 # If no cache, try legacy attribute names
                 if router_logits is None:
@@ -229,6 +280,12 @@ class RoutingCollector:
             json.dump(stats, f, indent=2)
         
         logger.info(f"Saved raw routing data for '{language_id}' to {output_file}")
+        
+        # Clear memory for this language to prevent OOM with many languages
+        if language_id in self.routing_data:
+            del self.routing_data[language_id]
+            logger.debug(f"Cleared routing data for '{language_id}' from memory")
+
 
 
 def load_model_and_adapter(
@@ -265,6 +322,7 @@ def analyze_language(
     tokenizer,
     language_file: Path,
     language_id: str,
+    language_idx: Optional[int],  # NEW: integer language ID for routing
     collector: RoutingCollector,
     batch_size: int = 16,
     max_sequences: Optional[int] = None
@@ -294,8 +352,29 @@ def analyze_language(
             input_ids = batch['input_ids'].to(model.device)
             attention_mask = batch['attention_mask'].to(model.device)
             
+            # Prepare forward pass kwargs
+            forward_kwargs = {
+                'input_ids': input_ids,
+                'attention_mask': attention_mask
+            }
+            
+            # Add language_ids if available (required for CoLA language-aware routing)
+            if language_idx is not None:
+                lang_ids = torch.full(
+                    (input_ids.size(0),),  # Batch size
+                    language_idx,
+                    device=model.device,
+                    dtype=torch.long
+                )
+                forward_kwargs['language_ids'] = lang_ids
+            else:
+                logger.warning(
+                    f"Language '{language_id}' not found in adapter's language_list. "
+                    "Routing will use input-only mode without language awareness."
+                )
+            
             # Forward pass (routing gets collected via hooks)
-            _ = model(input_ids=input_ids, attention_mask=attention_mask)
+            _ = model(**forward_kwargs)
     
     # Get aggregated statistics
     stats = collector.get_language_stats(language_id)
@@ -362,78 +441,61 @@ def create_routing_matrix(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Analyze expert routing for CoLA/HydraLoRA checkpoints"
-    )
-    parser.add_argument(
-        '--base_model',
-        type=str,
-        required=True,
-        help='Base model name or path (e.g., meta-llama/Llama-2-7b-hf)'
-    )
-    parser.add_argument(
-        '--adapter_checkpoint',
-        type=str,
-        required=True,
-        help='Path to adapter checkpoint directory'
-    )
-    parser.add_argument(
-        '--adapter_type',
-        type=str,
-        choices=['cola', 'hydralora'],
-        required=True,
-        help='Type of adapter (cola or hydralora)'
-    )
-    parser.add_argument(
-        '--test_data',
-        type=Path,
-        required=True,
-        help='Directory containing language-specific JSONL files'
-    )
-    parser.add_argument(
-        '--languages',
-        type=str,
-        default=None,
-        help='Comma-separated list of languages to analyze (default: all in test_data)'
-    )
-    parser.add_argument(
-        '--output',
-        type=Path,
-        required=True,
-        help='Output directory for routing statistics'
-    )
-    parser.add_argument(
-        '--batch_size',
-        type=int,
-        default=16,
-        help='Batch size for inference (default: 16)'
-    )
-    parser.add_argument(
-        '--max_sequences',
-        type=int,
-        default=None,
-        help='Maximum sequences per language (default: all available)'
-    )
-    parser.add_argument(
-        '--num_layers',
-        type=int,
-        default=32,
-        help='Number of layers in model (default: 32 for Llama-7B)'
-    )
-    parser.add_argument(
-        '--num_experts',
-        type=int,
-        default=4,
-        help='Number of experts per layer (default: 4)'
-    )
-    parser.add_argument(
-        '--device',
-        type=str,
-        default='cuda',
-        help='Device to use (default: cuda)'
-    )
+    parser = argparse.ArgumentParser(description="Analyze expert routing for CoLA/HydraLoRA checkpoints")
+    parser.add_argument('--base_model',type=str,required=True,help='Base model name or path (e.g., meta-llama/Llama-2-7b-hf)')
+    parser.add_argument('--adapter_checkpoint', type=str, required=True, help='Path to adapter checkpoint directory')
+    parser.add_argument('--adapter_type', type=str, choices=['cola', 'hydralora'], default=None, help='Type of adapter (cola or hydralora). Auto-detected from adapter_config.json if not specified.')
+    parser.add_argument('--test_data', type=Path, required=True, help='Directory containing language-specific JSONL files')
+    parser.add_argument('--languages', type=str, default=None, help='Comma-separated list of languages to analyze (default: all in test_data)')
+    parser.add_argument('--output', type=Path, required=True, help='Output directory for routing statistics')
+    parser.add_argument('--batch_size', type=int, default=16, help='Batch size for inference (default: 16)')
+    parser.add_argument('--max_sequences', type=int, default=None, help='Maximum sequences per language (default: all available)')
+    parser.add_argument('--num_layers', type=int, default=None, help='Number of layers in model. Auto-detected from base model config if not specified.')
+    parser.add_argument('--num_experts', type=int, default=None, help='Number of experts per layer. Auto-detected from adapter_config.json if not specified.')
+    parser.add_argument('--device', type=str, default='cuda', help='Device to use (default: cuda)')
+    parser.add_argument('--use_language_ids', action='store_true', help='Use language_ids from adapter config for language-aware routing (default: False)')
     
     args = parser.parse_args()
+    
+    # Auto-detect from adapter_config.json if not specified
+    adapter_config_path = Path(args.adapter_checkpoint) / "adapter_config.json"
+    if adapter_config_path.exists():
+        logger.info(f"Reading adapter config from {adapter_config_path}")
+        with open(adapter_config_path, 'r') as f:
+            adapter_config = json.load(f)
+        
+        # Auto-detect adapter_type
+        if args.adapter_type is None:
+            peft_type = adapter_config.get('peft_type', '').lower()
+            if peft_type in ['cola', 'hydralora']:
+                args.adapter_type = peft_type
+                logger.info(f"Auto-detected adapter_type: {args.adapter_type}")
+            else:
+                logger.error(f"Could not auto-detect adapter_type from peft_type: {peft_type}")
+                raise ValueError("Please specify --adapter_type (cola or hydralora)")
+        
+        # Auto-detect num_experts (CoLA uses cola_num_experts, HydraLoRA uses num_experts)
+        if args.num_experts is None:
+            # Try adapter-specific field names first
+            num_experts = adapter_config.get('cola_num_experts')
+            if num_experts is None:
+                num_experts = adapter_config.get('num_experts')
+            if num_experts is None:
+                num_experts = 4  # Default fallback
+            args.num_experts = num_experts
+            logger.info(f"Auto-detected num_experts: {args.num_experts}")
+    else:
+        logger.warning(f"adapter_config.json not found at {adapter_config_path}")
+        if args.adapter_type is None:
+            raise ValueError("adapter_config.json not found. Please specify --adapter_type")
+        if args.num_experts is None:
+            args.num_experts = 4
+            logger.warning(f"Using default num_experts: {args.num_experts}")
+    
+    # Auto-detect num_layers from base model if not specified
+    if args.num_layers is None:
+        # Will be detected after model loading
+        args.num_layers = None  # Placeholder, will be set after model load
     
     # Get list of languages
     if args.languages:
@@ -453,9 +515,41 @@ def main():
         args.device
     )
     
+    # Auto-detect num_layers from model config if not specified
+    if args.num_layers is None:
+        if hasattr(model.config, 'num_hidden_layers'):
+            args.num_layers = model.config.num_hidden_layers
+            logger.info(f"Auto-detected num_layers: {args.num_layers}")
+        else:
+            args.num_layers = 32  # Default fallback
+            logger.warning(f"Could not auto-detect num_layers, using default: {args.num_layers}")
+    
     # Create routing collector
     collector = RoutingCollector(adapter_type=args.adapter_type)
     collector.attach_hooks(model)
+    
+    # Auto-detect language_ids mapping from adapter_config (only if requested)
+    lang_id_map = {}
+    if args.use_language_ids:
+        logger.info("Language IDs mode enabled: will use language_ids from adapter config")
+        if adapter_config_path.exists():
+            # Load language_list from adapter config
+            lang_list = adapter_config.get('language_list', [])
+            if lang_list:
+                # Build mapping: language_code -> integer index
+                lang_id_map = {lang: idx for idx, lang in enumerate(lang_list)}
+                logger.info(f"Loaded language_list with {len(lang_list)} languages from adapter_config")
+                
+                # Handle special case: "english" -> "eng_Latn" mapping
+                if 'eng_Latn' in lang_id_map and 'english' not in lang_id_map:
+                    lang_id_map['english'] = lang_id_map['eng_Latn']
+                    logger.debug("Added 'english' -> 'eng_Latn' mapping")
+            else:
+                logger.warning("adapter_config.json missing 'language_list' field - cannot use language_ids")
+        else:
+            logger.warning("adapter_config.json not found - cannot use language_ids")
+    else:
+        logger.info("Language IDs mode disabled: using input-only routing (original behavior)")
     
     # Analyze each language
     all_language_stats = {}
@@ -468,11 +562,22 @@ def main():
             logger.warning(f"File not found: {lang_file}, skipping")
             continue
         
+        # Get language integer ID for routing (only if use_language_ids is enabled)
+        language_idx = None
+        if args.use_language_ids:
+            language_idx = lang_id_map.get(lang)
+            if language_idx is None:
+                logger.warning(
+                    f"Language '{lang}' not in adapter's language_list. "
+                    "Analysis will proceed without language_ids for this language."
+                )
+        
         stats = analyze_language(
             model,
             tokenizer,
             lang_file,
             lang,
+            language_idx,  # Pass integer language ID
             collector,
             args.batch_size,
             args.max_sequences
@@ -481,7 +586,7 @@ def main():
         all_language_stats[lang] = stats
         collector.save_raw_data(raw_data_dir, lang)
     
-    # Create routing matrix
+    # Create routing matrix (captures what router learned)
     routing_matrix = create_routing_matrix(
         all_language_stats,
         languages,
@@ -489,21 +594,66 @@ def main():
         args.num_experts
     )
     
+    # Create target routing matrix if use_language_ids is enabled
+    # This shows what the LPR targets ARE (useful for all modes: hard, bias, learned)
+    # For hard mode: this is what's enforced
+    # For learned/bias modes: this is what LPR loss supervises toward
+    target_routing_matrix = None
+    router_mode = 'unknown'
+    if args.use_language_ids and adapter_config_path.exists():
+        language_to_family_ids = adapter_config.get('language_to_family_ids', [])
+        language_list = adapter_config.get('language_list', [])
+        router_mode = adapter_config.get('language_router_mode', 'learned')
+        
+        if language_to_family_ids and language_list:
+            # Build target routing matrix from config (no inference needed)
+            target_routing_matrix = np.zeros(
+                (len(languages), args.num_layers, args.num_experts),
+                dtype=np.float32
+            )
+            
+            for lang_idx, lang in enumerate(languages):
+                # Find the language index in adapter's language_list
+                if lang in language_list:
+                    adapter_lang_idx = language_list.index(lang)
+                    if adapter_lang_idx < len(language_to_family_ids):
+                        target_expert = int(language_to_family_ids[adapter_lang_idx])
+                        # Set all layers to show target expert
+                        target_routing_matrix[lang_idx, :, target_expert] = 1.0
+                        logger.info(f"Target routing for '{lang}': Expert {target_expert}")
+                else:
+                    logger.warning(f"Language '{lang}' not found in adapter's language_list")
+            
+            logger.info(f"Created target routing matrix (mode: {router_mode})")
+    
     # Save routing matrix
     args.output.mkdir(parents=True, exist_ok=True)
     output_file = args.output / 'routing_matrix.npz'
     
-    np.savez(
-        output_file,
-        routing_matrix=routing_matrix,
-        languages=languages,
-        num_layers=args.num_layers,
-        num_experts=args.num_experts
-    )
+    # Build save dict
+    save_dict = {
+        'routing_matrix': routing_matrix,
+        'languages': languages,
+        'num_layers': args.num_layers,
+        'num_experts': args.num_experts,
+        'router_mode': router_mode
+    }
+    
+    # Add target routing if available
+    if target_routing_matrix is not None:
+        save_dict['target_routing_matrix'] = target_routing_matrix
+        save_dict['has_target_routing'] = True
+        logger.info("Including target routing matrix in output")
+    else:
+        save_dict['has_target_routing'] = False
+    
+    np.savez(output_file, **save_dict)
     
     logger.info(f"Saved routing matrix to {output_file}")
     
     # Save metadata
+    router_mode = adapter_config.get('language_router_mode', 'learned') if adapter_config_path.exists() else 'unknown'
+    
     metadata = {
         'base_model': args.base_model,
         'adapter_checkpoint': args.adapter_checkpoint,
@@ -512,7 +662,10 @@ def main():
         'languages': languages,
         'num_layers': args.num_layers,
         'num_experts': args.num_experts,
-        'routing_matrix_shape': list(routing_matrix.shape)
+        'routing_matrix_shape': list(routing_matrix.shape),
+        'use_language_ids': args.use_language_ids,
+        'router_mode': router_mode,
+        'has_target_routing': target_routing_matrix is not None
     }
     
     metadata_file = args.output / 'metadata.json'
