@@ -25,7 +25,7 @@ jsonlines==4.0.0
 kagglehub==0.3.11
 lm_eval==0.4.8
 lxml==5.4.0
-Markdown==3.8
+Markdown==3.8.1
 MarkupSafe==3.0.2
 mbstrdecoder==1.1.4
 more-itertools==10.7.0
