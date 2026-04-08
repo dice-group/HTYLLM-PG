@@ -6,5 +6,5 @@ peft
 bitsandbytes
 tensorboard
 accelerate
-transformers==4.48.3
+transformers==5.0.0rc3
 lm-harness @ git+https://github.com/EleutherAI/lm-evaluation-harness.git
